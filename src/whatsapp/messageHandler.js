@@ -1,7 +1,7 @@
 const { processMessage } = require('../agent/agentService');
 const { verificarSpam } = require('./spamGuard');
 
-const DEBOUNCE_MS = 12_000; // 12 segundos — acumular mensajes antes de responder
+const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
 
 const _timers = new Map();  // telefono -> timeoutId
 const _buffers = new Map(); // telefono -> string[]
