@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { chatCompletion } = require('../services/openaiService');
 const { getRestauranteConfig, formatMenuForPrompt } = require('../services/menuService');
-const { getSession, addMessage, setLastOrderId, getLastOrderId } = require('./sessionStore');
-const { saveOrder, solicitarCambioPedido } = require('../orders/orderService');
+const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
+const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible } = require('../orders/orderService');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -100,6 +100,67 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
       addMessage(sessionId, { role: 'assistant', content: changeMessage.content });
 
       return { reply: changeMessage.content, order: null };
+    }
+  }
+
+    // --- cancelar_pedido ---
+    if (toolCall.function.name === 'cancelar_pedido') {
+      let toolResult;
+      const pedidoId = getLastOrderId(sessionId);
+
+      if (!pedidoId) {
+        toolResult = JSON.stringify({ error: 'No hay pedido activo en esta sesión.' });
+      } else {
+        try {
+          await cancelarPedido({ pedidoId });
+          clearSession(sessionId);
+          toolResult = JSON.stringify({ exito: true, pedidoId });
+        } catch (err) {
+          toolResult = JSON.stringify({ error: err.message });
+        }
+      }
+
+      addMessage(sessionId, assistantMessage);
+      addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+
+      const cancelHistory = getSession(sessionId);
+      const cancelMessage = await chatCompletion({ systemPrompt, messages: cancelHistory, tools: false });
+      // Session was cleared on success; we don't re-add messages to a dead session
+
+      return { reply: cancelMessage.content, order: null };
+    }
+
+    // --- consultar_estado_pedido ---
+    if (toolCall.function.name === 'consultar_estado_pedido') {
+      let toolResult;
+      let shouldResetSession = false;
+      const pedidoId = getLastOrderId(sessionId);
+
+      if (!pedidoId) {
+        toolResult = JSON.stringify({ error: 'No hay pedido activo en esta sesión.' });
+      } else {
+        try {
+          const { estado, cliente, productos } = await consultarEstadoPedido({ pedidoId });
+          const legible = estadoLegible(estado);
+          toolResult = JSON.stringify({ estado, legible, cliente, cantidadProductos: productos?.length });
+          shouldResetSession = ['en_camino', 'entregado'].includes(estado);
+        } catch (err) {
+          toolResult = JSON.stringify({ error: err.message });
+        }
+      }
+
+      addMessage(sessionId, assistantMessage);
+      addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+
+      const statusHistory = getSession(sessionId);
+      const statusMessage = await chatCompletion({ systemPrompt, messages: statusHistory, tools: false });
+      addMessage(sessionId, { role: 'assistant', content: statusMessage.content });
+
+      if (shouldResetSession) {
+        clearSession(sessionId);
+      }
+
+      return { reply: statusMessage.content, order: null };
     }
   }
 

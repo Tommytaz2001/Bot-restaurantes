@@ -71,4 +71,46 @@ async function solicitarCambioPedido({ pedidoId, descripcionCambio }) {
   return { pedidoId, descripcionCambio };
 }
 
-module.exports = { saveOrder, getOrder, solicitarCambioPedido };
+/**
+ * Cancela un pedido si aún está en estado pendiente.
+ * Solo se puede cancelar antes de que el chef lo confirme.
+ */
+async function cancelarPedido({ pedidoId }) {
+  const ref = doc(db, 'pedidos', pedidoId);
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
+
+  const { estado } = snapshot.data();
+  const cancelable = ['pendiente', 'pendiente_pago'];
+  if (!cancelable.includes(estado)) {
+    throw new Error(`El pedido ya no puede cancelarse (estado: ${estado})`);
+  }
+
+  await updateDoc(ref, { estado: 'cancelado', canceladoAt: serverTimestamp() });
+  return { pedidoId, cancelado: true };
+}
+
+/**
+ * Consulta el estado actual de un pedido.
+ */
+async function consultarEstadoPedido({ pedidoId }) {
+  const snapshot = await getDoc(doc(db, 'pedidos', pedidoId));
+  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
+  const { estado, cliente, productos } = snapshot.data();
+  return { pedidoId, estado, cliente, productos };
+}
+
+const ESTADOS_LEGIBLES = {
+  pendiente: 'pendiente de confirmación por el chef',
+  pendiente_pago: 'pendiente — esperando confirmación de pago',
+  confirmado: 'confirmado por el chef, en preparación',
+  en_camino: 'en camino a tu dirección',
+  entregado: 'entregado',
+  cancelado: 'cancelado',
+};
+
+function estadoLegible(estado) {
+  return ESTADOS_LEGIBLES[estado] ?? estado;
+}
+
+module.exports = { saveOrder, getOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible };

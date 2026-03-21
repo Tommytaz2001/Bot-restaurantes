@@ -53,8 +53,26 @@ const SOLICITAR_CAMBIO_TOOL = {
   },
 };
 
+const CANCELAR_PEDIDO_TOOL = {
+  type: 'function',
+  function: {
+    name: 'cancelar_pedido',
+    description: 'Cancela el pedido activo del cliente. Solo úsala cuando el cliente pida explícitamente cancelar y el pedido aún no fue confirmado por el chef.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+};
+
+const CONSULTAR_ESTADO_TOOL = {
+  type: 'function',
+  function: {
+    name: 'consultar_estado_pedido',
+    description: 'Consulta el estado actual del pedido del cliente en el sistema. Úsala cuando el cliente pregunte por el estado de su pedido, si ya fue confirmado, si ya va en camino, etc.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+};
+
 async function chatCompletion({ systemPrompt, messages, tools = true }) {
-  const allTools = tools ? [GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL] : undefined;
+  const allTools = tools ? [GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL, CANCELAR_PEDIDO_TOOL, CONSULTAR_ESTADO_TOOL] : undefined;
   const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 500,
@@ -67,4 +85,4 @@ async function chatCompletion({ systemPrompt, messages, tools = true }) {
   return response.choices[0].message;
 }
 
-module.exports = { chatCompletion, GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL };
+module.exports = { chatCompletion, GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL, CANCELAR_PEDIDO_TOOL, CONSULTAR_ESTADO_TOOL };
