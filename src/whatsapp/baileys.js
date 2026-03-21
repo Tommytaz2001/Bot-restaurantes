@@ -8,6 +8,7 @@ const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const path = require('path');
+const fs = require('fs');
 const { recibirMensaje } = require('./messageHandler');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
@@ -40,16 +41,23 @@ async function iniciarBaileys() {
 
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const loggedOut = statusCode === DisconnectReason.loggedOut;
 
-      console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}. Reconectar: ${shouldReconnect}`);
+      console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}.`);
 
-      if (shouldReconnect) {
-        console.log('[WhatsApp] Reconectando en 5 segundos...');
-        setTimeout(iniciarBaileys, 5000);
+      if (loggedOut) {
+        // Sesión expirada o cerrada manualmente — borrar credenciales y generar nuevo QR
+        console.log('[WhatsApp] 🔄 Sesión cerrada. Borrando credenciales y generando nuevo QR...');
+        try {
+          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        } catch (e) {
+          console.warn('[WhatsApp] No se pudo limpiar AUTH_DIR:', e.message);
+        }
       } else {
-        console.log('[WhatsApp] ⚠️  Sesión cerrada. Elimina .baileys-auth/ y reinicia para conectar de nuevo.');
+        console.log('[WhatsApp] Reconectando en 5 segundos...');
       }
+
+      setTimeout(iniciarBaileys, 5000);
     }
 
     if (connection === 'open') {
