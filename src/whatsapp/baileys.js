@@ -1,11 +1,12 @@
 const {
-  default: makeWASocket,
+  makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
+const qrcode = require('qrcode-terminal');
 const path = require('path');
 const { recibirMensaje } = require('./messageHandler');
 
@@ -21,8 +22,8 @@ async function iniciarBaileys() {
   sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true,
-    logger: pino({ level: 'silent' }), // Silenciar logs internos de Baileys
+    printQRInTerminal: false, // Lo manejamos manualmente con qrcode-terminal
+    logger: pino({ level: 'silent' }),
     browser: ['Urbano Bot', 'Chrome', '1.0.0'],
   });
 
@@ -31,8 +32,10 @@ async function iniciarBaileys() {
 
   // Manejar cambios de conexión
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    // Mostrar QR en terminal cuando esté disponible
     if (qr) {
-      console.log('\n[WhatsApp] 📱 Escanea el QR con tu teléfono para conectar el bot\n');
+      console.log('\n[WhatsApp] 📱 Escanea este QR con tu teléfono:\n');
+      qrcode.generate(qr, { small: true });
     }
 
     if (connection === 'close') {
@@ -45,7 +48,7 @@ async function iniciarBaileys() {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
         setTimeout(iniciarBaileys, 5000);
       } else {
-        console.log('[WhatsApp] ⚠️  Sesión cerrada (logout). Elimina la carpeta .baileys-auth y reinicia para conectar de nuevo.');
+        console.log('[WhatsApp] ⚠️  Sesión cerrada. Elimina .baileys-auth/ y reinicia para conectar de nuevo.');
       }
     }
 
@@ -59,16 +62,12 @@ async function iniciarBaileys() {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      // Ignorar mensajes propios
       if (msg.key.fromMe) continue;
-      // Ignorar mensajes sin contenido
       if (!msg.message) continue;
-      // Ignorar mensajes de grupos (solo 1 a 1 en MVP)
-      if (msg.key.remoteJid.endsWith('@g.us')) continue;
+      if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
 
       const telefono = msg.key.remoteJid.replace('@s.whatsapp.net', '');
 
-      // Extraer texto de distintos tipos de mensaje
       const texto =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
