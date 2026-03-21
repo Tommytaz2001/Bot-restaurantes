@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 5 node index.js)",
+      "Bash(node -e \"const semver = require\\(''semver''\\); console.log\\(semver.satisfies\\(process.version, ''>=20''\\)\\)\")"
+    ]
+  }
+}
