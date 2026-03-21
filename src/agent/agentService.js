@@ -101,7 +101,6 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
 
       return { reply: changeMessage.content, order: null };
     }
-  }
 
     // --- cancelar_pedido ---
     if (toolCall.function.name === 'cancelar_pedido') {
@@ -164,7 +163,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
     }
   }
 
-  // Normal response - no function call
+  // Normal response — no function call
   addMessage(sessionId, { role: 'assistant', content: assistantMessage.content });
   return { reply: assistantMessage.content, order: null };
 }
