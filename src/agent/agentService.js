@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { chatCompletion } = require('../services/openaiService');
 const { getRestauranteConfig, formatMenuForPrompt } = require('../services/menuService');
-const { getSession, addMessage } = require('./sessionStore');
-const { saveOrder } = require('../orders/orderService');
+const { getSession, addMessage, setLastOrderId, getLastOrderId } = require('./sessionStore');
+const { saveOrder, solicitarCambioPedido } = require('../orders/orderService');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -42,10 +42,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
     tools: true,
   });
 
-  // Handle function call
+  // Handle function calls
   if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
     const toolCall = assistantMessage.tool_calls[0];
 
+    // --- guardar_pedido ---
     if (toolCall.function.name === 'guardar_pedido') {
       let toolResult;
       let savedOrder = null;
@@ -58,31 +59,47 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
           sessionId,
           moneda: config.moneda,
         });
+        setLastOrderId(sessionId, savedOrder.id);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id });
       } catch (err) {
         toolResult = JSON.stringify({ error: err.message });
       }
 
-      // Add assistant message with tool_call to history
       addMessage(sessionId, assistantMessage);
-      // Add tool result to history
-      addMessage(sessionId, {
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: toolResult,
-      });
+      addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
 
-      // Second call to get confirmation reply
       const confirmHistory = getSession(sessionId);
-      const confirmMessage = await chatCompletion({
-        systemPrompt,
-        messages: confirmHistory,
-        tools: false,
-      });
-
+      const confirmMessage = await chatCompletion({ systemPrompt, messages: confirmHistory, tools: false });
       addMessage(sessionId, { role: 'assistant', content: confirmMessage.content });
 
       return { reply: confirmMessage.content, order: savedOrder };
+    }
+
+    // --- solicitar_cambio_pedido ---
+    if (toolCall.function.name === 'solicitar_cambio_pedido') {
+      let toolResult;
+      const pedidoId = getLastOrderId(sessionId);
+
+      if (!pedidoId) {
+        toolResult = JSON.stringify({ error: 'No hay pedido activo en esta sesión.' });
+      } else {
+        try {
+          const { descripcion_cambio } = JSON.parse(toolCall.function.arguments);
+          await solicitarCambioPedido({ pedidoId, descripcionCambio: descripcion_cambio });
+          toolResult = JSON.stringify({ exito: true, pedidoId });
+        } catch (err) {
+          toolResult = JSON.stringify({ error: err.message });
+        }
+      }
+
+      addMessage(sessionId, assistantMessage);
+      addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+
+      const changeHistory = getSession(sessionId);
+      const changeMessage = await chatCompletion({ systemPrompt, messages: changeHistory, tools: false });
+      addMessage(sessionId, { role: 'assistant', content: changeMessage.content });
+
+      return { reply: changeMessage.content, order: null };
     }
   }
 

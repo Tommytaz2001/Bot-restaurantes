@@ -35,17 +35,36 @@ const GUARDAR_PEDIDO_TOOL = {
   },
 };
 
+const SOLICITAR_CAMBIO_TOOL = {
+  type: 'function',
+  function: {
+    name: 'solicitar_cambio_pedido',
+    description: 'Registra una solicitud de cambio sobre el pedido ya confirmado del cliente. Úsala SOLO cuando el cliente quiera modificar o agregar algo a un pedido que ya fue enviado al chef.',
+    parameters: {
+      type: 'object',
+      properties: {
+        descripcion_cambio: {
+          type: 'string',
+          description: 'Descripción clara del cambio solicitado por el cliente (ej: "Agregar 1 Cheeseburger adicional", "Cambiar dirección a Colonia Los Robles")',
+        },
+      },
+      required: ['descripcion_cambio'],
+    },
+  },
+};
+
 async function chatCompletion({ systemPrompt, messages, tools = true }) {
+  const allTools = tools ? [GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL] : undefined;
   const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 500,
     temperature: 0.7,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
-    tools: tools ? [GUARDAR_PEDIDO_TOOL] : undefined,
+    tools: allTools,
     tool_choice: tools ? 'auto' : undefined,
   });
 
   return response.choices[0].message;
 }
 
-module.exports = { chatCompletion, GUARDAR_PEDIDO_TOOL };
+module.exports = { chatCompletion, GUARDAR_PEDIDO_TOOL, SOLICITAR_CAMBIO_TOOL };

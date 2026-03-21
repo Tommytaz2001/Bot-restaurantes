@@ -1,7 +1,7 @@
 const TTL_MS = 30 * 60 * 1000; // 30 minutos
 const MAX_MESSAGES = 50;
 
-const _sessions = new Map(); // Map<sessionId, { messages: [], lastActivity: timestamp }>
+const _sessions = new Map(); // Map<sessionId, { messages: [], lastActivity: timestamp, lastOrderId?: string }>
 
 function getSession(sessionId) {
   const entry = _sessions.get(sessionId);
@@ -34,7 +34,18 @@ function clearExpiredSessions(forceAll = false) {
   }
 }
 
+function setLastOrderId(sessionId, orderId) {
+  if (!_sessions.has(sessionId)) {
+    _sessions.set(sessionId, { messages: [], lastActivity: Date.now() });
+  }
+  _sessions.get(sessionId).lastOrderId = orderId;
+}
+
+function getLastOrderId(sessionId) {
+  return _sessions.get(sessionId)?.lastOrderId ?? null;
+}
+
 // Limpiar sesiones expiradas cada 5 minutos
 setInterval(clearExpiredSessions, 5 * 60 * 1000).unref();
 
-module.exports = { getSession, addMessage, clearExpiredSessions, _sessions };
+module.exports = { getSession, addMessage, clearExpiredSessions, setLastOrderId, getLastOrderId, _sessions };

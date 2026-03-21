@@ -3,6 +3,16 @@ const { verificarSpam } = require('./spamGuard');
 
 const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
 
+// Horario de atención: 3:00pm – 9:30pm hora Nicaragua (UTC-6)
+const HORA_APERTURA_MIN = 15 * 60;        // 900 min = 3:00pm
+const HORA_CIERRE_MIN  = 21 * 60 + 30;   // 1290 min = 9:30pm
+
+function estaEnHorario() {
+  const ahora = new Date();
+  const minutosNica = ((ahora.getUTCHours() - 6 + 24) % 24) * 60 + ahora.getUTCMinutes();
+  return minutosNica >= HORA_APERTURA_MIN && minutosNica <= HORA_CIERRE_MIN;
+}
+
 const _timers = new Map();  // telefono -> timeoutId
 const _buffers = new Map(); // telefono -> string[]
 
@@ -23,21 +33,29 @@ function debeIgnorar(texto) {
  * @param {Function} params.sendReply - Función async para enviar respuesta
  */
 async function recibirMensaje({ telefono, texto, restauranteId, sendReply }) {
-  // 1. Control de spam
+  // 1. Verificar horario de atención
+  if (!estaEnHorario()) {
+    await sendReply(
+      '⏰ Estamos fuera de horario. Nuestro horario de atención es de *3:00 pm a 9:30 pm*.\n\n¡Te esperamos pronto! 🍔',
+    );
+    return;
+  }
+
+  // 2. Control de spam
   const spam = verificarSpam(telefono);
   if (spam.bloqueado) {
     await sendReply(spam.mensaje);
     return;
   }
 
-  // 2. Filtrar mensajes vacíos o muy cortos
+  // 3. Filtrar mensajes vacíos o muy cortos
   if (debeIgnorar(texto)) return;
 
-  // 3. Acumular en buffer por teléfono
+  // 4. Acumular en buffer por teléfono
   if (!_buffers.has(telefono)) _buffers.set(telefono, []);
   _buffers.get(telefono).push(texto.trim());
 
-  // 4. Reiniciar debounce con cada mensaje nuevo
+  // 5. Reiniciar debounce con cada mensaje nuevo
   if (_timers.has(telefono)) clearTimeout(_timers.get(telefono));
 
   _timers.set(telefono, setTimeout(async () => {

@@ -1,7 +1,7 @@
 const { db } = require('../services/firebaseService');
 const { validateOrder } = require('./orderValidator');
 const {
-  collection, doc, setDoc, getDoc, query, where, getDocs, serverTimestamp,
+  collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp,
 } = require('firebase/firestore');
 const { randomUUID } = require('crypto');
 
@@ -51,4 +51,24 @@ async function getOrder(id) {
   return { id: snapshot.id, ...snapshot.data() };
 }
 
-module.exports = { saveOrder, getOrder };
+/**
+ * Registra una solicitud de cambio sobre un pedido activo.
+ * El chef la ve en la app y aprueba o rechaza.
+ */
+async function solicitarCambioPedido({ pedidoId, descripcionCambio }) {
+  const ref = doc(db, 'pedidos', pedidoId);
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
+
+  await updateDoc(ref, {
+    cambio_solicitado: {
+      descripcion: descripcionCambio,
+      estado: 'pendiente_chef',   // el chef lo actualizará a 'aprobado' o 'rechazado'
+      solicitadoAt: serverTimestamp(),
+    },
+  });
+
+  return { pedidoId, descripcionCambio };
+}
+
+module.exports = { saveOrder, getOrder, solicitarCambioPedido };
