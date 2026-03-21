@@ -15,16 +15,21 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFiles": ["./tests/setup.js"]
+    "setupFiles": [
+      "./tests/setup.js"
+    ]
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "firebase": "^12.11.0",
-    "openai": "^6.32.0"
+    "openai": "^6.32.0",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "jest": "^30.3.0",

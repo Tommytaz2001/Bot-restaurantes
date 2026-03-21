@@ -38,6 +38,8 @@ const GUARDAR_PEDIDO_TOOL = {
 async function chatCompletion({ systemPrompt, messages, tools = true }) {
   const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
+    max_tokens: 500,
+    temperature: 0.7,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     tools: tools ? [GUARDAR_PEDIDO_TOOL] : undefined,
     tool_choice: tools ? 'auto' : undefined,
