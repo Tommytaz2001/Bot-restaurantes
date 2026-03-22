@@ -9,7 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^3.0.1",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~55.0.8",
     "expo-constants": "^55.0.9",
     "expo-linking": "^55.0.8",
@@ -18,8 +18,8 @@
     "firebase": "^12.11.0",
     "react": "19.2.0",
     "react-native": "0.83.2",
-    "react-native-safe-area-context": "^5.7.0",
-    "react-native-screens": "^4.24.0",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-screens": "^4.23.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
