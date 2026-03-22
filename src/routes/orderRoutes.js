@@ -25,6 +25,22 @@ const MENSAJES_NOTIFICACION = {
   cambio_rechazado: '❌ Tu solicitud de cambio no pudo ser aplicada. Tu pedido original sigue en proceso.',
 };
 
+async function enviarNotificacion(telefono, mensaje, intentos = 3, delayMs = 2000) {
+  const { getSock } = require('../whatsapp/baileys');
+  for (let i = 1; i <= intentos; i++) {
+    const sock = getSock();
+    if (sock && sock.user) {
+      await sock.sendMessage(`${telefono}@s.whatsapp.net`, { text: mensaje });
+      return;
+    }
+    if (i < intentos) {
+      console.log(`[orderRoutes] WhatsApp no listo, reintentando (${i}/${intentos})...`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error('WhatsApp no conectado después de varios intentos');
+}
+
 router.post('/:id/notificar', async (req, res) => {
   try {
     const { tipo } = req.body;
@@ -34,18 +50,13 @@ router.post('/:id/notificar', async (req, res) => {
     const order = await getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
 
-    const { getSock } = require('../whatsapp/baileys');
-    const sock = getSock();
-    if (!sock) return res.status(503).json({ error: 'WhatsApp no conectado' });
-
-    const jid = `${order.telefono}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text: mensaje });
+    await enviarNotificacion(order.telefono, mensaje);
 
     console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.telefono}`);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[orderRoutes] Error notificando:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(503).json({ error: err.message });
   }
 });
 

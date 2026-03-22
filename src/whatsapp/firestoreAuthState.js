@@ -14,14 +14,17 @@ function sessionDocRef(restauranteId, path) {
 async function readData(restauranteId, path) {
   const snap = await getDoc(sessionDocRef(restauranteId, path));
   if (!snap.exists()) return null;
-  return JSON.parse(JSON.stringify(snap.data()), BufferJSON.reviver);
+  const raw = snap.data();
+  // Desenvolver arrays que fueron envueltos al guardar
+  const unwrapped = raw._isArray ? raw._data : raw;
+  return JSON.parse(JSON.stringify(unwrapped), BufferJSON.reviver);
 }
 
 async function writeData(restauranteId, path, data) {
-  await setDoc(
-    sessionDocRef(restauranteId, path),
-    JSON.parse(JSON.stringify(data, BufferJSON.replacer)),
-  );
+  const serialized = JSON.parse(JSON.stringify(data, BufferJSON.replacer));
+  // Firestore no admite arrays como raíz del documento — los envolvemos
+  const toStore = Array.isArray(serialized) ? { _isArray: true, _data: serialized } : serialized;
+  await setDoc(sessionDocRef(restauranteId, path), toStore);
 }
 
 async function removeData(restauranteId, path) {
