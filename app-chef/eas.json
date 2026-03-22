@@ -6,11 +6,29 @@
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDiURtey7zJZOuyZisNS0hlrf58OT6jaa0",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "sistema-restaurante-a914b.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "sistema-restaurante-a914b",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "sistema-restaurante-a914b.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "813469417540",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:813469417540:web:0fb95e6a7d1dea76807c11",
+        "EXPO_PUBLIC_RESTAURANTE_ID": "urbano"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDiURtey7zJZOuyZisNS0hlrf58OT6jaa0",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "sistema-restaurante-a914b.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "sistema-restaurante-a914b",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "sistema-restaurante-a914b.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "813469417540",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:813469417540:web:0fb95e6a7d1dea76807c11",
+        "EXPO_PUBLIC_RESTAURANTE_ID": "urbano"
       }
     }
   },
