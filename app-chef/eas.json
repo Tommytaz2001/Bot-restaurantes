@@ -15,7 +15,7 @@
         "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "813469417540",
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:813469417540:web:0fb95e6a7d1dea76807c11",
         "EXPO_PUBLIC_RESTAURANTE_ID": "urbano",
-        "EXPO_PUBLIC_BACKEND_URL": "https://tu-backend.render.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://bot-restaurantes.onrender.com"
       }
     },
     "production": {
@@ -30,7 +30,7 @@
         "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "813469417540",
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:813469417540:web:0fb95e6a7d1dea76807c11",
         "EXPO_PUBLIC_RESTAURANTE_ID": "urbano",
-        "EXPO_PUBLIC_BACKEND_URL": "https://tu-backend.render.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://bot-restaurantes.onrender.com"
       }
     }
   },
