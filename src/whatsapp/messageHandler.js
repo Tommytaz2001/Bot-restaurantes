@@ -33,13 +33,13 @@ function debeIgnorar(texto) {
  * @param {Function} params.sendReply - Función async para enviar respuesta
  */
 async function recibirMensaje({ telefono, texto, restauranteId, sendReply }) {
-  // 1. Verificar horario de atención
-  if (!estaEnHorario()) {
-    await sendReply(
-      '⏰ Estamos fuera de horario. Nuestro horario de atención es de *3:00 pm a 9:30 pm*.\n\n¡Te esperamos pronto! 🍔',
-    );
-    return;
-  }
+  // 1. Verificar horario de atención (deshabilitado temporalmente para pruebas)
+  // if (!estaEnHorario()) {
+  //   await sendReply(
+  //     '⏰ Estamos fuera de horario. Nuestro horario de atención es de *3:00 pm a 9:30 pm*.\n\n¡Te esperamos pronto! 🍔',
+  //   );
+  //   return;
+  // }
 
   // 2. Control de spam
   const spam = verificarSpam(telefono);

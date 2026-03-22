@@ -6,10 +6,11 @@ import {
   onSnapshot,
   query,
   where,
-  orderBy,
   serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
 
 export type EstadoPedido =
   | 'pendiente'
@@ -51,6 +52,14 @@ export interface Pedido {
 const ESTADOS_ACTIVOS: EstadoPedido[] = ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino'];
 const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
 
+function sortByCreatedAtDesc(pedidos: Pedido[]): Pedido[] {
+  return pedidos.sort((a, b) => {
+    const at = (a.createdAt as any)?.seconds ?? 0;
+    const bt = (b.createdAt as any)?.seconds ?? 0;
+    return bt - at;
+  });
+}
+
 export function suscribirPedidosActivos(
   callback: (pedidos: Pedido[]) => void
 ): Unsubscribe {
@@ -58,13 +67,18 @@ export function suscribirPedidosActivos(
     collection(db, 'pedidos'),
     where('restauranteId', '==', RESTAURANTE_ID),
     where('estado', 'in', ESTADOS_ACTIVOS),
-    orderBy('createdAt', 'desc')
   );
 
-  return onSnapshot(q, (snapshot) => {
-    const pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
-    callback(pedidos);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const pedidos = sortByCreatedAtDesc(
+        snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
+      );
+      callback(pedidos);
+    },
+    (err) => console.error('[Firestore] suscribirPedidosActivos error:', err.message),
+  );
 }
 
 export function suscribirHistorial(
@@ -74,13 +88,33 @@ export function suscribirHistorial(
     collection(db, 'pedidos'),
     where('restauranteId', '==', RESTAURANTE_ID),
     where('estado', 'in', ['entregado', 'cancelado']),
-    orderBy('createdAt', 'desc')
   );
 
-  return onSnapshot(q, (snapshot) => {
-    const pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
-    callback(pedidos);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const pedidos = sortByCreatedAtDesc(
+        snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
+      );
+      callback(pedidos);
+    },
+    (err) => console.error('[Firestore] suscribirHistorial error:', err.message),
+  );
+}
+
+export type TipoNotificacion = 'confirmado' | 'rechazado' | 'en_camino' | 'entregado' | 'cambio_aprobado' | 'cambio_rechazado';
+
+export async function notificarCliente(id: string, tipo: TipoNotificacion): Promise<void> {
+  if (!BACKEND_URL) return;
+  try {
+    await fetch(`${BACKEND_URL}/orders/${id}/notificar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo }),
+    });
+  } catch (err) {
+    console.warn('[notificarCliente] Error:', err);
+  }
 }
 
 async function actualizarEstado(id: string, data: Record<string, any>) {

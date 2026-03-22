@@ -1,23 +1,20 @@
 const {
   makeWASocket,
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
-const path = require('path');
-const fs = require('fs');
+const { useFirestoreAuthState } = require('./firestoreAuthState');
 const { recibirMensaje } = require('./messageHandler');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
-const AUTH_DIR = path.join(__dirname, '../../.baileys-auth');
 
 let sock = null;
 
 async function iniciarBaileys() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { state, saveCreds } = await useFirestoreAuthState(RESTAURANTE_ID);
   const { version } = await fetchLatestBaileysVersion();
 
   sock = makeWASocket({
@@ -46,13 +43,9 @@ async function iniciarBaileys() {
       console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}.`);
 
       if (loggedOut) {
-        // Sesión expirada o cerrada manualmente — borrar credenciales y generar nuevo QR
-        console.log('[WhatsApp] 🔄 Sesión cerrada. Borrando credenciales y generando nuevo QR...');
-        try {
-          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        } catch (e) {
-          console.warn('[WhatsApp] No se pudo limpiar AUTH_DIR:', e.message);
-        }
+        // Sesión expirada o cerrada manualmente — las credenciales en Firestore
+        // se sobreescribirán con el nuevo login al reconectar
+        console.log('[WhatsApp] 🔄 Sesión cerrada. Reconectando para generar nuevo QR...');
       } else {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
       }

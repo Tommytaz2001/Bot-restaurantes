@@ -8,7 +8,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../src/services/firebaseConfig';
 import {
   confirmarPedido, marcarEnCamino, marcarEntregado,
-  rechazarPedido, aprobarCambio, rechazarCambio,
+  rechazarPedido, aprobarCambio, rechazarCambio, notificarCliente,
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
@@ -123,13 +123,22 @@ export default function DetallePedidoScreen() {
               <Boton
                 label="✅ Aprobar cambio"
                 color="#30D158"
-                onPress={() => ejecutar(() => aprobarCambio(pedido.id))}
+                onPress={() => ejecutar(async () => {
+                  await aprobarCambio(pedido.id);
+                  notificarCliente(pedido.id, 'cambio_aprobado');
+                })}
                 loading={accionando}
               />
               <Boton
                 label="❌ Rechazar cambio"
                 color="#FF453A"
-                onPress={() => ejecutar(() => rechazarCambio(pedido.id), '¿Rechazar el cambio solicitado?')}
+                onPress={() => ejecutar(
+                  async () => {
+                    await rechazarCambio(pedido.id);
+                    notificarCliente(pedido.id, 'cambio_rechazado');
+                  },
+                  '¿Rechazar el cambio solicitado?'
+                )}
                 loading={accionando}
               />
             </View>
@@ -143,14 +152,20 @@ export default function DetallePedidoScreen() {
               <Boton
                 label="✅ Confirmar pedido"
                 color="#30D158"
-                onPress={() => ejecutar(() => confirmarPedido(pedido.id))}
+                onPress={() => ejecutar(async () => {
+                  await confirmarPedido(pedido.id);
+                  notificarCliente(pedido.id, 'confirmado');
+                })}
                 loading={accionando}
               />
               <Boton
                 label="❌ Rechazar pedido"
                 color="#FF453A"
                 onPress={() => ejecutar(
-                  () => rechazarPedido(pedido.id),
+                  async () => {
+                    await rechazarPedido(pedido.id);
+                    notificarCliente(pedido.id, 'rechazado');
+                  },
                   '¿Rechazar y cancelar este pedido?'
                 )}
                 loading={accionando}
@@ -162,7 +177,10 @@ export default function DetallePedidoScreen() {
             <Boton
               label="🛵 Marcar en camino"
               color="#0A84FF"
-              onPress={() => ejecutar(() => marcarEnCamino(pedido.id))}
+              onPress={() => ejecutar(async () => {
+                await marcarEnCamino(pedido.id);
+                notificarCliente(pedido.id, 'en_camino');
+              })}
               loading={accionando}
             />
           )}
@@ -171,7 +189,10 @@ export default function DetallePedidoScreen() {
             <Boton
               label="✅ Marcar como entregado"
               color="#30D158"
-              onPress={() => ejecutar(() => marcarEntregado(pedido.id))}
+              onPress={() => ejecutar(async () => {
+                await marcarEntregado(pedido.id);
+                notificarCliente(pedido.id, 'entregado');
+              })}
               loading={accionando}
             />
           )}

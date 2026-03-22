@@ -1,9 +1,11 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 app.use('/chat', chatRoutes);
@@ -13,7 +15,12 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 3001;
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
+  app.listen(PORT, () => {
+    const url = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+    console.log(`Servidor en puerto ${PORT}`);
+    console.log(`[Config] URL del backend: ${url}`);
+    console.log(`[Config] ↳ Copia esta URL en app-chef/.env → EXPO_PUBLIC_BACKEND_URL=${url}`);
+  });
 
   // Iniciar Baileys solo si WHATSAPP_ENABLED=true
   if (process.env.WHATSAPP_ENABLED === 'true') {
