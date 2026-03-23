@@ -63,15 +63,34 @@ jobs:
           EXPO_PUBLIC_RESTAURANTE_ID: urbano
           EXPO_PUBLIC_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}
 
-      - name: Build APK (debug — sin keystore)
+      - name: Bundle JS (empaquetar dentro del APK)
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.ts \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+        env:
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
+          EXPO_PUBLIC_RESTAURANTE_ID: urbano
+          EXPO_PUBLIC_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}
+
+      - name: Build APK (release sin firmar)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-chef-debug-${{ github.run_number }}
-          path: app-chef/android/app/build/outputs/apk/debug/app-debug.apk
+          name: app-chef-${{ github.run_number }}
+          path: app-chef/android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 14
