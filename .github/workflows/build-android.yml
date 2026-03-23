@@ -5,10 +5,11 @@ on:
     branches: [main]
     paths:
       - 'app-chef/**'
+      - '.github/workflows/build-android.yml'
   workflow_dispatch:
     inputs:
       backend_url:
-        description: 'URL del backend (ej: http://192.168.1.16:3001)'
+        description: 'URL del backend'
         required: false
         default: 'https://bot-restaurantes.onrender.com'
 
@@ -20,6 +21,16 @@ jobs:
     defaults:
       run:
         working-directory: app-chef
+
+    env:
+      EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+      EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+      EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+      EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
+      EXPO_PUBLIC_RESTAURANTE_ID: urbano
+      EXPO_PUBLIC_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}
 
     steps:
       - name: Checkout
@@ -44,26 +55,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Set backend URL
-        run: |
-          BACKEND_URL="${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}"
-          echo "Usando backend: $BACKEND_URL"
-          # Sobreescribir la URL en eas.json para este build
-          sed -i "s|https://bot-restaurantes.onrender.com|$BACKEND_URL|g" eas.json
-
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean
-        env:
-          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
-          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
-          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
-          EXPO_PUBLIC_RESTAURANTE_ID: urbano
-          EXPO_PUBLIC_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}
 
-      - name: Bundle JS (empaquetar dentro del APK)
+      - name: Bundle JS (empaquetado standalone)
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
@@ -72,25 +67,16 @@ jobs:
             --entry-file index.ts \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res
-        env:
-          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
-          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
-          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
-          EXPO_PUBLIC_RESTAURANTE_ID: urbano
-          EXPO_PUBLIC_BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://bot-restaurantes.onrender.com' }}
 
-      - name: Build APK (release sin firmar)
+      - name: Build APK debug (firmado automáticamente)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          SKIP_BUNDLING=true ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-chef-${{ github.run_number }}
-          path: app-chef/android/app/build/outputs/apk/release/app-release-unsigned.apk
-          retention-days: 14
+          name: urbano-chef-${{ github.run_number }}
+          path: app-chef/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
