@@ -69,4 +69,8 @@ async function useFirestoreAuthState(restauranteId) {
   };
 }
 
-module.exports = { useFirestoreAuthState };
+async function clearFirestoreSession(restauranteId) {
+  await removeData(restauranteId, 'creds');
+}
+
+module.exports = { useFirestoreAuthState, clearFirestoreSession };

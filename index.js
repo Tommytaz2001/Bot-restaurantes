@@ -31,6 +31,9 @@ if (require.main === module) {
     iniciarBaileys().catch(err => {
       console.error('[WhatsApp] Error al iniciar Baileys:', err.message);
     });
+
+    const { iniciarListenerNotificaciones } = require('./src/services/notificacionService');
+    iniciarListenerNotificaciones();
   } else {
     console.log('[WhatsApp] Modo REST únicamente (WHATSAPP_ENABLED no está activado)');
   }

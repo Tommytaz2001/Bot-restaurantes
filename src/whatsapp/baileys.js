@@ -6,7 +6,7 @@ const {
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
-const { useFirestoreAuthState } = require('./firestoreAuthState');
+const { useFirestoreAuthState, clearFirestoreSession } = require('./firestoreAuthState');
 const { recibirMensaje } = require('./messageHandler');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
@@ -85,7 +85,8 @@ async function iniciarBaileys() {
       console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}.`);
 
       if (loggedOut) {
-        console.log('[WhatsApp] Sesión cerrada. Reconectando para generar nuevo QR...');
+        console.log('[WhatsApp] Sesión inválida. Limpiando credenciales y generando nuevo QR...');
+        clearFirestoreSession(RESTAURANTE_ID).catch(() => {});
       } else {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
       }
