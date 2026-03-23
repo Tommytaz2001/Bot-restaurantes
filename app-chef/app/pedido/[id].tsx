@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, Alert, ActivityIndicator,
+  StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../src/services/firebaseConfig';
@@ -13,23 +15,41 @@ import {
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
 
-function Boton({
-  label, color, onPress, loading,
+function ActionBtn({
+  label, color, textColor = '#0C0C0C', onPress, loading, outline = false,
 }: {
-  label: string; color: string; onPress: () => void; loading?: boolean;
+  label: string; color: string; textColor?: string; onPress: () => void; loading?: boolean; outline?: boolean;
 }) {
   return (
     <TouchableOpacity
-      style={[styles.btn, { backgroundColor: color }]}
+      style={[
+        styles.btn,
+        outline
+          ? { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: color }
+          : { backgroundColor: color },
+      ]}
       onPress={onPress}
       disabled={loading}
       activeOpacity={0.8}
     >
-      {loading
-        ? <ActivityIndicator color="#000" />
-        : <Text style={styles.btnText}>{label}</Text>
-      }
+      {loading ? (
+        <ActivityIndicator color={outline ? color : textColor} size="small" />
+      ) : (
+        <Text style={[styles.btnText, { color: outline ? color : textColor }]}>{label}</Text>
+      )}
     </TouchableOpacity>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoIcon}>{icon}</Text>
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -49,10 +69,12 @@ export default function DetallePedidoScreen() {
 
   const ejecutar = async (fn: () => Promise<void>, confirmMsg?: string) => {
     if (confirmMsg) {
-      Alert.alert('Confirmar', confirmMsg, [
+      Alert.alert('Confirmar acción', confirmMsg, [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Sí', style: 'destructive', onPress: async () => {
+          text: 'Confirmar',
+          style: 'destructive',
+          onPress: async () => {
             setAccionando(true);
             try { await fn(); } finally { setAccionando(false); }
           },
@@ -66,72 +88,94 @@ export default function DetallePedidoScreen() {
 
   if (!pedido) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator color="#FF9F0A" style={{ marginTop: 40 }} />
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <StatusBar style="light" />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color="#F59E0B" size="large" />
+          <Text style={styles.loadingText}>Cargando pedido...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   const tieneCambio = pedido.cambio_solicitado?.estado === 'pendiente_chef';
+  const esFinal = pedido.estado === 'entregado' || pedido.estado === 'cancelado';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar style="light" />
+
+      {/* Top bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Volver</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+          <Text style={styles.backArrow}>‹</Text>
+          <Text style={styles.backText}>Volver</Text>
         </TouchableOpacity>
         <EstadoBadge estado={pedido.estado} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Datos del cliente */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Client section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cliente</Text>
-          <Text style={styles.dato}>{pedido.cliente}</Text>
-          <Text style={styles.subdato}>📞 {pedido.telefono}</Text>
-          <Text style={styles.subdato}>📍 {pedido.direccion}</Text>
+          <Text style={styles.sectionLabel}>CLIENTE</Text>
+          <Text style={styles.clienteName}>{pedido.cliente}</Text>
+          <View style={styles.sectionDivider} />
+          <InfoRow icon="◎" label="Teléfono" value={pedido.telefono} />
+          <InfoRow icon="⊙" label="Dirección" value={pedido.direccion} />
         </View>
 
-        {/* Productos */}
+        {/* Products section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Productos</Text>
+          <Text style={styles.sectionLabel}>PRODUCTOS</Text>
           {pedido.productos.map((p, i) => (
             <View key={i} style={styles.productoRow}>
-              <Text style={styles.productoCant}>{p.cantidad}×</Text>
-              <View style={{ flex: 1 }}>
+              <View style={styles.cantWrap}>
+                <Text style={styles.cant}>{p.cantidad}</Text>
+              </View>
+              <View style={styles.productoInfo}>
                 <Text style={styles.productoNombre}>{p.nombre}</Text>
-                {p.opcion && <Text style={styles.productoOpcion}>{p.opcion}</Text>}
+                {p.opcion ? <Text style={styles.productoOpcion}>{p.opcion}</Text> : null}
               </View>
             </View>
           ))}
-          <View style={styles.divider} />
+          <View style={styles.sectionDivider} />
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValor}>{pedido.moneda ?? 'C$'}{pedido.total}</Text>
           </View>
-          <Text style={styles.subdato}>
-            {pedido.metodo_pago === 'efectivo' ? '💵 Efectivo' : '📲 Transferencia'}
-          </Text>
+          <View style={styles.pagoRow}>
+            <Text style={styles.pagoText}>
+              {pedido.metodo_pago === 'efectivo' ? '💵 Efectivo' : '📲 Transferencia'}
+            </Text>
+          </View>
         </View>
 
-        {/* Cambio solicitado */}
+        {/* Change request section */}
         {tieneCambio && (
           <View style={styles.cambioSection}>
-            <Text style={styles.cambioTitle}>⚠️ Cambio solicitado por el cliente</Text>
+            <View style={styles.cambioHeader}>
+              <Text style={styles.cambioWarning}>⚠</Text>
+              <Text style={styles.cambioTitle}>Cambio solicitado por el cliente</Text>
+            </View>
             <Text style={styles.cambioDesc}>{pedido.cambio_solicitado!.descripcion}</Text>
-            <View style={styles.botonesRow}>
-              <Boton
-                label="✅ Aprobar cambio"
-                color="#30D158"
+            <View style={styles.cambioAcciones}>
+              <ActionBtn
+                label="Aprobar cambio"
+                color="#22C55E"
                 onPress={() => ejecutar(async () => {
                   await aprobarCambio(pedido.id);
                   notificarCliente(pedido.id, 'cambio_aprobado');
                 })}
                 loading={accionando}
               />
-              <Boton
-                label="❌ Rechazar cambio"
-                color="#FF453A"
+              <ActionBtn
+                label="Rechazar"
+                color="#EF4444"
+                outline
+                textColor="#EF4444"
                 onPress={() => ejecutar(
                   async () => {
                     await rechazarCambio(pedido.id);
@@ -145,28 +189,35 @@ export default function DetallePedidoScreen() {
           </View>
         )}
 
-        {/* Acciones por estado */}
-        <View style={styles.acciones}>
+        {/* Spacer for bottom actions */}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+
+      {/* Bottom action bar */}
+      {!esFinal && (
+        <View style={styles.actionBar}>
           {(pedido.estado === 'pendiente' || pedido.estado === 'pendiente_pago') && (
-            <View style={styles.botonesRow}>
-              <Boton
-                label="✅ Confirmar pedido"
-                color="#30D158"
+            <View style={styles.actionRow}>
+              <ActionBtn
+                label="✓  Confirmar"
+                color="#22C55E"
                 onPress={() => ejecutar(async () => {
                   await confirmarPedido(pedido.id);
                   notificarCliente(pedido.id, 'confirmado');
                 })}
                 loading={accionando}
               />
-              <Boton
-                label="❌ Rechazar pedido"
-                color="#FF453A"
+              <ActionBtn
+                label="✕  Rechazar"
+                color="#EF4444"
+                outline
+                textColor="#EF4444"
                 onPress={() => ejecutar(
                   async () => {
                     await rechazarPedido(pedido.id);
                     notificarCliente(pedido.id, 'rechazado');
                   },
-                  '¿Rechazar y cancelar este pedido?'
+                  '¿Cancelar y rechazar este pedido?'
                 )}
                 loading={accionando}
               />
@@ -174,9 +225,10 @@ export default function DetallePedidoScreen() {
           )}
 
           {pedido.estado === 'confirmado' && (
-            <Boton
-              label="🛵 Marcar en camino"
-              color="#0A84FF"
+            <ActionBtn
+              label="🛵  Marcar en camino"
+              color="#3B82F6"
+              textColor="#fff"
               onPress={() => ejecutar(async () => {
                 await marcarEnCamino(pedido.id);
                 notificarCliente(pedido.id, 'en_camino');
@@ -186,9 +238,9 @@ export default function DetallePedidoScreen() {
           )}
 
           {pedido.estado === 'en_camino' && (
-            <Boton
-              label="✅ Marcar como entregado"
-              color="#30D158"
+            <ActionBtn
+              label="✓  Marcar como entregado"
+              color="#22C55E"
               onPress={() => ejecutar(async () => {
                 await marcarEntregado(pedido.id);
                 notificarCliente(pedido.id, 'entregado');
@@ -196,68 +248,238 @@ export default function DetallePedidoScreen() {
               loading={accionando}
             />
           )}
-
-          {(pedido.estado === 'entregado' || pedido.estado === 'cancelado') && (
-            <Text style={styles.estadoFinal}>
-              {pedido.estado === 'entregado' ? '✅ Pedido entregado' : '❌ Pedido cancelado'}
-            </Text>
-          )}
         </View>
-      </ScrollView>
+      )}
+
+      {esFinal && (
+        <View style={styles.finalBar}>
+          <Text style={styles.finalText}>
+            {pedido.estado === 'entregado' ? '✓  Pedido entregado exitosamente' : '✕  Pedido cancelado'}
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0C0C0C',
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    color: '#555555',
+    fontSize: 14,
+  },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1A1A',
   },
-  backBtn: { paddingVertical: 4 },
-  backText: { color: '#FF9F0A', fontSize: 16 },
-  content: { paddingHorizontal: 20, paddingBottom: 40, gap: 16 },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  backArrow: {
+    color: '#F59E0B',
+    fontSize: 26,
+    lineHeight: 28,
+    marginTop: -2,
+  },
+  backText: {
+    color: '#F59E0B',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 12,
+  },
   section: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 14,
+    backgroundColor: '#161616',
+    borderRadius: 16,
     padding: 16,
-    gap: 6,
     borderWidth: 1,
-    borderColor: '#2c2c2e',
-  },
-  sectionTitle: { color: '#636366', fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  dato: { color: '#fff', fontSize: 18, fontWeight: '600' },
-  subdato: { color: '#8e8e93', fontSize: 14 },
-  productoRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 4 },
-  productoCant: { color: '#FF9F0A', fontSize: 15, fontWeight: '700', width: 28 },
-  productoNombre: { color: '#fff', fontSize: 15 },
-  productoOpcion: { color: '#8e8e93', fontSize: 13 },
-  divider: { height: 1, backgroundColor: '#2c2c2e', marginVertical: 8 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  totalLabel: { color: '#aeaeb2', fontSize: 15 },
-  totalValor: { color: '#FF9F0A', fontWeight: '700', fontSize: 17 },
-  cambioSection: {
-    backgroundColor: '#3d2800',
-    borderRadius: 14,
-    padding: 16,
+    borderColor: '#242424',
     gap: 10,
-    borderWidth: 1,
-    borderColor: '#FF9500',
   },
-  cambioTitle: { color: '#FF9500', fontWeight: '700', fontSize: 15 },
-  cambioDesc: { color: '#ffe5b0', fontSize: 14 },
-  acciones: { gap: 10, marginTop: 4 },
-  botonesRow: { flexDirection: 'row', gap: 10 },
-  btn: {
+  sectionLabel: {
+    color: '#3A3A3A',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  clienteName: {
+    color: '#F0F0F0',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#212121',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  infoIcon: {
+    color: '#3A3A3A',
+    fontSize: 14,
+    marginTop: 2,
+    width: 16,
+    textAlign: 'center',
+  },
+  infoContent: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
+    gap: 1,
+  },
+  infoLabel: {
+    color: '#444444',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  infoValue: {
+    color: '#C0C0C0',
+    fontSize: 14,
+  },
+  productoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  cantWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245,158,11,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnText: { color: '#000', fontWeight: '700', fontSize: 15 },
-  estadoFinal: { color: '#636366', textAlign: 'center', fontSize: 16, paddingVertical: 20 },
+  cant: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  productoInfo: {
+    flex: 1,
+    paddingTop: 4,
+    gap: 2,
+  },
+  productoNombre: {
+    color: '#E0E0E0',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  productoOpcion: {
+    color: '#555555',
+    fontSize: 12,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    color: '#6B6B6B',
+    fontSize: 14,
+  },
+  totalValor: {
+    color: '#F59E0B',
+    fontWeight: '800',
+    fontSize: 20,
+  },
+  pagoRow: {
+    alignItems: 'flex-start',
+  },
+  pagoText: {
+    color: '#555555',
+    fontSize: 13,
+  },
+  cambioSection: {
+    backgroundColor: '#18120A',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    gap: 12,
+  },
+  cambioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cambioWarning: {
+    color: '#F59E0B',
+    fontSize: 16,
+  },
+  cambioTitle: {
+    color: '#F59E0B',
+    fontWeight: '700',
+    fontSize: 14,
+    flex: 1,
+  },
+  cambioDesc: {
+    color: '#C09060',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  cambioAcciones: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+    backgroundColor: '#0C0C0C',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  btn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  btnText: {
+    fontWeight: '700',
+    fontSize: 14,
+    letterSpacing: 0.3,
+  },
+  finalBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+    alignItems: 'center',
+  },
+  finalText: {
+    color: '#444444',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

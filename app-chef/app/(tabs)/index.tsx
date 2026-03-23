@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   View, Text, FlatList, StyleSheet,
-  TouchableOpacity, SafeAreaView,
+  TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { usePedidosStore } from '../../src/store/pedidosStore';
 import { usePedidosActivos } from '../../src/hooks/usePedidos';
 import { PedidoCard } from '../../src/components/PedidoCard';
@@ -18,33 +20,49 @@ export default function PedidosScreen() {
   ).length;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar style="light" />
+
+      {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Pedidos activos</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerLabel}>PEDIDOS</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Activos</Text>
+            {pedidos.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{pedidos.length}</Text>
+              </View>
+            )}
+          </View>
           {pendientesCambio > 0 && (
-            <Text style={styles.alertaCambio}>
-              ⚠️ {pendientesCambio} cambio{pendientesCambio > 1 ? 's' : ''} pendiente{pendientesCambio > 1 ? 's' : ''}
-            </Text>
-          )}
-        </View>
-        <View style={styles.headerRight}>
-          {pedidos.length > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pedidos.length}</Text>
+            <View style={styles.alertaRow}>
+              <View style={styles.alertaDot} />
+              <Text style={styles.alertaText}>
+                {pendientesCambio} cambio{pendientesCambio > 1 ? 's' : ''} por revisar
+              </Text>
             </View>
           )}
-          <TouchableOpacity onPress={logout}>
-            <Text style={styles.logout}>Salir</Text>
-          </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.7}>
+          <Text style={styles.logoutText}>Salir</Text>
+        </TouchableOpacity>
       </View>
 
+      {/* Divider */}
+      <View style={styles.headerDivider} />
+
+      {/* Content */}
       {pedidos.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>✅</Text>
-          <Text style={styles.emptyText}>Sin pedidos activos</Text>
-          <Text style={styles.emptySubtext}>Los nuevos pedidos aparecerán aquí en tiempo real</Text>
+          <View style={styles.emptyIconWrap}>
+            <Text style={styles.emptyIcon}>✓</Text>
+          </View>
+          <Text style={styles.emptyTitle}>Sin pedidos activos</Text>
+          <Text style={styles.emptySubtitle}>
+            Los nuevos pedidos aparecerán{'\n'}aquí en tiempo real
+          </Text>
+          <View style={styles.emptyPulse} />
         </View>
       ) : (
         <FlatList
@@ -60,37 +78,134 @@ export default function PedidosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0C0C0C',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 16,
   },
-  title: { color: '#fff', fontSize: 24, fontWeight: '700' },
-  alertaCambio: { color: '#FF9500', fontSize: 13, marginTop: 2 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  badge: {
-    backgroundColor: '#FF9F0A',
+  headerLeft: {
+    gap: 3,
+  },
+  headerLabel: {
+    color: '#3A3A3A',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  title: {
+    color: '#F0F0F0',
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  countBadge: {
+    backgroundColor: '#F59E0B',
     borderRadius: 12,
-    minWidth: 24,
-    height: 24,
+    minWidth: 26,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  badgeText: { color: '#000', fontWeight: '700', fontSize: 13 },
-  logout: { color: '#636366', fontSize: 15 },
-  list: { paddingHorizontal: 20, paddingBottom: 20 },
+  countText: {
+    color: '#0C0C0C',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  alertaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  alertaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  alertaText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  logoutBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    marginTop: 4,
+  },
+  logoutText: {
+    color: '#555555',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  headerDivider: {
+    height: 1,
+    backgroundColor: '#1A1A1A',
+    marginHorizontal: 20,
+    marginBottom: 4,
+  },
+  list: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
+    paddingBottom: 60,
   },
-  emptyEmoji: { fontSize: 52 },
-  emptyText: { color: '#fff', fontSize: 20, fontWeight: '600' },
-  emptySubtext: { color: '#636366', fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyIcon: {
+    color: '#34D399',
+    fontSize: 28,
+    fontWeight: '300',
+  },
+  emptyTitle: {
+    color: '#F0F0F0',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emptySubtitle: {
+    color: '#444444',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyPulse: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+    marginTop: 8,
+    opacity: 0.6,
+  },
 });
