@@ -25,12 +25,14 @@ const MENSAJES_NOTIFICACION = {
   cambio_rechazado: '❌ Tu solicitud de cambio no pudo ser aplicada. Tu pedido original sigue en proceso.',
 };
 
-async function enviarNotificacion(telefono, mensaje, intentos = 3, delayMs = 2000) {
+async function enviarNotificacion(order, mensaje, intentos = 3, delayMs = 2000) {
   const { getSock } = require('../whatsapp/baileys');
+  // Usar jid guardado en Firestore (puede ser @lid o @s.whatsapp.net), sino reconstruir
+  const jid = order.jid || `${order.telefono}@s.whatsapp.net`;
   for (let i = 1; i <= intentos; i++) {
     const sock = getSock();
     if (sock && sock.user) {
-      await sock.sendMessage(`${telefono}@s.whatsapp.net`, { text: mensaje });
+      await sock.sendMessage(jid, { text: mensaje });
       return;
     }
     if (i < intentos) {
@@ -50,9 +52,9 @@ router.post('/:id/notificar', async (req, res) => {
     const order = await getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
 
-    await enviarNotificacion(order.telefono, mensaje);
+    await enviarNotificacion(order, mensaje);
 
-    console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.telefono}`);
+    console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.jid || order.telefono}`);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[orderRoutes] Error notificando:', err.message);

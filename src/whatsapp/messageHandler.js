@@ -32,7 +32,7 @@ function debeIgnorar(texto) {
  * @param {string} params.restauranteId
  * @param {Function} params.sendReply - Función async para enviar respuesta
  */
-async function recibirMensaje({ telefono, texto, restauranteId, sendReply }) {
+async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, sendReply }) {
   // 1. Verificar horario de atención (deshabilitado temporalmente para pruebas)
   // if (!estaEnHorario()) {
   //   await sendReply(
@@ -71,6 +71,7 @@ async function recibirMensaje({ telefono, texto, restauranteId, sendReply }) {
         sessionId: telefono,
         restauranteId,
         telefono,
+        remoteJid,
       });
       await sendReply(result.reply);
     } catch (err) {

@@ -12,6 +12,26 @@ const { recibirMensaje } = require('./messageHandler');
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
 let sock = null;
+const _contacts = {}; // mapa JID/@lid -> contacto para resolver números reales
+
+/**
+ * Extrae el número de teléfono limpio de un JID.
+ * Si es @lid intenta resolverlo vía contacts, si no puede devuelve el número del LID como fallback.
+ */
+function resolverTelefono(remoteJid) {
+  if (remoteJid.endsWith('@s.whatsapp.net')) {
+    return remoteJid.split('@')[0];
+  }
+  if (remoteJid.endsWith('@lid')) {
+    const contact = _contacts[remoteJid];
+    if (contact?.id && contact.id.endsWith('@s.whatsapp.net')) {
+      return contact.id.split('@')[0];
+    }
+    // Fallback: usar el número del LID (puede no ser el teléfono real)
+    return remoteJid.split('@')[0];
+  }
+  return remoteJid.split('@')[0];
+}
 
 async function iniciarBaileys() {
   const { state, saveCreds } = await useFirestoreAuthState(RESTAURANTE_ID);
@@ -27,6 +47,14 @@ async function iniciarBaileys() {
 
   // Guardar credenciales cuando se actualicen
   sock.ev.on('creds.update', saveCreds);
+
+  // Mantener mapa de contactos para resolver @lid → número real
+  sock.ev.on('contacts.upsert', (contacts) => {
+    for (const c of contacts) {
+      if (c.id) _contacts[c.id] = c;
+      if (c.lid) _contacts[c.lid] = c;
+    }
+  });
 
   // Manejar cambios de conexión
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
@@ -67,7 +95,8 @@ async function iniciarBaileys() {
       if (!msg.message) continue;
       if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
 
-      const telefono = msg.key.remoteJid.replace('@s.whatsapp.net', '');
+      const remoteJid = msg.key.remoteJid;
+      const telefono = resolverTelefono(remoteJid);
 
       const texto =
         msg.message?.conversation ||
@@ -84,11 +113,12 @@ async function iniciarBaileys() {
 
       await recibirMensaje({
         telefono,
+        remoteJid,
         texto,
         restauranteId: RESTAURANTE_ID,
         sendReply: async (reply) => {
           try {
-            await sock.sendMessage(msg.key.remoteJid, { text: reply });
+            await sock.sendMessage(remoteJid, { text: reply });
             console.log(`[WhatsApp] → ${telefono}: ${reply.substring(0, 80)}`);
           } catch (err) {
             console.error(`[WhatsApp] Error enviando mensaje a ${telefono}:`, err.message);

@@ -24,7 +24,7 @@ async function buildSystemPrompt(restauranteId, telefono) {
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto);
 }
 
-async function processMessage({ message, sessionId, restauranteId, telefono }) {
+async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid }) {
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
 
@@ -58,6 +58,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono }) {
           restauranteId,
           sessionId,
           moneda: config.moneda,
+          jid: remoteJid, // JID real para notificaciones WhatsApp
         });
         setLastOrderId(sessionId, savedOrder.id);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id });
