@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
+const whatsappRoutes = require('./src/routes/whatsappRoutes');
 
 const app = express();
 app.use(cors());
@@ -10,6 +11,7 @@ app.use(express.json());
 
 app.use('/chat', chatRoutes);
 app.use('/orders', orderRoutes);
+app.use('/whatsapp', whatsappRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -20,6 +22,7 @@ if (require.main === module) {
     console.log(`Servidor en puerto ${PORT}`);
     console.log(`[Config] URL del backend: ${url}`);
     console.log(`[Config] ↳ Copia esta URL en app-chef/.env → EXPO_PUBLIC_BACKEND_URL=${url}`);
+    console.log(`[Config] QR de WhatsApp disponible en: ${url}/whatsapp/qr`);
   });
 
   // Iniciar Baileys solo si WHATSAPP_ENABLED=true

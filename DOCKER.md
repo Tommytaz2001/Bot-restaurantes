@@ -47,24 +47,26 @@ docker compose logs -f
 
 ## 3. Escanear el QR de WhatsApp
 
-Al iniciar por primera vez, Baileys genera un QR en los logs:
+Al iniciar por primera vez, el backend genera un QR para vincular WhatsApp.
 
-```bash
-docker compose logs -f backend
-```
-
-Busca algo como esto en los logs:
+**Abre tu navegador y ve a:**
 
 ```
-[WhatsApp] Escanea el QR con tu WhatsApp:
-█████████████████████
-█ ▄▄▄▄▄ █▀▄▄ █ ▄▄▄▄▄ █
-...
+http://IP-DEL-SERVIDOR:3001/whatsapp/qr
 ```
 
-**Abre WhatsApp en tu teléfono → Dispositivos vinculados → Vincular dispositivo → escanea el QR.**
+Verás una página como esta con el QR listo para escanear:
+
+- **Iniciando...** → espera unos segundos, la página se actualiza automáticamente
+- **QR visible** → abre WhatsApp → Dispositivos vinculados → Vincular dispositivo → escanea
+- **Bot activo** → sesión establecida correctamente
 
 Una vez escaneado, la sesión se guarda en Firestore (`baileys_sessions`) y no necesitas escanear de nuevo aunque reinicies el contenedor.
+
+> Si necesitas verificar el estado por API: `GET /whatsapp/status`
+> ```json
+> { "status": "connected", "hasQR": false, "connectedAt": "2024-01-15T10:30:00Z" }
+> ```
 
 ---
 

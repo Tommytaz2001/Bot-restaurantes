@@ -14,6 +14,17 @@ const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 let sock = null;
 const _contacts = {}; // mapa JID/@lid -> contacto para resolver números reales
 
+// Estado de la sesión WhatsApp (expuesto para el endpoint /whatsapp/qr)
+let _waState = {
+  status: 'disconnected', // 'disconnected' | 'waiting_qr' | 'connected'
+  qr: null,              // string QR actual (se limpia al conectar)
+  connectedAt: null,
+};
+
+function getWAState() {
+  return _waState;
+}
+
 /**
  * Extrae el número de teléfono limpio de un JID.
  * Si es @lid intenta resolverlo vía contacts, si no puede devuelve el número del LID como fallback.
@@ -58,9 +69,11 @@ async function iniciarBaileys() {
 
   // Manejar cambios de conexión
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
-    // Mostrar QR en terminal cuando esté disponible
+    // Guardar QR en estado y mostrarlo en terminal
     if (qr) {
-      console.log('\n[WhatsApp] 📱 Escanea este QR con tu teléfono:\n');
+      _waState = { status: 'waiting_qr', qr, connectedAt: null };
+      console.log('\n[WhatsApp] Escanea este QR con tu teléfono:');
+      console.log('[WhatsApp] También disponible en: GET /whatsapp/qr\n');
       qrcode.generate(qr, { small: true });
     }
 
@@ -68,12 +81,11 @@ async function iniciarBaileys() {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
 
+      _waState = { status: 'disconnected', qr: null, connectedAt: null };
       console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}.`);
 
       if (loggedOut) {
-        // Sesión expirada o cerrada manualmente — las credenciales en Firestore
-        // se sobreescribirán con el nuevo login al reconectar
-        console.log('[WhatsApp] 🔄 Sesión cerrada. Reconectando para generar nuevo QR...');
+        console.log('[WhatsApp] Sesión cerrada. Reconectando para generar nuevo QR...');
       } else {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
       }
@@ -82,7 +94,8 @@ async function iniciarBaileys() {
     }
 
     if (connection === 'open') {
-      console.log(`[WhatsApp] ✅ Bot conectado — restaurante: ${RESTAURANTE_ID}`);
+      _waState = { status: 'connected', qr: null, connectedAt: new Date().toISOString() };
+      console.log(`[WhatsApp] Bot conectado — restaurante: ${RESTAURANTE_ID}`);
     }
   });
 
@@ -135,4 +148,4 @@ function getSock() {
   return sock;
 }
 
-module.exports = { iniciarBaileys, getSock };
+module.exports = { iniciarBaileys, getSock, getWAState };
