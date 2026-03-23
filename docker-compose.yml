@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    container_name: bot-restaurantes
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    # Logging rotativo para no llenar el disco
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

@@ -1,0 +1,13 @@
+node_modules
+.env
+.env.test
+.baileys-auth
+*.log
+npm-debug.log*
+.git
+.gitignore
+DOCKER.md
+README.md
+tests
+coverage
+app-chef
