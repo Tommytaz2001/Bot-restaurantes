@@ -100,6 +100,19 @@ async function iniciarBaileys() {
     }
   });
 
+  // Tipos de media que reciben respuesta "escríbeme por texto"
+  const MEDIA_TYPES = new Set([
+    'imageMessage',
+    'videoMessage',
+    'audioMessage',
+    'documentMessage',
+    'documentWithCaptionMessage',
+    'stickerMessage',
+  ]);
+
+  const MSG_MEDIA = 'Hola 👋 Solo puedo atender pedidos por escrito. Por favor escríbeme qué deseas y con gusto te ayudo. 🍔';
+  const MSG_LLAMADA = 'Hola 👋 No podemos atender llamadas, pero puedo tomar tu pedido aquí mismo. ¿Qué te gustaría ordenar? 🍔';
+
   // Manejar mensajes entrantes
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
@@ -111,6 +124,7 @@ async function iniciarBaileys() {
 
       const remoteJid = msg.key.remoteJid;
       const telefono = resolverTelefono(remoteJid);
+      const messageType = Object.keys(msg.message)[0];
 
       const texto =
         msg.message?.conversation ||
@@ -119,7 +133,16 @@ async function iniciarBaileys() {
         null;
 
       if (!texto) {
-        console.log(`[WhatsApp] Mensaje no-texto ignorado de ${telefono} (tipo: ${Object.keys(msg.message)[0]})`);
+        if (MEDIA_TYPES.has(messageType)) {
+          console.log(`[WhatsApp] Media (${messageType}) de ${telefono} → respondiendo`);
+          try {
+            await sock.sendMessage(remoteJid, { text: MSG_MEDIA });
+          } catch (err) {
+            console.error(`[WhatsApp] Error respondiendo media a ${telefono}:`, err.message);
+          }
+        } else {
+          console.log(`[WhatsApp] Mensaje ignorado de ${telefono} (tipo: ${messageType})`);
+        }
         continue;
       }
 
@@ -139,6 +162,31 @@ async function iniciarBaileys() {
           }
         },
       });
+    }
+  });
+
+  // Manejar llamadas entrantes — rechazar y notificar al que llamó
+  sock.ev.on('call', async (calls) => {
+    for (const call of calls) {
+      if (call.status !== 'offer') continue;
+      if (call.from?.endsWith('@g.us')) continue;
+
+      const telefono = resolverTelefono(call.from);
+      console.log(`[WhatsApp] Llamada entrante de ${telefono} — rechazando`);
+
+      try {
+        await sock.rejectCall(call.id, call.from);
+      } catch (err) {
+        // Si la llamada ya cortó sola, no es error crítico
+        console.warn(`[WhatsApp] rejectCall falló para ${telefono}:`, err.message);
+      }
+
+      try {
+        await sock.sendMessage(call.from, { text: MSG_LLAMADA });
+        console.log(`[WhatsApp] Mensaje post-llamada enviado a ${telefono}`);
+      } catch (err) {
+        console.error(`[WhatsApp] Error enviando mensaje post-llamada a ${telefono}:`, err.message);
+      }
     }
   });
 

@@ -25,13 +25,17 @@ function iniciarListenerNotificaciones() {
         if (change.type !== 'modified') continue;
 
         const order = { id: change.doc.id, ...change.doc.data() };
-        const { estado, jid, telefono, cambio_solicitado, notificaciones_enviadas = {} } = order;
+        const { estado, jid, telefono, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = order;
 
         const pendientes = [];
 
         // Notificaciones por cambio de estado principal
         if (MENSAJES[estado] && !notificaciones_enviadas[estado]) {
-          pendientes.push({ clave: estado, mensaje: MENSAJES[estado] });
+          // Para en_camino, el mensaje cambia según si es delivery o retiro
+          const mensaje = estado === 'en_camino' && tipo_entrega === 'retiro'
+            ? '🏪 ¡Tu pedido está listo! Puedes pasar a retirarlo cuando quieras. 😊'
+            : MENSAJES[estado];
+          pendientes.push({ clave: estado, mensaje });
         }
 
         // Notificaciones por cambio de solicitud de modificación

@@ -4,13 +4,14 @@ const cors = require('cors');
 const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
+const { requireAuth } = require('./src/middleware/authMiddleware');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.use('/chat', chatRoutes);
-app.use('/orders', orderRoutes);
+app.use('/orders', requireAuth, orderRoutes);
 app.use('/whatsapp', whatsappRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
