@@ -14,6 +14,8 @@ import {
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 
 function ActionBtn({
   label, color, textColor = '#0C0C0C', onPress, loading, outline = false,
@@ -58,6 +60,35 @@ export default function DetallePedidoScreen() {
   const router = useRouter();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [accionando, setAccionando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  const copiarParaDelivery = async () => {
+    if (!pedido) return;
+    const envio = pedido.costo_envio ?? 0;
+    const subtotal = (pedido.total ?? 0) - envio;
+    const moneda = pedido.moneda ?? 'C$';
+
+    const lineas: string[] = [
+      '🛵 Pedido para delivery',
+      `👤 ${pedido.cliente}`,
+      `📞 ${pedido.telefono}`,
+      `📍 ${pedido.direccion}`,
+      '─────────────────────',
+      ...pedido.productos.map((p) =>
+        `• ${p.cantidad}× ${p.nombre}${p.opcion ? ` (${p.opcion})` : ''}`
+      ),
+      '─────────────────────',
+      `💰 Subtotal: ${moneda}${subtotal}`,
+      `🛵 Envío: ${moneda}${envio}`,
+      `💰 Total: ${moneda}${pedido.total}`,
+      `💳 ${pedido.metodo_pago === 'efectivo' ? 'Efectivo' : 'Transferencia'}`,
+    ];
+
+    await Clipboard.setStringAsync(lineas.join('\n'));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 1500);
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -125,6 +156,20 @@ export default function DetallePedidoScreen() {
           <View style={styles.sectionDivider} />
           <InfoRow icon="◎" label="Teléfono" value={pedido.telefono} />
           <InfoRow icon="⊙" label="Dirección" value={pedido.direccion} />
+          {pedido.tipo_entrega === 'delivery' && (
+            <>
+              <View style={styles.sectionDivider} />
+              <TouchableOpacity
+                style={[styles.copyBtn, copiado && styles.copyBtnCopiado]}
+                onPress={copiarParaDelivery}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.copyBtnText, copiado && styles.copyBtnTextCopiado]}>
+                  {copiado ? '¡Copiado! ✓' : '📋 Copiar para delivery'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* Products section */}
@@ -142,10 +187,32 @@ export default function DetallePedidoScreen() {
             </View>
           ))}
           <View style={styles.sectionDivider} />
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValor}>{pedido.moneda ?? 'C$'}{pedido.total}</Text>
-          </View>
+          {pedido.costo_envio != null && pedido.costo_envio > 0 ? (
+            <>
+              <View style={styles.subtotalRow}>
+                <Text style={styles.subtotalLabel}>Subtotal</Text>
+                <Text style={styles.subtotalValor}>
+                  {pedido.moneda ?? 'C$'}{(pedido.total ?? 0) - pedido.costo_envio}
+                </Text>
+              </View>
+              <View style={styles.envioRow}>
+                <Text style={styles.envioLabel}>🛵 Envío</Text>
+                <Text style={styles.envioValor}>
+                  {pedido.moneda ?? 'C$'}{pedido.costo_envio}
+                </Text>
+              </View>
+              <View style={styles.desgloseDivider} />
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalValor}>{pedido.moneda ?? 'C$'}{pedido.total}</Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValor}>{pedido.moneda ?? 'C$'}{pedido.total}</Text>
+            </View>
+          )}
           <View style={styles.pagoRow}>
             <Text style={styles.pagoText}>
               {pedido.metodo_pago === 'efectivo' ? '💵 Efectivo' : '📲 Transferencia'}
@@ -480,6 +547,59 @@ const styles = StyleSheet.create({
   finalText: {
     color: '#444444',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  subtotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  subtotalLabel: {
+    color: '#6B6B6B',
+    fontSize: 14,
+  },
+  subtotalValor: {
+    color: '#6B6B6B',
+    fontSize: 15,
+  },
+  envioRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  envioLabel: {
+    color: '#6B6B6B',
+    fontSize: 14,
+  },
+  envioValor: {
+    color: '#6B6B6B',
+    fontSize: 15,
+  },
+  desgloseDivider: {
+    height: 1,
+    backgroundColor: '#212121',
+  },
+  copyBtn: {
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  copyBtnCopiado: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderColor: '#22C55E',
+  },
+  copyBtnText: {
+    color: '#888888',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  copyBtnTextCopiado: {
+    color: '#22C55E',
     fontWeight: '600',
   },
 });
