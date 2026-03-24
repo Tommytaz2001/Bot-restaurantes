@@ -65,7 +65,7 @@ export default function DetallePedidoScreen() {
   const copiarParaDelivery = async () => {
     if (!pedido) return;
     const envio = pedido.costo_envio ?? 0;
-    const subtotal = (pedido.total ?? 0) - envio;
+    const subtotal = Math.round((pedido.total ?? 0) - envio);
     const moneda = pedido.moneda ?? 'C$';
 
     const lineas: string[] = [
@@ -192,7 +192,7 @@ export default function DetallePedidoScreen() {
               <View style={styles.subtotalRow}>
                 <Text style={styles.subtotalLabel}>Subtotal</Text>
                 <Text style={styles.subtotalValor}>
-                  {pedido.moneda ?? 'C$'}{(pedido.total ?? 0) - pedido.costo_envio}
+                  {pedido.moneda ?? 'C$'}{Math.round((pedido.total ?? 0) - pedido.costo_envio)}
                 </Text>
               </View>
               <View style={styles.envioRow}>
