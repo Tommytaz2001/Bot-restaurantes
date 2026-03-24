@@ -10,6 +10,7 @@ const baseOrder = {
   total: 160,
   moneda: 'C$',
   metodo_pago: 'efectivo',
+  tipo_entrega: 'delivery',
 };
 
 describe('orderService', () => {

@@ -22,6 +22,10 @@ function validateOrder(order) {
     throw new Error('metodo_pago debe ser "transferencia" o "efectivo"');
   }
 
+  if (!['delivery', 'retiro'].includes(order.tipo_entrega)) {
+    throw new Error('tipo_entrega debe ser "delivery" o "retiro"');
+  }
+
   if (!order.total || order.total <= 0) {
     throw new Error('total debe ser mayor a 0');
   }

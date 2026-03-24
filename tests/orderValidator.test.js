@@ -7,6 +7,7 @@ const validOrder = {
   productos: [{ nombre: 'Clásica', cantidad: 1, precio_unitario: 160 }],
   total: 160,
   metodo_pago: 'efectivo',
+  tipo_entrega: 'delivery',
 };
 
 describe('orderValidator', () => {
@@ -64,5 +65,25 @@ describe('orderValidator', () => {
       productos: [{ nombre: 'Clásica', cantidad: 1 }],
     };
     expect(() => validateOrder(order)).toThrow('precio_unitario');
+  });
+
+  test('lanza error si falta tipo_entrega', () => {
+    const order = { ...validOrder, tipo_entrega: undefined };
+    expect(() => validateOrder(order)).toThrow('tipo_entrega');
+  });
+
+  test('lanza error si tipo_entrega es inválido', () => {
+    const order = { ...validOrder, tipo_entrega: 'express' };
+    expect(() => validateOrder(order)).toThrow('tipo_entrega');
+  });
+
+  test('acepta tipo_entrega delivery', () => {
+    const order = { ...validOrder, tipo_entrega: 'delivery' };
+    expect(() => validateOrder(order)).not.toThrow();
+  });
+
+  test('acepta tipo_entrega retiro', () => {
+    const order = { ...validOrder, tipo_entrega: 'retiro' };
+    expect(() => validateOrder(order)).not.toThrow();
   });
 });
