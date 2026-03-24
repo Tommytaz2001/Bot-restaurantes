@@ -54,9 +54,11 @@ export default function HistorialScreen() {
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
   const pageRef = useRef<Pick<HistorialPage, 'cursor' | 'hasMore'>>({ cursor: null, hasMore: false });
 
   const cargarPrimera = useCallback(async (f: FiltroHistorial) => {
+    setError(null);
     const result = await fetchHistorial({ filtro: f, cursor: null });
     setPedidos(result.pedidos);
     pageRef.current = { cursor: result.cursor, hasMore: result.hasMore };
@@ -67,14 +69,24 @@ export default function HistorialScreen() {
     setLoading(true);
     setPedidos([]);
     pageRef.current = { cursor: null, hasMore: false };
-    cargarPrimera(filtro).finally(() => setLoading(false));
+    cargarPrimera(filtro)
+      .catch((err) => {
+        console.error('[Historial] Error cargando pedidos:', err);
+        setError('No se pudieron cargar los pedidos.');
+      })
+      .finally(() => setLoading(false));
   }, [filtro]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setPedidos([]);
     pageRef.current = { cursor: null, hasMore: false };
-    await cargarPrimera(filtro);
+    try {
+      await cargarPrimera(filtro);
+    } catch (err) {
+      console.error('[Historial] Error al refrescar:', err);
+      setError('No se pudieron cargar los pedidos.');
+    }
     setRefreshing(false);
   }, [filtro]);
 
@@ -127,6 +139,11 @@ export default function HistorialScreen() {
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color="#F59E0B" size="small" />
+        </View>
+      ) : error ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Error al cargar</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
         </View>
       ) : pedidos.length === 0 ? (
         <View style={styles.empty}>
