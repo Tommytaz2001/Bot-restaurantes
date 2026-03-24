@@ -12,7 +12,8 @@ const GUARDAR_PEDIDO_TOOL = {
       properties: {
         cliente: { type: 'string', description: 'Nombre completo del cliente' },
         telefono: { type: 'string', description: 'Número de teléfono del cliente' },
-        direccion: { type: 'string', description: 'Dirección de entrega completa' },
+        tipo_entrega: { type: 'string', enum: ['delivery', 'retiro'], description: 'Tipo de entrega: "delivery" si el cliente pidió envío a domicilio, "retiro" si pasa a retirar al local' },
+        direccion: { type: 'string', description: 'Dirección de entrega. Para retiro usa "Retiro en local"' },
         productos: {
           type: 'array',
           description: 'Lista de productos pedidos',
@@ -27,10 +28,17 @@ const GUARDAR_PEDIDO_TOOL = {
             required: ['nombre', 'cantidad', 'precio_unitario'],
           },
         },
-        total: { type: 'number', description: 'Total del pedido en la moneda del restaurante' },
+        costo_envio: {
+          type: 'number',
+          description: 'Costo de envío. 40 para delivery, 0 para retiro en local.',
+        },
+        total: {
+          type: 'number',
+          description: 'Total del pedido incluyendo el costo de envío (subtotal + costo_envio).',
+        },
         metodo_pago: { type: 'string', enum: ['transferencia', 'efectivo'], description: 'Método de pago elegido por el cliente' },
       },
-      required: ['cliente', 'telefono', 'direccion', 'productos', 'total', 'metodo_pago'],
+      required: ['cliente', 'telefono', 'tipo_entrega', 'direccion', 'productos', 'costo_envio', 'total', 'metodo_pago'],
     },
   },
 };
