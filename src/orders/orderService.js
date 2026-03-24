@@ -5,6 +5,8 @@ const {
 } = require('firebase/firestore');
 const { randomUUID } = require('crypto');
 
+const COSTO_ENVIO = 40;
+
 function buildEstado(metodoPago) {
   return metodoPago === 'efectivo' ? 'pendiente_pago' : 'pendiente';
 }
@@ -29,12 +31,20 @@ async function saveOrder(orderData) {
   // Validate schema
   validateOrder(orderData);
 
+  const costoEnvio = orderData.tipo_entrega === 'delivery' ? COSTO_ENVIO : 0;
+  const subtotal = orderData.productos.reduce(
+    (sum, p) => sum + p.precio_unitario * p.cantidad,
+    0,
+  );
+
   const id = randomUUID();
   const pedido = {
     ...orderData,
     estado: buildEstado(orderData.metodo_pago),
     comprobante_url: null,
     createdAt: serverTimestamp(),
+    costo_envio: costoEnvio,         // overwrite — never trust LLM value
+    total: subtotal + costoEnvio,    // overwrite — backend is source of truth
     productos: orderData.productos.map((p) => ({
       ...p,
       opcion: p.opcion ?? null,

@@ -49,4 +49,29 @@ describe('orderService', () => {
     const result = await getOrder('id-que-no-existe-xyz123');
     expect(result).toBeNull();
   }, 10000);
+
+  test('pedido delivery tiene costo_envio=40 y total=subtotal+40', async () => {
+    const order = await saveOrder({
+      ...baseOrder,
+      sessionId: 'test-delivery-fee-' + Date.now(),
+      tipo_entrega: 'delivery',
+      productos: [{ nombre: 'Clásica', cantidad: 1, precio_unitario: 160, opcion: null }],
+      total: 9999, // backend must overwrite this
+    });
+    expect(order.costo_envio).toBe(40);
+    expect(order.total).toBe(200); // 160 + 40
+  }, 10000);
+
+  test('pedido retiro tiene costo_envio=0 y total=solo subtotal', async () => {
+    const order = await saveOrder({
+      ...baseOrder,
+      sessionId: 'test-retiro-fee-' + Date.now(),
+      tipo_entrega: 'retiro',
+      direccion: 'Retiro en local',
+      productos: [{ nombre: 'Clásica', cantidad: 1, precio_unitario: 160, opcion: null }],
+      total: 9999, // backend must overwrite this
+    });
+    expect(order.costo_envio).toBe(0);
+    expect(order.total).toBe(160); // 160 + 0
+  }, 10000);
 });
