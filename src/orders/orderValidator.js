@@ -1,5 +1,5 @@
 function validateOrder(order) {
-  const required = ['cliente', 'telefono', 'direccion', 'productos', 'total', 'metodo_pago'];
+  const required = ['cliente', 'telefono', 'tipo_entrega', 'direccion', 'productos', 'total', 'metodo_pago'];
   for (const field of required) {
     if (!order[field] && order[field] !== 0) {
       throw new Error(`Campo requerido faltante: ${field}`);
