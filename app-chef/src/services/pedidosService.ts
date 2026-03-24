@@ -1,4 +1,4 @@
-import { db } from './firebaseConfig';
+import { db, auth } from './firebaseConfig';
 import {
   collection,
   doc,
@@ -6,8 +6,16 @@ import {
   onSnapshot,
   query,
   where,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  Timestamp,
   serverTimestamp,
   type Unsubscribe,
+  type QueryDocumentSnapshot,
+  type DocumentData,
+  type QueryConstraint,
 } from 'firebase/firestore';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
@@ -47,6 +55,8 @@ export interface Pedido {
   comprobante_url: string | null;
   createdAt: any;
   cambio_solicitado?: CambioSolicitado;
+  tipo_entrega?: 'delivery' | 'retiro';
+  costo_envio?: number;
 }
 
 const ESTADOS_ACTIVOS: EstadoPedido[] = ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino'];
@@ -107,9 +117,13 @@ export type TipoNotificacion = 'confirmado' | 'rechazado' | 'en_camino' | 'entre
 export async function notificarCliente(id: string, tipo: TipoNotificacion): Promise<void> {
   if (!BACKEND_URL) return;
   try {
+    const token = await auth.currentUser?.getIdToken();
     await fetch(`${BACKEND_URL}/orders/${id}/notificar`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ tipo }),
     });
   } catch (err) {
@@ -144,3 +158,71 @@ export const rechazarCambio = (id: string) =>
     'cambio_solicitado.estado': 'rechazado',
     'cambio_solicitado.respondidoAt': serverTimestamp(),
   });
+
+// ─── Historial paginado ────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 20;
+
+export type FiltroHistorial = 'todos' | 'hoy' | 'ayer' | '7dias' | '30dias';
+
+function getDateRange(filtro: FiltroHistorial): { desde?: Date; hasta?: Date } {
+  const now = new Date();
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  switch (filtro) {
+    case 'hoy':
+      return { desde: startOfDay(now) };
+    case 'ayer': {
+      const ayer = new Date(now);
+      ayer.setDate(ayer.getDate() - 1);
+      return { desde: startOfDay(ayer), hasta: startOfDay(now) };
+    }
+    case '7dias': {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 7);
+      return { desde: startOfDay(d) };
+    }
+    case '30dias': {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 30);
+      return { desde: startOfDay(d) };
+    }
+    default:
+      return {};
+  }
+}
+
+export interface HistorialPage {
+  pedidos: Pedido[];
+  cursor: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+export async function fetchHistorial(options: {
+  filtro: FiltroHistorial;
+  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+}): Promise<HistorialPage> {
+  const { desde, hasta } = getDateRange(options.filtro);
+
+  const constraints: QueryConstraint[] = [
+    where('restauranteId', '==', RESTAURANTE_ID),
+    where('estado', 'in', ['entregado', 'cancelado']),
+    orderBy('createdAt', 'desc'),
+  ];
+
+  if (desde) constraints.push(where('createdAt', '>=', Timestamp.fromDate(desde)));
+  if (hasta) constraints.push(where('createdAt', '<', Timestamp.fromDate(hasta)));
+  if (options.cursor) constraints.push(startAfter(options.cursor));
+
+  constraints.push(limit(PAGE_SIZE + 1));
+
+  const snapshot = await getDocs(query(collection(db, 'pedidos'), ...constraints));
+  const hasMore = snapshot.docs.length > PAGE_SIZE;
+  const docs = hasMore ? snapshot.docs.slice(0, PAGE_SIZE) : snapshot.docs;
+
+  return {
+    pedidos: docs.map((d) => ({ id: d.id, ...d.data() } as Pedido)),
+    cursor: docs.length > 0 ? docs[docs.length - 1] : null,
+    hasMore,
+  };
+}
