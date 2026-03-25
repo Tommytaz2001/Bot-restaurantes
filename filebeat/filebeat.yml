@@ -24,6 +24,8 @@ processors:
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
 
 setup.kibana:
   host: "http://kibana:5601"

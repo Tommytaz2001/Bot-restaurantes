@@ -1,4 +1,5 @@
 const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL;
+const ELASTIC_PASSWORD  = process.env.ELASTIC_PASSWORD;
 
 function getIndex() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
@@ -8,10 +9,14 @@ function getIndex() {
 async function sendToES(message) {
   if (!ELASTICSEARCH_URL) return;
   const url = `${ELASTICSEARCH_URL}/${getIndex()}/_doc`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (ELASTIC_PASSWORD) {
+    headers['Authorization'] = 'Basic ' + Buffer.from(`elastic:${ELASTIC_PASSWORD}`).toString('base64');
+  }
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ '@timestamp': new Date().toISOString(), message }),
     });
     const body = await res.text();
