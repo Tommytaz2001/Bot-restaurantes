@@ -3,6 +3,40 @@ const { verificarSpam } = require('./spamGuard');
 
 const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
 
+// Palabras clave para detectar repartidores por nombre de contacto guardado
+const REPARTIDOR_KEYWORDS = ['delivery', 'moto mandado', 'mandado'];
+
+// Historial de reenvíos por teléfono (ventana deslizante de 5 mensajes)
+const _forwardedHistory = new Map(); // telefono -> boolean[]
+// Nombre de contacto más reciente por teléfono
+const _contactNames = new Map(); // telefono -> string
+
+function registrarMetadataMensaje(telefono, contactName, esMensajeReenviado) {
+  if (contactName) _contactNames.set(telefono, contactName);
+
+  if (!_forwardedHistory.has(telefono)) _forwardedHistory.set(telefono, []);
+  const hist = _forwardedHistory.get(telefono);
+  hist.push(!!esMensajeReenviado);
+  if (hist.length > 5) hist.shift();
+}
+
+function detectarRepartidor(telefono) {
+  const contactName = _contactNames.get(telefono) ?? null;
+
+  // Caso 1: nombre de contacto guardado contiene keyword de repartidor
+  if (contactName) {
+    const lower = contactName.toLowerCase();
+    if (REPARTIDOR_KEYWORDS.some((kw) => lower.includes(kw))) return true;
+  }
+
+  // Casos 2 y 3: alguno de los últimos 5 mensajes fue reenviado
+  // (detecta tanto "no guardado + reenvío actual" como "bot perdió primer mensaje")
+  const hist = _forwardedHistory.get(telefono) ?? [];
+  if (hist.some((f) => f)) return true;
+
+  return false;
+}
+
 // Horario de atención: 3:00pm – 9:30pm hora Nicaragua (UTC-6)
 const HORA_APERTURA_MIN = 15 * 60;        // 900 min = 3:00pm
 const HORA_CIERRE_MIN  = 21 * 60 + 30;   // 1290 min = 9:30pm
@@ -27,12 +61,14 @@ function debeIgnorar(texto) {
  * luego llama al agente y responde.
  *
  * @param {Object} params
- * @param {string} params.telefono    - Número del remitente (sin @s.whatsapp.net)
- * @param {string} params.texto       - Texto del mensaje
+ * @param {string} params.telefono          - Número del remitente (sin @s.whatsapp.net)
+ * @param {string} params.texto             - Texto del mensaje
  * @param {string} params.restauranteId
- * @param {Function} params.sendReply - Función async para enviar respuesta
+ * @param {string|null} params.contactName  - Nombre guardado en contactos de WA (puede ser null)
+ * @param {boolean} params.esMensajeReenviado - Si el mensaje fue reenviado
+ * @param {Function} params.sendReply       - Función async para enviar respuesta
  */
-async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, sendReply }) {
+async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, sendReply }) {
   // 1. Verificar horario de atención (deshabilitado temporalmente para pruebas)
   // if (!estaEnHorario()) {
   //   await sendReply(
@@ -51,11 +87,14 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, sendR
   // 3. Filtrar mensajes vacíos o muy cortos
   if (debeIgnorar(texto)) return;
 
-  // 4. Acumular en buffer por teléfono
+  // 4. Registrar metadatos para detección de repartidor
+  registrarMetadataMensaje(telefono, contactName, esMensajeReenviado);
+
+  // 5. Acumular en buffer por teléfono
   if (!_buffers.has(telefono)) _buffers.set(telefono, []);
   _buffers.get(telefono).push(texto.trim());
 
-  // 5. Reiniciar debounce con cada mensaje nuevo
+  // 6. Reiniciar debounce con cada mensaje nuevo
   if (_timers.has(telefono)) clearTimeout(_timers.get(telefono));
 
   _timers.set(telefono, setTimeout(async () => {
@@ -63,7 +102,8 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, sendR
     _buffers.delete(telefono);
     _timers.delete(telefono);
 
-    console.log(`[messageHandler] Procesando de ${telefono}: "${mensajesAcumulados.substring(0, 60)}"`);
+    const esRepartidor = detectarRepartidor(telefono);
+    console.log(`[messageHandler] Procesando de ${telefono}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
 
     try {
       const result = await processMessage({
@@ -72,6 +112,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, sendR
         restauranteId,
         telefono,
         remoteJid,
+        esRepartidor,
       });
       await sendReply(result.reply);
     } catch (err) {

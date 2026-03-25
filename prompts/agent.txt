@@ -187,3 +187,4 @@ Para pedidos **retiro**: el costo de envío es 0. No lo menciones. El campo `cos
 
 ## CONTEXTO DE LA SESIÓN
 {{CONTEXTO_TELEFONO}}
+{{CONTEXTO_REPARTIDOR}}

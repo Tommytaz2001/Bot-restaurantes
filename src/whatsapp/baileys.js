@@ -132,6 +132,12 @@ async function iniciarBaileys() {
         msg.message?.imageMessage?.caption ||
         null;
 
+      const contactName = _contacts[remoteJid]?.name ?? null;
+      const esMensajeReenviado = !!(
+        msg.message?.extendedTextMessage?.contextInfo?.isForwarded ||
+        (msg.message?.extendedTextMessage?.contextInfo?.forwardingScore ?? 0) > 0
+      );
+
       if (!texto) {
         if (MEDIA_TYPES.has(messageType)) {
           console.log(`[WhatsApp] Media (${messageType}) de ${telefono} → respondiendo`);
@@ -153,6 +159,8 @@ async function iniciarBaileys() {
         remoteJid,
         texto,
         restauranteId: RESTAURANTE_ID,
+        contactName,
+        esMensajeReenviado,
         sendReply: async (reply) => {
           try {
             await sock.sendMessage(remoteJid, { text: reply });

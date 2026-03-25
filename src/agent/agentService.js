@@ -10,25 +10,30 @@ const PROMPT_TEMPLATE = fs.readFileSync(
   'utf-8'
 );
 
-async function buildSystemPrompt(restauranteId, telefono) {
+async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const telefonoContexto = telefono
     ? `El número de teléfono del cliente es: ${telefono}. No necesitas pedírselo.`
     : 'No tienes el número de teléfono del cliente. Pídelo durante el proceso de pedido.';
 
+  const contextoRepartidor = esRepartidor
+    ? `\n## MODO REPARTIDOR\nEste chat proviene de un REPARTIDOR (moto/mandado) que pasa a retirar el pedido en el local, NO de un cliente final.\n\nComportamiento obligatorio:\n- NO preguntes nombre, dirección ni método de pago — no son necesarios.\n- Saluda brevemente y pide directamente qué quieren ordenar.\n- Al confirmar el pedido, usa siempre tipo_entrega: "retiro", direccion: "Retiro repartidor", cliente: "Repartidor", metodo_pago: "efectivo".\n- Después de guardar responde EXACTAMENTE: "✅ ¡Pedido recibido! Ya le avisamos al chef. Te notificamos aquí cuando esté listo para retirar. 🍔"\n- La consulta de estado y cancelación aplican igual que normalmente.`
+    : '';
+
   return PROMPT_TEMPLATE
     .replace(/{{NOMBRE_RESTAURANTE}}/g, config.nombre)
     .replace(/{{MONEDA}}/g, config.moneda)
     .replace('{{MENU}}', menuText)
-    .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto);
+    .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
+    .replace('{{CONTEXTO_REPARTIDOR}}', contextoRepartidor);
 }
 
-async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid }) {
+async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid, esRepartidor = false }) {
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
 
-  const systemPrompt = await buildSystemPrompt(restauranteId, telefono);
+  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, esRepartidor);
 
   // Capture history BEFORE addMessage to avoid duplication when spreading
   const history = getSession(sessionId);
