@@ -10,7 +10,7 @@
         }
       },
       "delete": {
-        "min_age": "1d",
+        "min_age": "30d",
         "actions": {
           "delete": {}
         }

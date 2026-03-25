@@ -39,4 +39,4 @@ setup.template.name: "bot-logs"
 setup.template.pattern: "bot-logs-*"
 setup.template.overwrite: true
 
-logging.level: warning
+logging.level: info
