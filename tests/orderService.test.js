@@ -1,4 +1,4 @@
-const { saveOrder, getOrder } = require('../src/orders/orderService');
+const { saveOrder, getOrder, solicitarCambioPedido } = require('../src/orders/orderService');
 
 const baseOrder = {
   restauranteId: 'urbano',
@@ -73,5 +73,61 @@ describe('orderService', () => {
     });
     expect(order.costo_envio).toBe(0);
     expect(order.total).toBe(160); // 160 + 0
+  }, 10000);
+});
+
+describe('solicitarCambioPedido', () => {
+  async function crearPedidoTest(suffix) {
+    const order = await saveOrder({
+      restauranteId: 'urbano',
+      sessionId: 'test-cambio-' + suffix + Date.now(),
+      cliente: 'Test Cliente',
+      telefono: '+50599999999',
+      direccion: 'Test Address 123',
+      productos: [{ nombre: 'Clásica', cantidad: 1, precio_unitario: 160, opcion: null }],
+      total: 9999,
+      moneda: 'C$',
+      metodo_pago: 'efectivo',
+      tipo_entrega: 'delivery',
+    });
+    return order.id;
+  }
+
+  test('tipo modificacion guarda estructura correcta', async () => {
+    const pedidoId = await crearPedidoTest('mod-');
+    await solicitarCambioPedido({
+      pedidoId,
+      descripcionCambio: 'Sin cebolla en la hamburguesa',
+      tipo: 'modificacion',
+    });
+    const order = await getOrder(pedidoId);
+    expect(order.cambio_solicitado.tipo).toBe('modificacion');
+    expect(order.cambio_solicitado.descripcion).toBe('Sin cebolla en la hamburguesa');
+    expect(order.cambio_solicitado.estado).toBe('pendiente_chef');
+    expect(order.cambio_solicitado.productos_nuevos).toBeNull();
+    expect(order.cambio_solicitado.total_nuevo).toBeNull();
+  }, 15000);
+
+  test('tipo agregar_productos calcula total_nuevo correctamente', async () => {
+    const pedidoId = await crearPedidoTest('agr-');
+    // Order has total=200 (160 producto + 40 envío delivery computed by backend)
+    await solicitarCambioPedido({
+      pedidoId,
+      descripcionCambio: 'Agregar 2 Clásicas',
+      tipo: 'agregar_productos',
+      productosNuevos: [{ nombre: 'Clásica', cantidad: 2, precio_unitario: 160, opcion: null }],
+    });
+    const order = await getOrder(pedidoId);
+    expect(order.cambio_solicitado.tipo).toBe('agregar_productos');
+    expect(order.cambio_solicitado.total_nuevo).toBe(520); // 200 + (160 * 2)
+    expect(order.cambio_solicitado.productos_nuevos).toHaveLength(1);
+    expect(order.cambio_solicitado.productos_nuevos[0].nombre).toBe('Clásica');
+    expect(order.cambio_solicitado.productos_nuevos[0].opcion).toBeNull();
+  }, 15000);
+
+  test('lanza error para pedido inexistente', async () => {
+    await expect(
+      solicitarCambioPedido({ pedidoId: 'no-existe-xyz', descripcionCambio: 'test', tipo: 'modificacion' })
+    ).rejects.toThrow('Pedido no encontrado');
   }, 10000);
 });

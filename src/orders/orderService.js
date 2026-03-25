@@ -65,15 +65,31 @@ async function getOrder(id) {
  * Registra una solicitud de cambio sobre un pedido activo.
  * El chef la ve en la app y aprueba o rechaza.
  */
-async function solicitarCambioPedido({ pedidoId, descripcionCambio }) {
+async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modificacion', productosNuevos = null }) {
   const ref = doc(db, 'pedidos', pedidoId);
   const snapshot = await getDoc(ref);
   if (!snapshot.exists()) throw new Error('Pedido no encontrado');
 
+  let totalNuevo = null;
+  let productosNormalizados = null;
+
+  if (tipo === 'agregar_productos' && productosNuevos?.length > 0) {
+    const pedidoActual = snapshot.data();
+    const subtotalNuevos = productosNuevos.reduce(
+      (sum, p) => sum + p.precio_unitario * p.cantidad,
+      0,
+    );
+    totalNuevo = pedidoActual.total + subtotalNuevos;
+    productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
+  }
+
   await updateDoc(ref, {
     cambio_solicitado: {
+      tipo,
       descripcion: descripcionCambio,
-      estado: 'pendiente_chef',   // el chef lo actualizará a 'aprobado' o 'rechazado'
+      productos_nuevos: productosNormalizados,
+      total_nuevo: totalNuevo,
+      estado: 'pendiente_chef',
       solicitadoAt: serverTimestamp(),
     },
   });
