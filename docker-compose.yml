@@ -57,6 +57,20 @@ services:
     networks:
       - bot-network
 
+  # ── Kibana setup (corre una vez y termina) ───────────────────────────────────
+  kibana-setup:
+    image: alpine:3.19
+    container_name: kibana-setup
+    depends_on:
+      - kibana
+      - elasticsearch
+    volumes:
+      - ./kibana:/setup:ro
+    command: ["/bin/sh", "/setup/setup.sh"]
+    restart: "no"
+    networks:
+      - bot-network
+
   # ── Filebeat (log shipper) ────────────────────────────────────────────────────
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.13.4
