@@ -30,4 +30,11 @@ curl -sf -X POST "$KIBANA/api/saved_objects/_import?overwrite=true" \
   && echo "[kibana-setup] Búsquedas importadas." \
   || echo "[kibana-setup] Error importando búsquedas (no crítico)."
 
-echo "[kibana-setup] Setup completado. Abre http://<host>:5601 → Discover."
+echo "[kibana-setup] Importando dashboard..."
+curl -sf -X POST "$KIBANA/api/saved_objects/_import?overwrite=true" \
+  -H "kbn-xsrf: true" \
+  -F "file=@/setup/dashboard.ndjson" \
+  && echo "[kibana-setup] Dashboard importado." \
+  || echo "[kibana-setup] Error importando dashboard (no crítico)."
+
+echo "[kibana-setup] Setup completado. Abre http://<host>:5601 → Dashboard → Bot Restaurantes."

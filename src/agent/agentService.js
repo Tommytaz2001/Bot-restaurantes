@@ -66,6 +66,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           jid: remoteJid, // JID real para notificaciones WhatsApp
         });
         setLastOrderId(sessionId, savedOrder.id);
+        console.log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono}`);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id });
       } catch (err) {
         toolResult = JSON.stringify({ error: err.message });

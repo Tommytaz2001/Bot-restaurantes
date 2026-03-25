@@ -5,10 +5,12 @@ const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
 const { requireAuth } = require('./src/middleware/authMiddleware');
+const { requestLogger } = require('./src/middleware/requestLogger');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 app.use('/chat', chatRoutes);
 app.use('/orders', requireAuth, orderRoutes);

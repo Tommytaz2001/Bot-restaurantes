@@ -104,6 +104,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
 
     const esRepartidor = detectarRepartidor(telefono);
     console.log(`[messageHandler] Procesando de ${telefono}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
+    console.log(`[WA_IN] telefono=${telefono} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
 
     try {
       const result = await processMessage({
@@ -115,6 +116,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
         esRepartidor,
       });
       await sendReply(result.reply);
+      console.log(`[WA_OUT] telefono=${telefono} chars=${result.reply.length}`);
     } catch (err) {
       console.error(`[messageHandler] Error procesando mensaje de ${telefono}:`, err.message);
       await sendReply('Lo siento, tuve un problema. Por favor intenta de nuevo en un momento. 🙏');
