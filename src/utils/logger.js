@@ -7,14 +7,17 @@ function getIndex() {
 
 async function sendToES(message) {
   if (!ELASTICSEARCH_URL) return;
+  const url = `${ELASTICSEARCH_URL}/${getIndex()}/_doc`;
   try {
-    await fetch(`${ELASTICSEARCH_URL}/${getIndex()}/_doc`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ '@timestamp': new Date().toISOString(), message }),
     });
-  } catch (_) {
-    // silencioso — no romper el bot si ES no está disponible
+    const body = await res.text();
+    console.log(`[ES] ${res.status} → ${body}`);
+  } catch (err) {
+    console.error(`[ES] Error enviando a ${url}:`, err.message);
   }
 }
 
