@@ -52,15 +52,16 @@ services:
         condition: service_healthy
     environment:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-    command: >
-      sh -c "
-        apk add --no-cache curl --quiet &&
-        curl -sf -u elastic:$$ELASTIC_PASSWORD
-          -X POST 'http://elasticsearch:9200/_security/user/kibana_system/_password'
-          -H 'Content-Type: application/json'
-          -d '{\"password\":\"'$$ELASTIC_PASSWORD'\"}'
-        && echo '[es-setup] kibana_system password seteado.'
-      "
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache curl --quiet
+        curl -sf -u "elastic:$$ELASTIC_PASSWORD" \
+          -X POST "http://elasticsearch:9200/_security/user/kibana_system/_password" \
+          -H "Content-Type: application/json" \
+          -d "{\"password\":\"$$ELASTIC_PASSWORD\"}"
+        echo "[es-setup] kibana_system password seteado."
     networks:
       - bot-network
 
@@ -78,7 +79,8 @@ services:
     ports:
       - "5601:5601"
     depends_on:
-      - es-setup
+      es-setup:
+        condition: service_completed_successfully
     networks:
       - bot-network
 
