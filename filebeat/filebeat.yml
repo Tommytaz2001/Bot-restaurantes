@@ -25,9 +25,6 @@ filebeat.inputs:
 
 processors:
   - add_host_metadata: ~
-  - timestamp:
-      field: "@timestamp"
-      ignore_failure: true
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
