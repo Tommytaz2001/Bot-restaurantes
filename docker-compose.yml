@@ -42,6 +42,28 @@ services:
     networks:
       - bot-network
 
+  # ── ES setup: setea contraseña de kibana_system antes de arrancar Kibana ──────
+  es-setup:
+    image: alpine:3.19
+    container_name: es-setup
+    restart: "no"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    command: >
+      sh -c "
+        apk add --no-cache curl --quiet &&
+        curl -sf -u elastic:$$ELASTIC_PASSWORD
+          -X POST 'http://elasticsearch:9200/_security/user/kibana_system/_password'
+          -H 'Content-Type: application/json'
+          -d '{\"password\":\"'$$ELASTIC_PASSWORD'\"}'
+        && echo '[es-setup] kibana_system password seteado.'
+      "
+    networks:
+      - bot-network
+
   # ── Kibana ────────────────────────────────────────────────────────────────────
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
@@ -49,14 +71,14 @@ services:
     restart: unless-stopped
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
       - SERVER_NAME=kibana
       - LOGGING_ROOT_LEVEL=warn
     ports:
       - "5601:5601"
     depends_on:
-      - elasticsearch
+      - es-setup
     networks:
       - bot-network
 
@@ -92,7 +114,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - filebeat_data:/usr/share/filebeat/data
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     networks:
       - bot-network
 
