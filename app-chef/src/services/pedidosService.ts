@@ -32,6 +32,7 @@ export interface Producto {
   nombre: string;
   cantidad: number;
   opcion?: string | null;
+  precio_unitario?: number;
 }
 
 export interface CambioSolicitado {
@@ -39,6 +40,9 @@ export interface CambioSolicitado {
   estado: 'pendiente_chef' | 'aprobado' | 'rechazado';
   solicitadoAt: any;
   respondidoAt?: any;
+  tipo?: 'modificacion' | 'agregar_productos';
+  productos_nuevos?: Producto[];
+  total_nuevo?: number;
 }
 
 export interface Pedido {
@@ -147,11 +151,24 @@ export const marcarEntregado = (id: string) =>
 export const rechazarPedido = (id: string) =>
   actualizarEstado(id, { estado: 'cancelado', canceladoAt: serverTimestamp() });
 
-export const aprobarCambio = (id: string) =>
-  actualizarEstado(id, {
+export async function aprobarCambio(pedido: Pedido): Promise<void> {
+  const cambio = pedido.cambio_solicitado!;
+  const updateData: Record<string, any> = {
     'cambio_solicitado.estado': 'aprobado',
     'cambio_solicitado.respondidoAt': serverTimestamp(),
-  });
+  };
+
+  if (
+    cambio.tipo === 'agregar_productos' &&
+    cambio.productos_nuevos?.length &&
+    cambio.total_nuevo != null
+  ) {
+    updateData.productos = [...pedido.productos, ...cambio.productos_nuevos];
+    updateData.total = cambio.total_nuevo;
+  }
+
+  await updateDoc(doc(db, 'pedidos', pedido.id), updateData);
+}
 
 export const rechazarCambio = (id: string) =>
   actualizarEstado(id, {

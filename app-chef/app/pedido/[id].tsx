@@ -233,7 +233,7 @@ export default function DetallePedidoScreen() {
                 label="Aprobar cambio"
                 color="#22C55E"
                 onPress={() => ejecutar(async () => {
-                  await aprobarCambio(pedido.id);
+                  await aprobarCambio(pedido);
                   notificarCliente(pedido.id, 'cambio_aprobado');
                 })}
                 loading={accionando}
