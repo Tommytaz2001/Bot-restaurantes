@@ -51,12 +51,31 @@ const SOLICITAR_CAMBIO_TOOL = {
     parameters: {
       type: 'object',
       properties: {
+        tipo: {
+          type: 'string',
+          enum: ['modificacion', 'agregar_productos'],
+          description: '"agregar_productos" cuando el cliente quiere añadir nuevos ítems al pedido. "modificacion" para cualquier otro cambio (ingredientes, dirección, etc.).',
+        },
         descripcion_cambio: {
           type: 'string',
-          description: 'Descripción clara del cambio solicitado por el cliente (ej: "Agregar 1 Cheeseburger adicional", "Cambiar dirección a Colonia Los Robles")',
+          description: 'Descripción clara del cambio solicitado (ej: "Agregar 1 Cheeseburger adicional", "Sin cebolla en la hamburguesa").',
+        },
+        productos_nuevos: {
+          type: 'array',
+          description: 'Solo para tipo "agregar_productos". Lista de productos a agregar.',
+          items: {
+            type: 'object',
+            properties: {
+              nombre: { type: 'string' },
+              cantidad: { type: 'number' },
+              precio_unitario: { type: 'number' },
+              opcion: { type: 'string', description: 'Modificación opcional del producto.' },
+            },
+            required: ['nombre', 'cantidad', 'precio_unitario'],
+          },
         },
       },
-      required: ['descripcion_cambio'],
+      required: ['tipo', 'descripcion_cambio'],
     },
   },
 };
