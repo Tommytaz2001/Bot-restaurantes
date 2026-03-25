@@ -6,16 +6,11 @@ import {
   onSnapshot,
   query,
   where,
-  orderBy,
-  limit,
-  startAfter,
   getDocs,
-  Timestamp,
   serverTimestamp,
   type Unsubscribe,
   type QueryDocumentSnapshot,
   type DocumentData,
-  type QueryConstraint,
 } from 'firebase/firestore';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
@@ -221,25 +216,30 @@ export async function fetchHistorial(options: {
 }): Promise<HistorialPage> {
   const { desde, hasta } = getDateRange(options.filtro);
 
-  const constraints: QueryConstraint[] = [
+  // Sin orderBy en Firestore para evitar requerir índice compuesto.
+  // El filtro de fecha y el ordenamiento se aplican client-side.
+  const snapshot = await getDocs(query(
+    collection(db, 'pedidos'),
     where('restauranteId', '==', RESTAURANTE_ID),
     where('estado', 'in', ['entregado', 'cancelado']),
-    orderBy('createdAt', 'desc'),
-  ];
+  ));
 
-  if (desde) constraints.push(where('createdAt', '>=', Timestamp.fromDate(desde)));
-  if (hasta) constraints.push(where('createdAt', '<', Timestamp.fromDate(hasta)));
-  if (options.cursor) constraints.push(startAfter(options.cursor));
+  let pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
 
-  constraints.push(limit(PAGE_SIZE + 1));
+  if (desde) {
+    const desdeMs = desde.getTime();
+    pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) >= desdeMs);
+  }
+  if (hasta) {
+    const hastaMs = hasta.getTime();
+    pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) < hastaMs);
+  }
 
-  const snapshot = await getDocs(query(collection(db, 'pedidos'), ...constraints));
-  const hasMore = snapshot.docs.length > PAGE_SIZE;
-  const docs = hasMore ? snapshot.docs.slice(0, PAGE_SIZE) : snapshot.docs;
+  pedidos = sortByCreatedAtDesc(pedidos);
 
   return {
-    pedidos: docs.map((d) => ({ id: d.id, ...d.data() } as Pedido)),
-    cursor: docs.length > 0 ? docs[docs.length - 1] : null,
-    hasMore,
+    pedidos: pedidos.slice(0, PAGE_SIZE),
+    cursor: null,
+    hasMore: false,
   };
 }
