@@ -4,6 +4,7 @@ const { chatCompletion } = require('../services/openaiService');
 const { getRestauranteConfig, formatMenuForPrompt } = require('../services/menuService');
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible } = require('../orders/orderService');
+const { log } = require('../utils/logger');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -66,7 +67,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           jid: remoteJid, // JID real para notificaciones WhatsApp
         });
         setLastOrderId(sessionId, savedOrder.id);
-        console.log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono}`);
+        log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono}`);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id });
       } catch (err) {
         toolResult = JSON.stringify({ error: err.message });
