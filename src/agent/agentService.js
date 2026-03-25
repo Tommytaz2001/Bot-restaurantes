@@ -85,8 +85,13 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         toolResult = JSON.stringify({ error: 'No hay pedido activo en esta sesión.' });
       } else {
         try {
-          const { descripcion_cambio } = JSON.parse(toolCall.function.arguments);
-          await solicitarCambioPedido({ pedidoId, descripcionCambio: descripcion_cambio });
+          const { descripcion_cambio, tipo, productos_nuevos } = JSON.parse(toolCall.function.arguments);
+          await solicitarCambioPedido({
+            pedidoId,
+            descripcionCambio: descripcion_cambio,
+            tipo: tipo ?? 'modificacion',
+            productosNuevos: productos_nuevos ?? null,
+          });
           toolResult = JSON.stringify({ exito: true, pedidoId });
         } catch (err) {
           toolResult = JSON.stringify({ error: err.message });
