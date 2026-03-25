@@ -1,0 +1,50 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      # Parsear el campo "log" como mensaje principal
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: false
+          ignore_failure: true
+      # Conservar solo contenedores relevantes (backend)
+      - drop_event:
+          when:
+            not:
+              or:
+                - equals:
+                    container.name: "bot-restaurantes"
+                - equals:
+                    container.name: "elasticsearch"
+                - equals:
+                    container.name: "kibana"
+
+processors:
+  - add_host_metadata: ~
+  - timestamp:
+      field: "@timestamp"
+      ignore_failure: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+setup.kibana:
+  host: "http://kibana:5601"
+
+# ILM: ventana de 2 días
+setup.ilm.enabled: true
+setup.ilm.rollover_alias: "bot-logs"
+setup.ilm.pattern: "{now/d}-000001"
+setup.ilm.policy_name: "bot-2d-policy"
+setup.ilm.overwrite: true
+setup.ilm.policy_file: /usr/share/filebeat/ilm-policy.json
+
+setup.template.name: "bot-logs"
+setup.template.pattern: "bot-logs-*"
+setup.template.overwrite: true
+
+logging.level: warning
