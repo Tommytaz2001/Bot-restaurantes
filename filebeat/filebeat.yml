@@ -1,17 +1,13 @@
 filebeat.inputs:
-  - type: container
+  - type: filestream
+    id: docker-containers
     paths:
       - /var/lib/docker/containers/*/*.log
+    parsers:
+      - container: ~
     processors:
       - add_docker_metadata:
           host: "unix:///var/run/docker.sock"
-      # Parsear el campo "log" como mensaje principal
-      - decode_json_fields:
-          fields: ["message"]
-          target: ""
-          overwrite_keys: false
-          ignore_failure: true
-      # Conservar solo contenedores relevantes (backend)
       - drop_event:
           when:
             not:
@@ -32,7 +28,6 @@ output.elasticsearch:
 setup.kibana:
   host: "http://kibana:5601"
 
-# ILM: ventana de 2 días
 setup.ilm.enabled: true
 setup.ilm.rollover_alias: "bot-logs"
 setup.ilm.pattern: "{now/d}-000001"
