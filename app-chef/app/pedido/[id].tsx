@@ -227,7 +227,25 @@ export default function DetallePedidoScreen() {
               <Text style={styles.cambioWarning}>⚠</Text>
               <Text style={styles.cambioTitle}>Cambio solicitado por el cliente</Text>
             </View>
-            <Text style={styles.cambioDesc}>{pedido.cambio_solicitado!.descripcion}</Text>
+            {pedido.cambio_solicitado!.tipo === 'agregar_productos' && pedido.cambio_solicitado!.productos_nuevos?.length ? (
+              <>
+                <Text style={styles.cambioDesc}>Agregar al pedido:</Text>
+                <View style={styles.cambioProductosList}>
+                  {pedido.cambio_solicitado!.productos_nuevos.map((p, i) => (
+                    <Text key={i} style={styles.cambioProductoItem}>
+                      • {p.cantidad}× {p.nombre}{p.opcion ? ` (${p.opcion})` : ''}
+                    </Text>
+                  ))}
+                </View>
+                {pedido.cambio_solicitado!.total_nuevo != null && (
+                  <Text style={styles.cambioTotalNuevo}>
+                    Nuevo total: {pedido.moneda ?? 'C$'}{pedido.cambio_solicitado!.total_nuevo}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.cambioDesc}>{pedido.cambio_solicitado!.descripcion}</Text>
+            )}
             <View style={styles.cambioAcciones}>
               <ActionBtn
                 label="Aprobar cambio"
@@ -507,6 +525,20 @@ const styles = StyleSheet.create({
     color: '#C09060',
     fontSize: 14,
     lineHeight: 20,
+  },
+  cambioProductosList: {
+    gap: 2,
+    marginVertical: 4,
+  },
+  cambioProductoItem: {
+    color: '#B0B0B0',
+    fontSize: 13,
+  },
+  cambioTotalNuevo: {
+    color: '#F0F0F0',
+    fontWeight: '600',
+    fontSize: 14,
+    marginTop: 6,
   },
   cambioAcciones: {
     flexDirection: 'row',
