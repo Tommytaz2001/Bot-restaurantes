@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
+  StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { getBackendUrl, setBackendUrl } from '../services/backendConfig';
 
@@ -51,11 +51,8 @@ export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
-      >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.overlay}>
         <View style={styles.box}>
           <Text style={styles.title}>Configuración</Text>
           <Text style={styles.label}>URL DEL BACKEND</Text>
@@ -88,7 +85,7 @@ export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -97,8 +94,9 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
+    paddingTop: 120,
   },
   box: {
     backgroundColor: '#161616',
