@@ -14,6 +14,16 @@ const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 let sock = null;
 const _contacts = {}; // mapa JID/@lid -> contacto para resolver números reales
 
+// Deduplicación: ignorar mensajes cuyo ID ya procesamos (ventana de 500 IDs)
+const _processedIds = new Set();
+function _markProcessed(id) {
+  _processedIds.add(id);
+  if (_processedIds.size > 500) {
+    const first = _processedIds.values().next().value;
+    _processedIds.delete(first);
+  }
+}
+
 // Estado de la sesión WhatsApp (expuesto para el endpoint /whatsapp/qr)
 let _waState = {
   status: 'disconnected', // 'disconnected' | 'waiting_qr' | 'connected'
@@ -121,6 +131,8 @@ async function iniciarBaileys() {
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
       if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
+      if (_processedIds.has(msg.key.id)) continue; // Deduplicar
+      _markProcessed(msg.key.id);
 
       const remoteJid = msg.key.remoteJid;
       const telefono = resolverTelefono(remoteJid);
