@@ -28,7 +28,9 @@ export default function PedidosScreen() {
 
   const fetchStatus = useCallback(async (url: string) => {
     try {
-      const res = await fetch(`${url}/whatsapp/status`, { signal: AbortSignal.timeout(5000) });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${url}/whatsapp/status`, { signal: controller.signal }).finally(() => clearTimeout(timer));
       const data = await res.json();
       setBotActivo(data.botActivo ?? true);
     } catch (err) {
@@ -49,10 +51,12 @@ export default function PedidosScreen() {
     setToggling(true);
     try {
       const endpoint = botActivo ? '/whatsapp/pause' : '/whatsapp/resume';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${backend}${endpoint}`, {
         method: 'POST',
-        signal: AbortSignal.timeout(5000),
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
       const data = await res.json();
       setBotActivo(data.botActivo);
     } catch (err) {

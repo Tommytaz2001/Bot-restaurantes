@@ -32,7 +32,9 @@ export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
     setTestMsg('');
     const clean = urlInput.trim().replace(/\/$/, '');
     try {
-      const res = await fetch(`${clean}/whatsapp/status`, { signal: AbortSignal.timeout(5000) });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${clean}/whatsapp/status`, { signal: controller.signal }).finally(() => clearTimeout(timer));
       const data = await res.json();
       await setBackendUrl(clean);
       setTestResult('ok');
