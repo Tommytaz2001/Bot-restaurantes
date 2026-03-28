@@ -36,8 +36,8 @@ export default function PedidosScreen() {
       const res = await fetch(`${BACKEND}${endpoint}`, { method: 'POST' });
       const data = await res.json();
       setBotActivo(data.botActivo);
-    } catch {
-      // silencioso — mantiene el estado anterior
+    } catch (err) {
+      console.error('[BotToggle] Error:', err);
     } finally {
       setToggling(false);
     }
