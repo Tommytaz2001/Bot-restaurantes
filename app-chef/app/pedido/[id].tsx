@@ -10,7 +10,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../src/services/firebaseConfig';
 import {
   confirmarPedido, marcarEnCamino, marcarEntregado,
-  rechazarPedido, aprobarCambio, rechazarCambio, notificarCliente,
+  rechazarPedido, aprobarCambio, rechazarCambio,
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
@@ -252,7 +252,6 @@ export default function DetallePedidoScreen() {
                 color="#22C55E"
                 onPress={() => ejecutar(async () => {
                   await aprobarCambio(pedido);
-                  notificarCliente(pedido.id, 'cambio_aprobado');
                 })}
                 loading={accionando}
               />
@@ -264,7 +263,6 @@ export default function DetallePedidoScreen() {
                 onPress={() => ejecutar(
                   async () => {
                     await rechazarCambio(pedido.id);
-                    notificarCliente(pedido.id, 'cambio_rechazado');
                   },
                   '¿Rechazar el cambio solicitado?'
                 )}
@@ -288,7 +286,6 @@ export default function DetallePedidoScreen() {
                 color="#22C55E"
                 onPress={() => ejecutar(async () => {
                   await confirmarPedido(pedido.id);
-                  notificarCliente(pedido.id, 'confirmado');
                 })}
                 loading={accionando}
               />
@@ -300,7 +297,6 @@ export default function DetallePedidoScreen() {
                 onPress={() => ejecutar(
                   async () => {
                     await rechazarPedido(pedido.id);
-                    notificarCliente(pedido.id, 'rechazado');
                   },
                   '¿Cancelar y rechazar este pedido?'
                 )}
@@ -316,7 +312,6 @@ export default function DetallePedidoScreen() {
               textColor="#fff"
               onPress={() => ejecutar(async () => {
                 await marcarEnCamino(pedido.id);
-                notificarCliente(pedido.id, 'en_camino');
               })}
               loading={accionando}
             />
@@ -328,7 +323,6 @@ export default function DetallePedidoScreen() {
               color="#22C55E"
               onPress={() => ejecutar(async () => {
                 await marcarEntregado(pedido.id);
-                notificarCliente(pedido.id, 'entregado');
               })}
               loading={accionando}
             />
