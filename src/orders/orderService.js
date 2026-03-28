@@ -1,4 +1,5 @@
 const { db } = require('../services/firebaseService');
+const { uploadComprobante } = require('../services/storageService');
 const { validateOrder } = require('./orderValidator');
 const {
   collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp,
@@ -7,8 +8,10 @@ const { randomUUID } = require('crypto');
 
 const COSTO_ENVIO = 40;
 
+// transferencia → pendiente_pago (espera comprobante)
+// efectivo     → pendiente     (paga al recibir, no necesita comprobante)
 function buildEstado(metodoPago) {
-  return metodoPago === 'efectivo' ? 'pendiente_pago' : 'pendiente';
+  return metodoPago === 'transferencia' ? 'pendiente_pago' : 'pendiente';
 }
 
 async function findExistingOrder(sessionId) {
@@ -59,6 +62,37 @@ async function getOrder(id) {
   const snapshot = await getDoc(doc(db, 'pedidos', id));
   if (!snapshot.exists()) return null;
   return { id: snapshot.id, ...snapshot.data() };
+}
+
+/**
+ * Busca el pedido activo en estado pendiente_pago para un sessionId dado.
+ * Retorna el pedido o null si no existe.
+ */
+async function findPedidoPendientePago(sessionId) {
+  const q = query(
+    collection(db, 'pedidos'),
+    where('sessionId', '==', sessionId),
+    where('estado', '==', 'pendiente_pago'),
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  const d = snapshot.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+/**
+ * Sube el comprobante de pago a Firebase Storage y actualiza el pedido:
+ * - Guarda comprobante_url
+ * - Cambia estado de pendiente_pago → pendiente (listo para que el chef confirme)
+ */
+async function attachComprobante(pedidoId, imageBuffer, mimeType) {
+  const url = await uploadComprobante(pedidoId, imageBuffer, mimeType);
+  await updateDoc(doc(db, 'pedidos', pedidoId), {
+    comprobante_url: url,
+    estado: 'pendiente',
+    comprobanteAt: serverTimestamp(),
+  });
+  return url;
 }
 
 /**
@@ -139,4 +173,4 @@ function estadoLegible(estado) {
   return ESTADOS_LEGIBLES[estado] ?? estado;
 }
 
-module.exports = { saveOrder, getOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible };
+module.exports = { saveOrder, getOrder, findPedidoPendientePago, attachComprobante, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible };

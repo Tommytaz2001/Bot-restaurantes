@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chatCompletion } = require('../services/openaiService');
-const { getRestauranteConfig, formatMenuForPrompt } = require('../services/menuService');
+const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = require('../services/menuService');
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible } = require('../orders/orderService');
 const { log } = require('../utils/logger');
@@ -14,6 +14,7 @@ const PROMPT_TEMPLATE = fs.readFileSync(
 async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
+  const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
   const telefonoContexto = telefono
     ? `El número de teléfono del cliente es: ${telefono}. No necesitas pedírselo.`
     : 'No tienes el número de teléfono del cliente. Pídelo durante el proceso de pedido.';
@@ -26,6 +27,7 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false) 
     .replace(/{{NOMBRE_RESTAURANTE}}/g, config.nombre)
     .replace(/{{MONEDA}}/g, config.moneda)
     .replace('{{MENU}}', menuText)
+    .replace('{{CUENTAS_BANCARIAS}}', cuentasBancariasText)
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
     .replace('{{CONTEXTO_REPARTIDOR}}', contextoRepartidor);
 }

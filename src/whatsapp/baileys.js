@@ -2,12 +2,14 @@ const {
   makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const { useFirestoreAuthState, clearFirestoreSession } = require('./firestoreAuthState');
 const { recibirMensaje } = require('./messageHandler');
+const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
@@ -187,6 +189,26 @@ async function iniciarBaileys() {
       );
 
       if (!texto) {
+        if (messageType === 'imageMessage') {
+          // Intentar procesar como comprobante de pago
+          try {
+            const pedidoPendiente = await findPedidoPendientePago(telefono);
+            if (pedidoPendiente) {
+              console.log(`[WhatsApp] Imagen de ${telefono} → comprobante para pedido ${pedidoPendiente.id}`);
+              const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+              const mimeType = msg.message.imageMessage?.mimetype ?? 'image/jpeg';
+              await attachComprobante(pedidoPendiente.id, buffer, mimeType);
+              await sock.sendMessage(remoteJid, {
+                text: '✅ *Comprobante recibido.* El chef verificará tu pago y confirmará el pedido en breve. 🙏',
+              });
+              console.log(`[WhatsApp] Comprobante guardado para pedido ${pedidoPendiente.id}`);
+              continue;
+            }
+          } catch (err) {
+            console.error(`[WhatsApp] Error procesando comprobante de ${telefono}:`, err.message);
+          }
+        }
+
         if (MEDIA_TYPES.has(messageType)) {
           console.log(`[WhatsApp] Media (${messageType}) de ${telefono} → respondiendo`);
           try {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator,
+  StyleSheet, Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -218,6 +218,15 @@ export default function DetallePedidoScreen() {
               {pedido.metodo_pago === 'efectivo' ? '💵 Efectivo' : '📲 Transferencia'}
             </Text>
           </View>
+          {pedido.comprobante_url && (
+            <TouchableOpacity
+              style={styles.comprobanteBtn}
+              onPress={() => Linking.openURL(pedido.comprobante_url!)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.comprobanteBtnText}>🧾 Ver comprobante de pago</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Change request section */}
@@ -491,6 +500,21 @@ const styles = StyleSheet.create({
   pagoText: {
     color: '#555555',
     fontSize: 13,
+  },
+  comprobanteBtn: {
+    marginTop: 12,
+    backgroundColor: '#1A2A1A',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#22C55E',
+    alignItems: 'center',
+  },
+  comprobanteBtnText: {
+    color: '#22C55E',
+    fontSize: 13,
+    fontWeight: '600',
   },
   cambioSection: {
     backgroundColor: '#18120A',

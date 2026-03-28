@@ -49,8 +49,22 @@ async function formatMenuForPrompt(restauranteId) {
   return lines.join('\n');
 }
 
+function formatCuentasBancarias(config) {
+  const cuentas = config.cuentas_bancarias;
+  if (!cuentas || cuentas.length === 0) return '';
+
+  const titular = cuentas[0].titular ?? '';
+  const lineas = cuentas.map((c) => `• ${c.banco} — ${c.moneda}: ${c.numero}`);
+  return `${titular}\n${lineas.join('\n')}`;
+}
+
+async function getCuentasBancariasText(restauranteId) {
+  const config = await getRestauranteConfig(restauranteId);
+  return formatCuentasBancarias(config);
+}
+
 function clearMenuCache() {
   _cache.clear();
 }
 
-module.exports = { getRestauranteConfig, getMenu, formatMenuForPrompt, clearMenuCache };
+module.exports = { getRestauranteConfig, getMenu, formatMenuForPrompt, getCuentasBancariasText, clearMenuCache };

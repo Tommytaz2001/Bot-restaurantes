@@ -1,5 +1,6 @@
 const { initializeApp, getApps } = require('firebase/app');
 const { getFirestore } = require('firebase/firestore');
+const { getStorage } = require('firebase/storage');
 
 const REQUIRED_ENV_VARS = ['FIREBASE_API_KEY', 'FIREBASE_PROJECT_ID', 'FIREBASE_STORAGE_BUCKET'];
 for (const v of REQUIRED_ENV_VARS) {
@@ -19,5 +20,6 @@ const app = getApps().length === 0
   : getApps()[0];
 
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-module.exports = { db };
+module.exports = { db, storage };
