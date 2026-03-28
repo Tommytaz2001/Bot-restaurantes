@@ -39,6 +39,7 @@ async function formatMenuForPrompt(restauranteId) {
   for (const categoria of menu) {
     lines.push(`\n### ${categoria.nombre}`);
     for (const item of categoria.items) {
+      if (item.disponible === false) continue; // omitir productos agotados
       let line = `- ${item.nombre}: ${moneda}${item.precio} — ${item.descripcion}`;
       if (item.opciones && item.opciones.length > 0) {
         line += ` [Opciones: ${item.opciones.join(', ')}]`;
