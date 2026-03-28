@@ -1,6 +1,7 @@
 const { processMessage } = require('../agent/agentService');
 const { verificarSpam } = require('./spamGuard');
 const { log } = require('../utils/logger');
+const { estaActivo } = require('../services/botStateService');
 
 const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
 
@@ -70,6 +71,12 @@ function debeIgnorar(texto) {
  * @param {Function} params.sendReply       - Función async para enviar respuesta
  */
 async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, sendReply }) {
+  // 0. Kill switch — bot pausado desde la app
+  if (!estaActivo()) {
+    console.log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
+    return;
+  }
+
   // 1. Verificar horario de atención (deshabilitado temporalmente para pruebas)
   // if (!estaEnHorario()) {
   //   await sendReply(

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
-  TouchableOpacity,
+  TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -10,10 +10,38 @@ import { usePedidosActivos } from '../../src/hooks/usePedidos';
 import { PedidoCard } from '../../src/components/PedidoCard';
 import { useAuthStore } from '../../src/store/authStore';
 
+const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://localhost:3001';
+
 export default function PedidosScreen() {
   usePedidosActivos();
   const pedidos = usePedidosStore((s) => s.activos);
   const logout = useAuthStore((s) => s.logout);
+
+  const [botActivo, setBotActivo] = useState<boolean | null>(null);
+  const [toggling, setToggling] = useState(false);
+
+  // Obtener estado inicial del bot
+  useEffect(() => {
+    fetch(`${BACKEND}/whatsapp/status`)
+      .then((r) => r.json())
+      .then((data) => setBotActivo(data.botActivo ?? true))
+      .catch(() => setBotActivo(true));
+  }, []);
+
+  const toggleBot = useCallback(async () => {
+    if (toggling || botActivo === null) return;
+    setToggling(true);
+    try {
+      const endpoint = botActivo ? '/whatsapp/pause' : '/whatsapp/resume';
+      const res = await fetch(`${BACKEND}${endpoint}`, { method: 'POST' });
+      const data = await res.json();
+      setBotActivo(data.botActivo);
+    } catch {
+      // silencioso — mantiene el estado anterior
+    } finally {
+      setToggling(false);
+    }
+  }, [botActivo, toggling]);
 
   const pendientesCambio = pedidos.filter(
     (p) => p.cambio_solicitado?.estado === 'pendiente_chef'
@@ -44,9 +72,28 @@ export default function PedidosScreen() {
             </View>
           )}
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.7}>
-          <Text style={styles.logoutText}>Salir</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {/* Kill switch del bot */}
+          <TouchableOpacity
+            onPress={toggleBot}
+            style={[styles.botToggle, botActivo === false && styles.botTogglePaused]}
+            activeOpacity={0.7}
+            disabled={toggling || botActivo === null}
+          >
+            {toggling ? (
+              <ActivityIndicator size="small" color={botActivo ? '#34D399' : '#EF4444'} />
+            ) : (
+              <View style={[styles.botDot, botActivo === false && styles.botDotPaused]} />
+            )}
+            <Text style={[styles.botToggleText, botActivo === false && styles.botToggleTextPaused]}>
+              {botActivo === null ? '...' : botActivo ? 'Bot activo' : 'Bot pausado'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.7}>
+            <Text style={styles.logoutText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Divider */}
@@ -141,6 +188,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  headerActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+  },
+  botToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#0D1F13',
+    borderWidth: 1,
+    borderColor: '#1A3A22',
+  },
+  botTogglePaused: {
+    backgroundColor: '#1F0D0D',
+    borderColor: '#3A1A1A',
+  },
+  botDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#34D399',
+  },
+  botDotPaused: {
+    backgroundColor: '#EF4444',
+  },
+  botToggleText: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  botToggleTextPaused: {
+    color: '#EF4444',
+  },
   logoutBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -148,7 +232,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
     borderWidth: 1,
     borderColor: '#2A2A2A',
-    marginTop: 4,
   },
   logoutText: {
     color: '#555555',

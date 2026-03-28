@@ -1,9 +1,10 @@
 const express = require('express');
 const QRCode = require('qrcode');
+const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateService');
 
 const router = express.Router();
 
-// GET /whatsapp/status — estado JSON de la sesión
+// GET /whatsapp/status — estado JSON de la sesión + estado del bot
 router.get('/status', (req, res) => {
   const { getWAState } = require('../whatsapp/baileys');
   const state = getWAState();
@@ -11,7 +12,20 @@ router.get('/status', (req, res) => {
     status: state.status,
     hasQR: !!state.qr,
     connectedAt: state.connectedAt,
+    botActivo: estaActivo(),
   });
+});
+
+// POST /whatsapp/pause — pausa el bot (deja de responder mensajes)
+router.post('/pause', (req, res) => {
+  pausarBot();
+  res.json({ botActivo: false });
+});
+
+// POST /whatsapp/resume — reanuda el bot
+router.post('/resume', (req, res) => {
+  reanudarBot();
+  res.json({ botActivo: true });
 });
 
 // GET /whatsapp/qr — página HTML con el QR para escanear
