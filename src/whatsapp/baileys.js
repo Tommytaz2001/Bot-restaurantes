@@ -48,8 +48,14 @@ function resolverTelefono(remoteJid) {
     if (contact?.id && contact.id.endsWith('@s.whatsapp.net')) {
       return contact.id.split('@')[0];
     }
-    // Fallback: usar el número del LID (puede no ser el teléfono real)
-    return remoteJid.split('@')[0];
+    // Sin @lid tampoco
+    const lidBase = remoteJid.split('@')[0];
+    const contact2 = _contacts[lidBase];
+    if (contact2?.id && contact2.id.endsWith('@s.whatsapp.net')) {
+      return contact2.id.split('@')[0];
+    }
+    console.warn(`[WhatsApp] ⚠ No se pudo resolver @lid ${remoteJid} — contacto no en caché`);
+    return lidBase; // fallback: LID sin sufijo
   }
   return remoteJid.split('@')[0];
 }
@@ -69,11 +75,33 @@ async function iniciarBaileys() {
   // Guardar credenciales cuando se actualicen
   sock.ev.on('creds.update', saveCreds);
 
+  // Normaliza un LID a la forma canónica con sufijo @lid
+  function normalizeLid(lid) {
+    if (!lid) return null;
+    return lid.includes('@') ? lid : `${lid}@lid`;
+  }
+
+  // Indexa un contacto en _contacts bajo todos sus JIDs posibles
+  function indexContact(c) {
+    if (c.id) _contacts[c.id] = c;
+    if (c.lid) {
+      const fullLid = normalizeLid(c.lid);
+      _contacts[fullLid] = c;
+      // También sin sufijo por si Baileys lo busca así
+      _contacts[c.lid] = c;
+    }
+  }
+
   // Mantener mapa de contactos para resolver @lid → número real
   sock.ev.on('contacts.upsert', (contacts) => {
-    for (const c of contacts) {
-      if (c.id) _contacts[c.id] = c;
-      if (c.lid) _contacts[c.lid] = c;
+    for (const c of contacts) indexContact(c);
+  });
+
+  sock.ev.on('contacts.update', (updates) => {
+    for (const u of updates) {
+      // Mezclar con el contacto existente para no perder datos
+      const existing = (u.id && _contacts[u.id]) || (u.lid && _contacts[normalizeLid(u.lid)]) || {};
+      indexContact({ ...existing, ...u });
     }
   });
 
@@ -107,6 +135,14 @@ async function iniciarBaileys() {
     if (connection === 'open') {
       _waState = { status: 'connected', qr: null, connectedAt: new Date().toISOString() };
       console.log(`[WhatsApp] Bot conectado — restaurante: ${RESTAURANTE_ID}`);
+
+      // Cargar contactos que Baileys ya tiene en caché interna
+      const cached = sock.contacts ?? {};
+      let loaded = 0;
+      for (const c of Object.values(cached)) {
+        if (c && (c.id || c.lid)) { indexContact(c); loaded++; }
+      }
+      if (loaded > 0) console.log(`[WhatsApp] ${loaded} contactos cargados desde caché`);
     }
   });
 
