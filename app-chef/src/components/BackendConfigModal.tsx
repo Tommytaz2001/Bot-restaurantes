@@ -14,19 +14,38 @@ interface Props {
 export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
   const [urlInput, setUrlInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState<'ok' | 'error' | null>(null);
+  const [testMsg, setTestMsg] = useState('');
 
   useEffect(() => {
-    if (visible) getBackendUrl().then(setUrlInput);
+    if (visible) {
+      getBackendUrl().then(setUrlInput);
+      setTestResult(null);
+      setTestMsg('');
+    }
   }, [visible]);
 
   const handleSave = async () => {
     if (!urlInput.trim()) return;
     setSaving(true);
+    setTestResult(null);
+    setTestMsg('');
     const clean = urlInput.trim().replace(/\/$/, '');
-    await setBackendUrl(clean);
-    setSaving(false);
-    onSaved?.(clean);
-    onClose();
+    try {
+      const res = await fetch(`${clean}/whatsapp/status`, { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      await setBackendUrl(clean);
+      setTestResult('ok');
+      setTestMsg(`Conectado · Bot ${data.botActivo ? 'activo' : 'pausado'}`);
+      onSaved?.(clean);
+      setTimeout(onClose, 1000);
+    } catch (err: any) {
+      setTestResult('error');
+      setTestMsg(`Sin respuesta: ${err?.message ?? 'timeout'}`);
+      console.error('[BackendConfig] Error al conectar:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -48,6 +67,14 @@ export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
             autoCorrect={false}
             keyboardType="url"
           />
+          {testResult && (
+            <View style={[styles.feedback, testResult === 'ok' ? styles.feedbackOk : styles.feedbackErr]}>
+              <Text style={[styles.feedbackText, testResult === 'ok' ? styles.feedbackTextOk : styles.feedbackTextErr]}>
+                {testResult === 'ok' ? '✓ ' : '✗ '}{testMsg}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.actions}>
             <TouchableOpacity onPress={onClose} style={styles.cancelBtn} activeOpacity={0.7}>
               <Text style={styles.cancelText}>Cancelar</Text>
@@ -133,4 +160,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  feedback: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  feedbackOk: {
+    backgroundColor: 'rgba(52,211,153,0.08)',
+    borderColor: 'rgba(52,211,153,0.3)',
+  },
+  feedbackErr: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderColor: 'rgba(239,68,68,0.3)',
+  },
+  feedbackText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  feedbackTextOk: { color: '#34D399' },
+  feedbackTextErr: { color: '#EF4444' },
 });
