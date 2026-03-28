@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
   TouchableOpacity, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -10,7 +9,8 @@ import { usePedidosStore } from '../../src/store/pedidosStore';
 import { usePedidosActivos } from '../../src/hooks/usePedidos';
 import { PedidoCard } from '../../src/components/PedidoCard';
 import { useAuthStore } from '../../src/store/authStore';
-import { getBackendUrl, setBackendUrl } from '../../src/services/backendConfig';
+import { getBackendUrl } from '../../src/services/backendConfig';
+import { BackendConfigModal } from '../../src/components/BackendConfigModal';
 
 export default function PedidosScreen() {
   usePedidosActivos();
@@ -20,11 +20,11 @@ export default function PedidosScreen() {
   const [backend, setBackend] = useState('');
   const [botActivo, setBotActivo] = useState<boolean | null>(null);
   const [toggling, setToggling] = useState(false);
-
-  // Modal de configuración de URL
   const [showConfig, setShowConfig] = useState(false);
-  const [urlInput, setUrlInput] = useState('');
-  const [saving, setSaving] = useState(false);
+
+  const pendientesCambio = pedidos.filter(
+    (p) => p.cambio_solicitado?.estado === 'pendiente_chef'
+  ).length;
 
   const fetchStatus = useCallback(async (url: string) => {
     try {
@@ -33,15 +33,13 @@ export default function PedidosScreen() {
       setBotActivo(data.botActivo ?? true);
     } catch (err) {
       console.error('[BotToggle] fetchStatus error:', err);
-      setBotActivo(true);
+      setBotActivo(null);
     }
   }, []);
 
-  // Carga URL guardada y estado del bot al iniciar
   useEffect(() => {
     getBackendUrl().then((url) => {
       setBackend(url);
-      setUrlInput(url);
       fetchStatus(url);
     });
   }, []);
@@ -63,19 +61,6 @@ export default function PedidosScreen() {
       setToggling(false);
     }
   }, [botActivo, toggling, backend]);
-
-  const saveUrl = useCallback(async () => {
-    setSaving(true);
-    await setBackendUrl(urlInput);
-    setBackend(urlInput.trim().replace(/\/$/, ''));
-    await fetchStatus(urlInput.trim().replace(/\/$/, ''));
-    setSaving(false);
-    setShowConfig(false);
-  }, [urlInput]);
-
-  const pendientesCambio = pedidos.filter(
-    (p) => p.cambio_solicitado?.estado === 'pendiente_chef'
-  ).length;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -102,11 +87,11 @@ export default function PedidosScreen() {
             </View>
           )}
         </View>
+
         <View style={styles.headerActions}>
-          {/* Kill switch — press: toggle, long press: configurar URL */}
+          {/* Kill switch del bot */}
           <TouchableOpacity
             onPress={toggleBot}
-            onLongPress={() => { setUrlInput(backend); setShowConfig(true); }}
             style={[styles.botToggle, botActivo === false && styles.botTogglePaused]}
             activeOpacity={0.7}
             disabled={toggling}
@@ -117,47 +102,22 @@ export default function PedidosScreen() {
               <View style={[styles.botDot, botActivo === false && styles.botDotPaused]} />
             )}
             <Text style={[styles.botToggleText, botActivo === false && styles.botToggleTextPaused]}>
-              {botActivo === null ? 'Conectando...' : botActivo ? 'Bot activo' : 'Bot pausado'}
+              {botActivo === null ? 'Sin conexión' : botActivo ? 'Bot activo' : 'Bot pausado'}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.7}>
-            <Text style={styles.logoutText}>Salir</Text>
-          </TouchableOpacity>
-        </View>
-
-      {/* Modal de configuración de URL del backend */}
-      <Modal visible={showConfig} transparent animationType="fade" onRequestClose={() => setShowConfig(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>URL del backend</Text>
-            <Text style={styles.modalSub}>Ingresa la dirección de tu servidor</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={urlInput}
-              onChangeText={setUrlInput}
-              placeholder="http://192.168.1.16:3001"
-              placeholderTextColor="#444"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowConfig(false)} style={styles.modalCancel} activeOpacity={0.7}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={saveUrl} style={styles.modalSave} activeOpacity={0.7} disabled={saving}>
-                {saving
-                  ? <ActivityIndicator size="small" color="#0C0C0C" />
-                  : <Text style={styles.modalSaveText}>Guardar</Text>}
-              </TouchableOpacity>
-            </View>
+          <View style={styles.secondRow}>
+            {/* Tuerca de configuración */}
+            <TouchableOpacity onPress={() => setShowConfig(true)} style={styles.gearBtn} activeOpacity={0.7}>
+              <Text style={styles.gearIcon}>⚙</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={logout} style={styles.logoutBtn} activeOpacity={0.7}>
+              <Text style={styles.logoutText}>Salir</Text>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </View>
       </View>
 
-      {/* Divider */}
       <View style={styles.headerDivider} />
 
       {/* Content */}
@@ -181,6 +141,12 @@ export default function PedidosScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <BackendConfigModal
+        visible={showConfig}
+        onClose={() => setShowConfig(false)}
+        onSaved={(url) => { setBackend(url); fetchStatus(url); }}
+      />
     </SafeAreaView>
   );
 }
@@ -200,6 +166,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     gap: 3,
+    flex: 1,
   },
   headerLabel: {
     color: '#3A3A3A',
@@ -286,6 +253,23 @@ const styles = StyleSheet.create({
   botToggleTextPaused: {
     color: '#EF4444',
   },
+  secondRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  gearBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  gearIcon: {
+    fontSize: 15,
+    color: '#555',
+  },
   logoutBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -351,72 +335,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#34D399',
     marginTop: 8,
     opacity: 0.6,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  modalBox: {
-    backgroundColor: '#161616',
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    gap: 12,
-  },
-  modalTitle: {
-    color: '#F0F0F0',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  modalSub: {
-    color: '#555',
-    fontSize: 13,
-    marginTop: -6,
-  },
-  modalInput: {
-    backgroundColor: '#0C0C0C',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#F0F0F0',
-    fontSize: 14,
-    fontFamily: 'monospace',
-    marginTop: 4,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  modalCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#1A1A1A',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    color: '#555',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  modalSave: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#F59E0B',
-    alignItems: 'center',
-  },
-  modalSaveText: {
-    color: '#0C0C0C',
-    fontWeight: '700',
-    fontSize: 14,
   },
 });

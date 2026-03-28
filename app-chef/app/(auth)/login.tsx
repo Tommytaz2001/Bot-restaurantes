@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../../src/store/authStore';
+import { BackendConfigModal } from '../../src/components/BackendConfigModal';
 
 export default function LoginScreen() {
   const { login, loading, error } = useAuthStore();
@@ -15,6 +16,7 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passFocused, setPassFocused] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   const handleLogin = () => {
     if (!email.trim() || !password.trim()) return;
@@ -24,6 +26,13 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <StatusBar style="light" />
+
+      {/* Tuerca de configuración */}
+      <TouchableOpacity style={styles.gearBtn} onPress={() => setShowConfig(true)} activeOpacity={0.7}>
+        <Text style={styles.gearIcon}>⚙</Text>
+      </TouchableOpacity>
+
+      <BackendConfigModal visible={showConfig} onClose={() => setShowConfig(false)} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -280,5 +289,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 32,
     letterSpacing: 1,
+  },
+  gearBtn: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  gearIcon: {
+    fontSize: 22,
+    color: '#3A3A3A',
   },
 });
