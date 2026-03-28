@@ -57,11 +57,14 @@ services:
       - -c
       - |
         apk add --no-cache curl --quiet
-        curl -sf -u "elastic:$$ELASTIC_PASSWORD" \
+        echo "[es-setup] Seteando password de kibana_system..."
+        RESP=$(curl -s -o /tmp/out.txt -w "%{http_code}" \
+          -u "elastic:$$ELASTIC_PASSWORD" \
           -X POST "http://elasticsearch:9200/_security/user/kibana_system/_password" \
           -H "Content-Type: application/json" \
-          -d "{\"password\":\"$$ELASTIC_PASSWORD\"}"
-        echo "[es-setup] kibana_system password seteado."
+          -d "{\"password\":\"$$ELASTIC_PASSWORD\"}")
+        echo "[es-setup] HTTP $RESP — $(cat /tmp/out.txt)"
+        exit 0
     networks:
       - bot-network
 
