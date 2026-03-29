@@ -4,7 +4,7 @@
  * con filesystem efímero como Render free tier.
  */
 const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
-const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
+const { doc, getDoc, setDoc, deleteDoc, collection, getDocs } = require('firebase/firestore');
 const { db } = require('../services/firebaseService');
 
 function sessionDocRef(restauranteId, path) {
@@ -70,7 +70,10 @@ async function useFirestoreAuthState(restauranteId) {
 }
 
 async function clearFirestoreSession(restauranteId) {
-  await removeData(restauranteId, 'creds');
+  // Eliminar todos los documentos de la subcoleción data (creds + todas las keys_*)
+  const col = collection(db, 'baileys_sessions', restauranteId, 'data');
+  const snap = await getDocs(col);
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
 }
 
 module.exports = { useFirestoreAuthState, clearFirestoreSession };

@@ -12,6 +12,7 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { db } from './firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
@@ -63,7 +64,8 @@ export async function registerPushToken(): Promise<void> {
   }
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+    const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
     const token = tokenData.data;
     await setDoc(
       doc(db, 'restaurantes', RESTAURANTE_ID),

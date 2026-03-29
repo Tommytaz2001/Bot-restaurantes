@@ -16,6 +16,12 @@ const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 let sock = null;
 const _contacts = {}; // mapa JID/@lid -> contacto para resolver números reales
 
+// Normaliza un LID a la forma canónica con sufijo @lid (necesario antes de iniciarBaileys)
+function normalizeLid(lid) {
+  if (!lid) return null;
+  return lid.includes('@') ? lid : `${lid}@lid`;
+}
+
 // Deduplicación: ignorar mensajes cuyo ID ya procesamos (ventana de 500 IDs)
 const _processedIds = new Set();
 function _markProcessed(id) {
@@ -39,23 +45,39 @@ function getWAState() {
 
 /**
  * Extrae el número de teléfono limpio de un JID.
- * Si es @lid intenta resolverlo vía contacts, si no puede devuelve el número del LID como fallback.
+ * Si es @lid intenta resolverlo vía _contacts y luego vía sock.contacts interno de Baileys.
  */
 function resolverTelefono(remoteJid) {
   if (remoteJid.endsWith('@s.whatsapp.net')) {
     return remoteJid.split('@')[0];
   }
   if (remoteJid.endsWith('@lid')) {
-    const contact = _contacts[remoteJid];
-    if (contact?.id && contact.id.endsWith('@s.whatsapp.net')) {
-      return contact.id.split('@')[0];
-    }
-    // Sin @lid tampoco
     const lidBase = remoteJid.split('@')[0];
-    const contact2 = _contacts[lidBase];
-    if (contact2?.id && contact2.id.endsWith('@s.whatsapp.net')) {
-      return contact2.id.split('@')[0];
+
+    // 1. Nuestro caché indexado
+    for (const key of [remoteJid, lidBase]) {
+      const c = _contacts[key];
+      if (c?.id?.endsWith('@s.whatsapp.net')) return c.id.split('@')[0];
     }
+
+    // 2. Caché interno de Baileys (sock.contacts) — lookup directo
+    const sockContacts = sock?.contacts ?? {};
+    const fromSock = sockContacts[remoteJid] || sockContacts[lidBase];
+    if (fromSock?.id?.endsWith('@s.whatsapp.net')) {
+      // Indexar para futuras consultas
+      _contacts[remoteJid] = fromSock;
+      return fromSock.id.split('@')[0];
+    }
+
+    // 3. Búsqueda lineal por lid en sock.contacts (costoso, pero solo si los pasos anteriores fallan)
+    for (const c of Object.values(sockContacts)) {
+      const cLid = normalizeLid(c.lid);
+      if ((cLid === remoteJid || c.lid === lidBase) && c.id?.endsWith('@s.whatsapp.net')) {
+        _contacts[remoteJid] = c;
+        return c.id.split('@')[0];
+      }
+    }
+
     console.warn(`[WhatsApp] ⚠ No se pudo resolver @lid ${remoteJid} — contacto no en caché`);
     return lidBase; // fallback: LID sin sufijo
   }
@@ -76,12 +98,6 @@ async function iniciarBaileys() {
 
   // Guardar credenciales cuando se actualicen
   sock.ev.on('creds.update', saveCreds);
-
-  // Normaliza un LID a la forma canónica con sufijo @lid
-  function normalizeLid(lid) {
-    if (!lid) return null;
-    return lid.includes('@') ? lid : `${lid}@lid`;
-  }
 
   // Indexa un contacto en _contacts bajo todos sus JIDs posibles
   function indexContact(c) {

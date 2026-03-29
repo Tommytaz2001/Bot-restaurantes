@@ -1,6 +1,7 @@
 const express = require('express');
 const QRCode = require('qrcode');
 const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateService');
+const { clearFirestoreSession } = require('../whatsapp/firestoreAuthState');
 
 const router = express.Router();
 
@@ -14,6 +15,19 @@ router.get('/status', (req, res) => {
     connectedAt: state.connectedAt,
     botActivo: estaActivo(),
   });
+});
+
+// POST /whatsapp/logout — borra la sesión de Firestore y fuerza nuevo QR
+router.post('/logout', async (req, res) => {
+  const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
+  try {
+    await clearFirestoreSession(RESTAURANTE_ID);
+    console.log('[whatsappRoutes] Sesión borrada — el bot pedirá nuevo QR al reiniciar');
+    res.json({ ok: true, message: 'Sesión eliminada. Reinicia el contenedor para obtener un nuevo QR.' });
+  } catch (err) {
+    console.error('[whatsappRoutes] Error borrando sesión:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // POST /whatsapp/pause — pausa el bot (deja de responder mensajes)
