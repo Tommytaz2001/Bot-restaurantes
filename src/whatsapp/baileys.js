@@ -138,6 +138,10 @@ async function iniciarBaileys() {
       _waState = { status: 'connected', qr: null, connectedAt: new Date().toISOString() };
       console.log(`[WhatsApp] Bot conectado — restaurante: ${RESTAURANTE_ID}`);
 
+      // Procesar notificaciones pendientes que fallaron mientras estaba desconectado
+      const { procesarCola } = require('../services/notificacionQueue');
+      procesarCola().catch((err) => console.error('[WhatsApp] Error procesando cola:', err.message));
+
       // Cargar contactos que Baileys ya tiene en caché interna
       const cached = sock.contacts ?? {};
       let loaded = 0;

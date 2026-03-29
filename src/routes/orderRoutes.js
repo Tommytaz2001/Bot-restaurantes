@@ -1,5 +1,7 @@
 const express = require('express');
 const { getOrder } = require('../orders/orderService');
+const { db } = require('../services/firebaseService');
+const { doc, updateDoc } = require('firebase/firestore');
 
 const router = express.Router();
 
@@ -27,6 +29,7 @@ const MENSAJES_NOTIFICACION = {
 
 async function enviarNotificacion(order, mensaje, intentos = 3, delayMs = 2000) {
   const { getSock } = require('../whatsapp/baileys');
+  const { encolarNotificacion } = require('../services/notificacionQueue');
   // Usar jid guardado en Firestore (puede ser @lid o @s.whatsapp.net), sino reconstruir
   const jid = order.jid || `${order.telefono}@s.whatsapp.net`;
   for (let i = 1; i <= intentos; i++) {
@@ -40,17 +43,27 @@ async function enviarNotificacion(order, mensaje, intentos = 3, delayMs = 2000) 
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
-  throw new Error('WhatsApp no conectado después de varios intentos');
+  // Todos los reintentos fallaron — persistir en Firestore para envío automático al reconectar
+  await encolarNotificacion({ jid, mensaje, pedidoId: order.id });
+  throw new Error('WhatsApp no conectado — notificación encolada para reintento automático');
 }
 
 router.post('/:id/notificar', async (req, res) => {
   try {
-    const { tipo } = req.body;
-    const mensaje = MENSAJES_NOTIFICACION[tipo];
-    if (!mensaje) return res.status(400).json({ error: 'tipo inválido. Usa: en_camino | entregado' });
+    const { tipo, tiempoEstimadoMin } = req.body;
+    if (!MENSAJES_NOTIFICACION[tipo]) return res.status(400).json({ error: 'tipo inválido.' });
 
     const order = await getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    // Personalizar mensaje de confirmado con ETA si se proporcionó
+    let mensaje = MENSAJES_NOTIFICACION[tipo];
+    if (tipo === 'confirmado' && tiempoEstimadoMin) {
+      const mins = Number(tiempoEstimadoMin);
+      mensaje = `✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔\n\n🕐 Tiempo estimado: *${mins} minutos*.`;
+      // Guardar tiempo estimado en el pedido
+      await updateDoc(doc(db, 'pedidos', order.id), { tiempo_estimado_min: mins });
+    }
 
     await enviarNotificacion(order, mensaje);
 

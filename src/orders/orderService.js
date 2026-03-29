@@ -1,5 +1,6 @@
 const { db } = require('../services/firebaseService');
 const { uploadComprobante } = require('../services/storageService');
+const { enviarPushAlChef } = require('../services/pushService');
 const { validateOrder } = require('./orderValidator');
 const {
   collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp,
@@ -55,6 +56,15 @@ async function saveOrder(orderData) {
   };
 
   await setDoc(doc(db, 'pedidos', id), pedido);
+
+  // Push notification al chef (no-blocking)
+  const tipoEntrega = orderData.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro';
+  enviarPushAlChef(
+    orderData.restauranteId,
+    '🍔 Nuevo pedido',
+    `${orderData.cliente ?? 'Cliente'} — ${subtotal + costoEnvio} · ${tipoEntrega}`,
+  ).catch(() => {});
+
   return { id, ...pedido };
 }
 

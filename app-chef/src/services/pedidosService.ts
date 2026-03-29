@@ -56,6 +56,7 @@ export interface Pedido {
   cambio_solicitado?: CambioSolicitado;
   tipo_entrega?: 'delivery' | 'retiro';
   costo_envio?: number;
+  tiempo_estimado_min?: number;
 }
 
 const ESTADOS_ACTIVOS: EstadoPedido[] = ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino'];
@@ -113,17 +114,19 @@ export function suscribirHistorial(
 
 export type TipoNotificacion = 'confirmado' | 'rechazado' | 'en_camino' | 'entregado' | 'cambio_aprobado' | 'cambio_rechazado';
 
-export async function notificarCliente(id: string, tipo: TipoNotificacion): Promise<void> {
+export async function notificarCliente(id: string, tipo: TipoNotificacion, tiempoEstimadoMin?: number): Promise<void> {
   if (!BACKEND_URL) return;
   try {
     const token = await auth.currentUser?.getIdToken();
+    const body: Record<string, any> = { tipo };
+    if (tiempoEstimadoMin) body.tiempoEstimadoMin = tiempoEstimadoMin;
     await fetch(`${BACKEND_URL}/orders/${id}/notificar`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ tipo }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     console.warn('[notificarCliente] Error:', err);
@@ -136,6 +139,13 @@ async function actualizarEstado(id: string, data: Record<string, any>) {
 
 export const confirmarPedido = (id: string) =>
   actualizarEstado(id, { estado: 'confirmado' });
+
+export async function confirmarPedidoConETA(id: string, tiempoEstimadoMin?: number): Promise<void> {
+  const update: Record<string, any> = { estado: 'confirmado' };
+  if (tiempoEstimadoMin) update.tiempo_estimado_min = tiempoEstimadoMin;
+  await actualizarEstado(id, update);
+  await notificarCliente(id, 'confirmado', tiempoEstimadoMin);
+}
 
 export const marcarEnCamino = (id: string) =>
   actualizarEstado(id, { estado: 'en_camino' });

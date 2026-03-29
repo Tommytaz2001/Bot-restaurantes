@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useAuthStore } from '../src/store/authStore';
+import { registerPushToken } from '../src/services/pushNotificationService';
 
 export default function RootLayout() {
   const { user, loading, init } = useAuthStore();
@@ -19,6 +20,9 @@ export default function RootLayout() {
       router.replace('/(auth)/login');
     } else if (user && inAuth) {
       router.replace('/(tabs)');
+    } else if (user) {
+      // Registrar token push cuando el chef está autenticado
+      registerPushToken().catch(() => {});
     }
   }, [user, loading, segments]);
 

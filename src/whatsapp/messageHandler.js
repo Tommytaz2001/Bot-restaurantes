@@ -2,6 +2,7 @@ const { processMessage } = require('../agent/agentService');
 const { verificarSpam } = require('./spamGuard');
 const { log } = require('../utils/logger');
 const { estaActivo } = require('../services/botStateService');
+const { getRestauranteConfig } = require('../services/menuService');
 
 const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
 
@@ -39,14 +40,31 @@ function detectarRepartidor(telefono) {
   return false;
 }
 
-// Horario de atención: 3:00pm – 9:30pm hora Nicaragua (UTC-6)
-const HORA_APERTURA_MIN = 15 * 60;        // 900 min = 3:00pm
-const HORA_CIERRE_MIN  = 21 * 60 + 30;   // 1290 min = 9:30pm
+// Horario de atención leído desde Firestore (restaurantes/{id}.horario.apertura / .cierre)
+// Formato: "HH:MM" en hora Nicaragua (UTC-6). Si no hay config, el bot está siempre abierto.
+function parsearMinutos(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
 
-function estaEnHorario() {
-  const ahora = new Date();
-  const minutosNica = ((ahora.getUTCHours() - 6 + 24) % 24) * 60 + ahora.getUTCMinutes();
-  return minutosNica >= HORA_APERTURA_MIN && minutosNica <= HORA_CIERRE_MIN;
+function formatHora12(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h >= 12 ? 'pm' : 'am';
+  const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  return `${h12}:${String(m || 0).padStart(2, '0')} ${period}`;
+}
+
+async function estaEnHorario(restauranteId) {
+  try {
+    const config = await getRestauranteConfig(restauranteId);
+    const horario = config.horario;
+    if (!horario?.apertura || !horario?.cierre) return true; // sin config = siempre abierto
+    const ahora = new Date();
+    const minutosNica = ((ahora.getUTCHours() - 6 + 24) % 24) * 60 + ahora.getUTCMinutes();
+    return minutosNica >= parsearMinutos(horario.apertura) && minutosNica <= parsearMinutos(horario.cierre);
+  } catch {
+    return true; // si falla la lectura, no bloquear al cliente
+  }
 }
 
 const _timers = new Map();  // telefono -> timeoutId
@@ -77,13 +95,20 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     return;
   }
 
-  // 1. Verificar horario de atención (deshabilitado temporalmente para pruebas)
-  // if (!estaEnHorario()) {
-  //   await sendReply(
-  //     '⏰ Estamos fuera de horario. Nuestro horario de atención es de *3:00 pm a 9:30 pm*.\n\n¡Te esperamos pronto! 🍔',
-  //   );
-  //   return;
-  // }
+  // 1. Verificar horario de atención (configurable desde Firestore: restaurantes/{id}.horario)
+  if (!(await estaEnHorario(restauranteId))) {
+    try {
+      const config = await getRestauranteConfig(restauranteId);
+      const apertura = formatHora12(config.horario?.apertura ?? '15:00');
+      const cierre   = formatHora12(config.horario?.cierre   ?? '21:30');
+      await sendReply(
+        `⏰ En este momento estamos fuera de horario. Nuestro horario de atención es de *${apertura}* a *${cierre}*.\n\n¡Te esperamos pronto! 🍔`,
+      );
+    } catch {
+      await sendReply('⏰ Estamos fuera de horario. ¡Te esperamos pronto! 🍔');
+    }
+    return;
+  }
 
   // 2. Control de spam
   const spam = verificarSpam(telefono);

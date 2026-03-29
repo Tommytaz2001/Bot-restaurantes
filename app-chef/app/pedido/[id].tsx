@@ -9,8 +9,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../src/services/firebaseConfig';
 import {
-  confirmarPedido, marcarEnCamino, marcarEntregado,
+  confirmarPedidoConETA, marcarEnCamino, marcarEntregado,
   rechazarPedido, aprobarCambio, rechazarCambio,
+  notificarCliente,
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
@@ -149,6 +150,13 @@ export default function DetallePedidoScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* ETA banner */}
+        {pedido.tiempo_estimado_min && (
+          <View style={styles.etaBanner}>
+            <Text style={styles.etaText}>🕐 Tiempo estimado: {pedido.tiempo_estimado_min} min</Text>
+          </View>
+        )}
+
         {/* Client section */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>CLIENTE</Text>
@@ -293,9 +301,20 @@ export default function DetallePedidoScreen() {
               <ActionBtn
                 label="✓  Confirmar"
                 color="#22C55E"
-                onPress={() => ejecutar(async () => {
-                  await confirmarPedido(pedido.id);
-                })}
+                onPress={() => {
+                  Alert.alert(
+                    '⏱ Tiempo estimado',
+                    'Selecciona el tiempo aproximado de entrega para notificar al cliente.',
+                    [
+                      { text: '15 min', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id, 15)) },
+                      { text: '20 min', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id, 20)) },
+                      { text: '30 min', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id, 30)) },
+                      { text: '45 min', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id, 45)) },
+                      { text: '60 min', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id, 60)) },
+                      { text: 'Sin tiempo estimado', onPress: () => ejecutar(() => confirmarPedidoConETA(pedido.id)) },
+                    ],
+                  );
+                }}
                 loading={accionando}
               />
               <ActionBtn
@@ -628,6 +647,20 @@ const styles = StyleSheet.create({
   desgloseDivider: {
     height: 1,
     backgroundColor: '#212121',
+  },
+  etaBanner: {
+    backgroundColor: '#0D1A2B',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#1E3A5F',
+    alignItems: 'center',
+  },
+  etaText: {
+    color: '#60A5FA',
+    fontWeight: '600',
+    fontSize: 14,
   },
   copyBtn: {
     borderWidth: 1,
