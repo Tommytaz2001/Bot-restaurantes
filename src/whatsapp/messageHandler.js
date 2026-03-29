@@ -88,7 +88,7 @@ function debeIgnorar(texto) {
  * @param {boolean} params.esMensajeReenviado - Si el mensaje fue reenviado
  * @param {Function} params.sendReply       - Función async para enviar respuesta
  */
-async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, sendReply }) {
+async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply }) {
   // 0. Kill switch — bot pausado desde la app
   if (!estaActivo()) {
     console.log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
@@ -135,16 +135,30 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     _buffers.delete(telefono);
     _timers.delete(telefono);
 
+    // Re-intentar resolución del teléfono: tras el debounce los contactos suelen estar en caché
+    const telefonoFinal = resolverFn ? resolverFn() : telefono;
+    if (telefonoFinal !== telefono) {
+      console.log(`[messageHandler] @lid resuelto: ${telefono} → ${telefonoFinal}`);
+    }
+
+    // Si el @lid no pudo resolverse al número real, pasamos null para que el agente
+    // le pida al cliente su número durante el pedido (así queda guardado correctamente)
+    const esLidNoResuelto = remoteJid?.endsWith('@lid') && telefonoFinal === telefono;
+    const telefonoParaPedido = esLidNoResuelto ? null : telefonoFinal;
+    if (esLidNoResuelto) {
+      console.log(`[messageHandler] @lid sin resolver — el agente pedirá el número al cliente`);
+    }
+
     const esRepartidor = detectarRepartidor(telefono);
-    console.log(`[messageHandler] Procesando de ${telefono}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
-    log(`[WA_IN] telefono=${telefono} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
+    console.log(`[messageHandler] Procesando de ${telefonoFinal}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
+    log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
 
     try {
       const result = await processMessage({
         message: mensajesAcumulados,
-        sessionId: telefono,
+        sessionId: telefono,           // clave de sesión: siempre el original (LID o real)
         restauranteId,
-        telefono,
+        telefono: telefonoParaPedido,  // null si @lid no resuelto → agente pide al cliente
         remoteJid,
         esRepartidor,
       });

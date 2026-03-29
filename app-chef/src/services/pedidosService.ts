@@ -144,7 +144,7 @@ export async function confirmarPedidoConETA(id: string, tiempoEstimadoMin?: numb
   const update: Record<string, any> = { estado: 'confirmado' };
   if (tiempoEstimadoMin) update.tiempo_estimado_min = tiempoEstimadoMin;
   await actualizarEstado(id, update);
-  await notificarCliente(id, 'confirmado', tiempoEstimadoMin);
+  // El listener de Firestore en el backend detecta el cambio y envía la notificación al cliente
 }
 
 export const marcarEnCamino = (id: string) =>

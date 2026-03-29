@@ -31,10 +31,14 @@ function iniciarListenerNotificaciones() {
 
         // Notificaciones por cambio de estado principal
         if (MENSAJES[estado] && !notificaciones_enviadas[estado]) {
-          // Para en_camino, el mensaje cambia según si es delivery o retiro
-          const mensaje = estado === 'en_camino' && tipo_entrega === 'retiro'
-            ? '🏪 ¡Tu pedido está listo! Puedes pasar a retirarlo cuando quieras. 😊'
-            : MENSAJES[estado];
+          let mensaje;
+          if (estado === 'en_camino' && tipo_entrega === 'retiro') {
+            mensaje = '🏪 ¡Tu pedido está listo! Puedes pasar a retirarlo cuando quieras. 😊';
+          } else if (estado === 'confirmado' && order.tiempo_estimado_min) {
+            mensaje = `✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔\n\n🕐 Tiempo estimado: *${order.tiempo_estimado_min} minutos*.`;
+          } else {
+            mensaje = MENSAJES[estado];
+          }
           pendientes.push({ clave: estado, mensaje });
         }
 

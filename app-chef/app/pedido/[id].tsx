@@ -11,7 +11,6 @@ import { db } from '../../src/services/firebaseConfig';
 import {
   confirmarPedidoConETA, marcarEnCamino, marcarEntregado,
   rechazarPedido, aprobarCambio, rechazarCambio,
-  notificarCliente,
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';

@@ -251,6 +251,8 @@ async function iniciarBaileys() {
         restauranteId: RESTAURANTE_ID,
         contactName,
         esMensajeReenviado,
+        // Re-resolver después del debounce: contactos pueden ya estar en caché
+        resolverFn: () => resolverTelefono(remoteJid),
         sendReply: async (reply) => {
           try {
             await sock.sendMessage(remoteJid, { text: reply });
