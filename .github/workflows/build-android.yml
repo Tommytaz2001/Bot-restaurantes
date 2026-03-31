@@ -70,10 +70,23 @@ jobs:
           import json
           with open('android/app/google-services.json') as f:
               d = json.load(f)
-          pkg = d['client'][0]['client_info']['android_client_info']['package_name']
+          client = d['client'][0]
+          info = client['client_info']
+          pkg = info['android_client_info']['package_name']
+          app_id = info.get('mobilesdk_app_id', 'MISSING')
+          api_key = 'present' if client.get('api_key') else 'MISSING'
           print(f'Package name: {pkg}')
+          print(f'mobilesdk_app_id: {app_id}')
+          print(f'api_key: {api_key}')
           print('JSON is valid')
           "
+
+      - name: Check google-services Gradle plugin
+        run: |
+          echo "=== android/build.gradle ==="
+          grep -n "google-services" android/build.gradle || echo "google-services NOT FOUND in android/build.gradle"
+          echo "=== android/app/build.gradle ==="
+          grep -n "google-services" android/app/build.gradle || echo "google-services NOT FOUND in android/app/build.gradle"
 
       - name: Bundle JS (expo export:embed)
         run: |
