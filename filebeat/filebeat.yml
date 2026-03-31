@@ -13,7 +13,7 @@ filebeat.inputs:
             not:
               or:
                 - equals:
-                    container.name: "bot-restaurantes"
+                    container.name: "${BOT_CONTAINER_NAME:bot-restaurantes}"
                 - equals:
                     container.name: "elasticsearch"
                 - equals:
