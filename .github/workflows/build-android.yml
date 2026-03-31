@@ -84,9 +84,9 @@ jobs:
       - name: Check google-services Gradle plugin
         run: |
           echo "=== android/build.gradle ==="
-          grep -n "google-services" android/build.gradle || echo "google-services NOT FOUND in android/build.gradle"
+          grep -n "google-services" android/build.gradle && echo "OK" || echo "NOT FOUND"
           echo "=== android/app/build.gradle ==="
-          grep -n "google-services" android/app/build.gradle || echo "google-services NOT FOUND in android/app/build.gradle"
+          grep -n "google-services" android/app/build.gradle && echo "OK" || echo "NOT FOUND"
 
       - name: Bundle JS (expo export:embed)
         run: |
