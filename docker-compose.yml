@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     volumes:
-      - backend_data:/app/data
+      - ${BACKEND_VOLUME:-backend_data}:/app/data
     logging:
       driver: "json-file"
       options:
@@ -32,7 +32,7 @@ services:
       - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - ${ES_VOLUME:-es_data}:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
     healthcheck:
@@ -60,12 +60,12 @@ services:
       - |
         apk add --no-cache curl --quiet
         echo "[es-setup] Seteando password de kibana_system..."
-        RESP=$(curl -s -o /tmp/out.txt -w "%{http_code}" \
+        RESP=$$(curl -s -o /tmp/out.txt -w "%{http_code}" \
           -u "elastic:$$ELASTIC_PASSWORD" \
           -X POST "http://elasticsearch:9200/_security/user/kibana_system/_password" \
           -H "Content-Type: application/json" \
           -d "{\"password\":\"$$ELASTIC_PASSWORD\"}")
-        echo "[es-setup] HTTP $RESP — $(cat /tmp/out.txt)"
+        echo "[es-setup] HTTP $$RESP — $$(cat /tmp/out.txt)"
         exit 0
     networks:
       - bot-network
@@ -124,17 +124,12 @@ services:
       - ./filebeat/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - filebeat_data:/usr/share/filebeat/data
+      - ${FILEBEAT_VOLUME:-filebeat_data}:/usr/share/filebeat/data
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - bot-network
-
-volumes:
-  backend_data:
-  es_data:
-  filebeat_data:
 
 networks:
   bot-network:
