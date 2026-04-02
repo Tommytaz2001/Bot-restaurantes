@@ -121,28 +121,6 @@ services:
     networks:
       - bot-network
 
-  # ── Filebeat (log shipper) ────────────────────────────────────────────────────
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:${ELASTIC_VERSION:-8.13.4}
-    container_name: filebeat
-    restart: unless-stopped
-    user: root
-    command: filebeat -e --strict.perms=false
-    environment:
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - BOT_CONTAINER_NAME=${BOT_CONTAINER_NAME:-bot-restaurantes}
-      - PUID=1000
-      - PGID=101
-    volumes:
-      - ${FILEBEAT_VOLUME:-./filebeat}/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ${FILEBEAT_VOLUME:-./filebeat}/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
-      - ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro
-      - ${FILEBEAT_VOLUME:-filebeat_data}:/usr/share/filebeat/data
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    networks:
-      - bot-network
 
 networks:
   bot-network:
