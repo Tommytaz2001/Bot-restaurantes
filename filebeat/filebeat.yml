@@ -1,13 +1,8 @@
 filebeat.inputs:
-  - type: filestream
-    id: docker-containers
-    paths:
-      - /var/lib/docker/containers/*/*.log
-    parsers:
-      - container: ~
+  - type: docker
+    containers.ids:
+      - "*"
     processors:
-      - add_docker_metadata:
-          host: "unix:///var/run/docker.sock"
       - drop_event:
           when:
             not:

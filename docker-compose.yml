@@ -136,7 +136,6 @@ services:
     volumes:
       - ${FILEBEAT_VOLUME:-./filebeat}/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ${FILEBEAT_VOLUME:-./filebeat}/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
-      - ${DOCKER_CONTAINERS_PATH:-/var/lib/docker/containers}:/var/lib/docker/containers:ro
       - ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro
       - ${FILEBEAT_VOLUME:-filebeat_data}:/usr/share/filebeat/data
     depends_on:
