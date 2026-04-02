@@ -9,6 +9,9 @@ services:
       - "${PORT:-3001}:${PORT:-3001}"
     env_file:
       - .env
+    environment:
+      - PUID=1000
+      - PGID=101
     volumes:
       - ${BACKEND_VOLUME:-backend_data}:/app/data
     logging:
@@ -31,6 +34,8 @@ services:
       - xpack.license.self_generated.type=basic
       - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - PUID=1000
+      - PGID=101
     ulimits:
       memlock:
         soft: -1
@@ -126,6 +131,8 @@ services:
     environment:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - BOT_CONTAINER_NAME=${BOT_CONTAINER_NAME:-bot-restaurantes}
+      - PUID=1000
+      - PGID=101
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./filebeat/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
