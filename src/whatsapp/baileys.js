@@ -197,6 +197,7 @@ async function iniciarBaileys() {
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
       if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
+      if (msg.key.remoteJid === 'status@broadcast') continue; // Ignorar estados de WA
       if (_processedIds.has(msg.key.id)) continue; // Deduplicar
       _markProcessed(msg.key.id);
 
@@ -261,6 +262,9 @@ async function iniciarBaileys() {
         esMensajeReenviado,
         // Re-resolver después del debounce: contactos pueden ya estar en caché
         resolverFn: () => resolverTelefono(remoteJid),
+        sendTyping: async () => {
+          await sock.sendPresenceUpdate('composing', remoteJid);
+        },
         sendReply: async (reply) => {
           try {
             await sock.sendMessage(remoteJid, { text: reply });

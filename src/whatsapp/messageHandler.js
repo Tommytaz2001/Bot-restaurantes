@@ -4,7 +4,7 @@ const { log } = require('../utils/logger');
 const { estaActivo } = require('../services/botStateService');
 const { getRestauranteConfig } = require('../services/menuService');
 
-const DEBOUNCE_MS = 4_000; // 4 segundos — suficiente para acumular mensajes enviados en ráfaga
+const DEBOUNCE_MS = 2_000; // 2 segundos — suficiente para acumular mensajes enviados en ráfaga
 
 // Palabras clave para detectar repartidores por nombre de contacto guardado
 const REPARTIDOR_KEYWORDS = ['delivery', 'moto mandado', 'mandado'];
@@ -88,7 +88,7 @@ function debeIgnorar(texto) {
  * @param {boolean} params.esMensajeReenviado - Si el mensaje fue reenviado
  * @param {Function} params.sendReply       - Función async para enviar respuesta
  */
-async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply }) {
+async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply, sendTyping = null }) {
   // 0. Kill switch — bot pausado desde la app
   if (!estaActivo()) {
     console.log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
@@ -152,6 +152,9 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     const esRepartidor = detectarRepartidor(telefono);
     console.log(`[messageHandler] Procesando de ${telefonoFinal}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
     log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
+
+    // Indicador de "escribiendo..." mientras OpenAI procesa
+    if (sendTyping) sendTyping().catch(() => {});
 
     try {
       const result = await processMessage({
