@@ -84,6 +84,27 @@ function resolverTelefono(remoteJid) {
   return remoteJid.split('@')[0];
 }
 
+// ── Watchdog: detecta sesión inválida (solo protocolMessages por 2 minutos) ──
+const WATCHDOG_MS = 2 * 60 * 1000; // 2 minutos
+let _watchdogTimer = null;
+let _realMessageReceived = false;
+
+function _startWatchdog() {
+  _clearWatchdog();
+  _realMessageReceived = false;
+  _watchdogTimer = setTimeout(async () => {
+    if (!_realMessageReceived && _waState.status === 'connected') {
+      console.log('[WhatsApp] Watchdog: 2 min sin mensajes reales → sesión inválida. Reseteando...');
+      await clearFirestoreSession(RESTAURANTE_ID).catch(() => {});
+      sock?.end(new Error('watchdog_reset'));
+    }
+  }, WATCHDOG_MS);
+}
+
+function _clearWatchdog() {
+  if (_watchdogTimer) { clearTimeout(_watchdogTimer); _watchdogTimer = null; }
+}
+
 async function iniciarBaileys() {
   const { state, saveCreds } = await useFirestoreAuthState(RESTAURANTE_ID);
   const { version } = await fetchLatestBaileysVersion();
@@ -135,14 +156,22 @@ async function iniciarBaileys() {
 
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const loggedOut = statusCode === DisconnectReason.loggedOut;
+
+      // Códigos que indican sesión inválida (no solo problema de red)
+      const SESSION_INVALID_CODES = new Set([
+        DisconnectReason.loggedOut,        // 401 — dispositivo removido
+        DisconnectReason.connectionReplaced, // 440 — sesión abierta en otro lugar
+        DisconnectReason.badSession,       // 500 — sesión corrompida
+      ]);
+      const sessionInvalid = SESSION_INVALID_CODES.has(statusCode);
 
       _waState = { status: 'disconnected', qr: null, connectedAt: null };
-      console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}.`);
+      console.log(`[WhatsApp] Conexión cerrada. Código: ${statusCode}. Sesión inválida: ${sessionInvalid}`);
 
-      if (loggedOut) {
-        console.log('[WhatsApp] Sesión inválida. Limpiando credenciales y generando nuevo QR...');
+      if (sessionInvalid) {
+        console.log('[WhatsApp] Limpiando sesión y generando nuevo QR...');
         clearFirestoreSession(RESTAURANTE_ID).catch(() => {});
+        _clearWatchdog();
       } else {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
       }
@@ -153,6 +182,9 @@ async function iniciarBaileys() {
     if (connection === 'open') {
       _waState = { status: 'connected', qr: null, connectedAt: new Date().toISOString() };
       console.log(`[WhatsApp] Bot conectado — restaurante: ${RESTAURANTE_ID}`);
+
+      // Watchdog: si en 2 min solo llegan protocolMessages → sesión inválida → reset automático
+      _startWatchdog();
 
       // Procesar notificaciones pendientes que fallaron mientras estaba desconectado
       const { procesarCola } = require('../services/notificacionQueue');
@@ -183,11 +215,9 @@ async function iniciarBaileys() {
 
   // Manejar mensajes entrantes
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    console.log(`[WhatsApp] messages.upsert tipo="${type}" cantidad=${messages.length}`);
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      console.log(`[WhatsApp] msg fromMe=${msg.key.fromMe} jid=${msg.key.remoteJid} tipos=${Object.keys(msg.message ?? {}).join(',')}`);
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
       if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
@@ -197,6 +227,12 @@ async function iniciarBaileys() {
       const remoteJid = msg.key.remoteJid;
       const telefono = resolverTelefono(remoteJid);
       const messageType = Object.keys(msg.message)[0];
+
+      // Mensaje real recibido → watchdog no necesita resetear la sesión
+      if (messageType !== 'protocolMessage') {
+        _realMessageReceived = true;
+        _clearWatchdog();
+      }
 
       const texto =
         msg.message?.conversation ||
