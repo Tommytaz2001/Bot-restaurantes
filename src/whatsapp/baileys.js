@@ -183,9 +183,11 @@ async function iniciarBaileys() {
 
   // Manejar mensajes entrantes
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    console.log(`[WhatsApp] messages.upsert tipo="${type}" cantidad=${messages.length}`);
     if (type !== 'notify') return;
 
     for (const msg of messages) {
+      console.log(`[WhatsApp] msg fromMe=${msg.key.fromMe} jid=${msg.key.remoteJid} tipos=${Object.keys(msg.message ?? {}).join(',')}`);
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
       if (msg.key.remoteJid.endsWith('@g.us')) continue; // Ignorar grupos
