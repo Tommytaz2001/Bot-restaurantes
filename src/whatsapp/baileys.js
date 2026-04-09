@@ -84,28 +84,6 @@ function resolverTelefono(remoteJid) {
   return remoteJid.split('@')[0];
 }
 
-// ── Watchdog: solo activo los primeros 3 min tras escanear QR ─────────────────
-// Si en ese tiempo no llega ningún mensaje real → sesión inválida → reset.
-// Una vez que llega un mensaje real, se desactiva para siempre en esta sesión.
-const WATCHDOG_MS = 3 * 60 * 1000; // 3 minutos (solo post-QR)
-let _watchdogTimer = null;
-let _qrWasShown = false; // true si en esta instancia se mostró QR (sesión nueva)
-
-function _startWatchdog() {
-  if (!_qrWasShown) return; // solo activo si hubo QR reciente
-  _clearWatchdog();
-  _watchdogTimer = setTimeout(async () => {
-    if (_waState.status === 'connected') {
-      console.log('[WhatsApp] Watchdog: 3 min post-QR sin mensajes reales → sesión inválida. Reseteando...');
-      await clearFirestoreSession(RESTAURANTE_ID).catch(() => {});
-      sock?.end(new Error('watchdog_reset'));
-    }
-  }, WATCHDOG_MS);
-}
-
-function _clearWatchdog() {
-  if (_watchdogTimer) { clearTimeout(_watchdogTimer); _watchdogTimer = null; }
-}
 
 async function iniciarBaileys() {
   const { state, saveCreds } = await useFirestoreAuthState(RESTAURANTE_ID);
@@ -151,7 +129,6 @@ async function iniciarBaileys() {
     // Guardar QR en estado y mostrarlo en terminal
     if (qr) {
       _waState = { status: 'waiting_qr', qr, connectedAt: null };
-      _qrWasShown = true; // esta sesión requirió QR → activar watchdog al conectar
       console.log('\n[WhatsApp] Escanea este QR con tu teléfono:');
       console.log('[WhatsApp] También disponible en: GET /whatsapp/qr\n');
       qrcode.generate(qr, { small: true });
@@ -174,7 +151,6 @@ async function iniciarBaileys() {
       if (sessionInvalid) {
         console.log('[WhatsApp] Limpiando sesión y generando nuevo QR...');
         clearFirestoreSession(RESTAURANTE_ID).catch(() => {});
-        _clearWatchdog();
       } else {
         console.log('[WhatsApp] Reconectando en 5 segundos...');
       }
@@ -185,9 +161,6 @@ async function iniciarBaileys() {
     if (connection === 'open') {
       _waState = { status: 'connected', qr: null, connectedAt: new Date().toISOString() };
       console.log(`[WhatsApp] Bot conectado — restaurante: ${RESTAURANTE_ID}`);
-
-      // Watchdog: si en 2 min solo llegan protocolMessages → sesión inválida → reset automático
-      _startWatchdog();
 
       // Procesar notificaciones pendientes que fallaron mientras estaba desconectado
       const { procesarCola } = require('../services/notificacionQueue');
@@ -230,13 +203,6 @@ async function iniciarBaileys() {
       const remoteJid = msg.key.remoteJid;
       const telefono = resolverTelefono(remoteJid);
       const messageType = Object.keys(msg.message)[0];
-
-      // Mensaje real recibido → watchdog no necesita resetear la sesión
-      if (messageType !== 'protocolMessage') {
-        // Mensaje real → sesión válida confirmada, cancelar watchdog para siempre
-        _clearWatchdog();
-        _qrWasShown = false;
-      }
 
       const texto =
         msg.message?.conversation ||
