@@ -1,10 +1,10 @@
 /**
  * Listener de Firestore que detecta cambios de estado en pedidos
- * y envía notificaciones WhatsApp automáticamente.
- * No depende de que la app del chef llame al endpoint /notificar.
+ * y envía notificaciones WhatsApp automáticamente via Evolution API.
  */
 const { collection, onSnapshot, updateDoc, doc } = require('firebase/firestore');
 const { db } = require('./firebaseService');
+const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
 
 const MENSAJES = {
   confirmado:       '✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔',
@@ -16,8 +16,6 @@ const MENSAJES = {
 };
 
 function iniciarListenerNotificaciones() {
-  const { getSock } = require('../whatsapp/baileys');
-
   onSnapshot(
     collection(db, 'pedidos'),
     async (snapshot) => {
@@ -25,7 +23,7 @@ function iniciarListenerNotificaciones() {
         if (change.type !== 'modified') continue;
 
         const order = { id: change.doc.id, ...change.doc.data() };
-        const { estado, jid, telefono, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = order;
+        const { estado, telefono, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = order;
 
         const pendientes = [];
 
@@ -53,17 +51,9 @@ function iniciarListenerNotificaciones() {
 
         if (pendientes.length === 0) continue;
 
-        const sock = getSock();
-        if (!sock?.user) {
-          console.warn(`[notificaciones] WhatsApp no conectado, se omite notif para pedido ${order.id}`);
-          continue;
-        }
-
-        const destino = jid || `${telefono}@s.whatsapp.net`;
-
         for (const { clave, mensaje } of pendientes) {
           try {
-            await sock.sendMessage(destino, { text: mensaje });
+            await sendWhatsAppMessage(telefono, mensaje);
             await updateDoc(doc(db, 'pedidos', order.id), {
               [`notificaciones_enviadas.${clave}`]: true,
             });

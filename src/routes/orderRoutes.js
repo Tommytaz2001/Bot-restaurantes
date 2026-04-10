@@ -2,6 +2,8 @@ const express = require('express');
 const { getOrder } = require('../orders/orderService');
 const { db } = require('../services/firebaseService');
 const { doc, updateDoc } = require('firebase/firestore');
+const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
+const { encolarNotificacion } = require('../services/notificacionQueue');
 
 const router = express.Router();
 
@@ -27,25 +29,13 @@ const MENSAJES_NOTIFICACION = {
   cambio_rechazado: '❌ Tu solicitud de cambio no pudo ser aplicada. Tu pedido original sigue en proceso.',
 };
 
-async function enviarNotificacion(order, mensaje, intentos = 3, delayMs = 2000) {
-  const { getSock } = require('../whatsapp/baileys');
-  const { encolarNotificacion } = require('../services/notificacionQueue');
-  // Usar jid guardado en Firestore (puede ser @lid o @s.whatsapp.net), sino reconstruir
-  const jid = order.jid || `${order.telefono}@s.whatsapp.net`;
-  for (let i = 1; i <= intentos; i++) {
-    const sock = getSock();
-    if (sock && sock.user) {
-      await sock.sendMessage(jid, { text: mensaje });
-      return;
-    }
-    if (i < intentos) {
-      console.log(`[orderRoutes] WhatsApp no listo, reintentando (${i}/${intentos})...`);
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
+async function enviarNotificacion(order, mensaje) {
+  try {
+    await sendWhatsAppMessage(order.telefono, mensaje);
+  } catch (err) {
+    await encolarNotificacion({ telefono: order.telefono, mensaje, pedidoId: order.id });
+    throw new Error(`WhatsApp no disponible — notificación encolada: ${err.message}`);
   }
-  // Todos los reintentos fallaron — persistir en Firestore para envío automático al reconectar
-  await encolarNotificacion({ jid, mensaje, pedidoId: order.id });
-  throw new Error('WhatsApp no conectado — notificación encolada para reintento automático');
 }
 
 router.post('/:id/notificar', async (req, res) => {
@@ -61,13 +51,17 @@ router.post('/:id/notificar', async (req, res) => {
     if (tipo === 'confirmado' && tiempoEstimadoMin) {
       const mins = Number(tiempoEstimadoMin);
       mensaje = `✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔\n\n🕐 Tiempo estimado: *${mins} minutos*.`;
-      // Guardar tiempo estimado en el pedido
       await updateDoc(doc(db, 'pedidos', order.id), { tiempo_estimado_min: mins });
     }
 
+    // Marcar como enviada ANTES de enviar para que el listener de Firestore no duplique
+    await updateDoc(doc(db, 'pedidos', order.id), {
+      [`notificaciones_enviadas.${tipo}`]: true,
+    });
+
     await enviarNotificacion(order, mensaje);
 
-    console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.jid || order.telefono}`);
+    console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.telefono}`);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[orderRoutes] Error notificando:', err.message);
