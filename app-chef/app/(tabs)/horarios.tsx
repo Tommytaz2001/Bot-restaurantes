@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Switch, TextInput, Alert, ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   getHorario, saveHorario,
@@ -19,6 +19,7 @@ export default function HorariosScreen() {
   const [horario, setHorario] = useState<Horario | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -75,7 +76,7 @@ export default function HorariosScreen() {
       {loading ? (
         <ActivityIndicator color="#F59E0B" style={{ marginTop: 48 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: Math.max(32, insets.bottom + 16) }]}>
           <Text style={styles.hint}>
             Configurá los días y horarios de atención. El bot responderá automáticamente fuera del horario.
           </Text>
