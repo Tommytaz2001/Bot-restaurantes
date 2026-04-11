@@ -240,7 +240,8 @@ router.get('/', (req, res) => {
     let allLogs = [];
     let autoScroll = true;
     let lastUpdate = Date.now();
-    let clearedBeforeTs = null; // timestamp ISO del último clear
+    // Persistir el corte de clear en localStorage para sobrevivir recargas
+    let clearedBeforeTs = localStorage.getItem('logs_cleared_ts') || null;
 
     function getLogClass(message) {
       if (message.includes('[ERROR]')) return 'log-error';
@@ -301,13 +302,13 @@ router.get('/', (req, res) => {
         statusEl.classList.add('loading');
         statusEl.textContent = '⏳ Actualizando...';
 
-        const response = await fetch('/logs/data?limit=500');
+        const url = clearedBeforeTs
+          ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedBeforeTs)}\`
+          : '/logs/data?limit=500';
+        const response = await fetch(url);
         const logs = await response.json();
 
-        // Filtrar logs anteriores al último clear
-        allLogs = clearedBeforeTs
-          ? logs.filter(l => l.ts > clearedBeforeTs)
-          : logs;
+        allLogs = logs;
         lastUpdate = Date.now();
         renderLogs();
 
@@ -330,10 +331,11 @@ router.get('/', (req, res) => {
     });
 
     clearBtn.addEventListener('click', () => {
-      // Usar el timestamp del último log del servidor para evitar clock skew cliente/servidor
+      // Usar el timestamp del último log del servidor para evitar clock skew
       clearedBeforeTs = allLogs.length > 0
         ? allLogs[allLogs.length - 1].ts
         : new Date().toISOString();
+      localStorage.setItem('logs_cleared_ts', clearedBeforeTs);
       allLogs = [];
       logsTable.innerHTML = '<tr><td colspan="2" class="empty-state"><p>Pantalla limpiada — esperando nuevos logs...</p></td></tr>';
     });
