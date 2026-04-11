@@ -5,12 +5,15 @@ import {
 
 const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
 
+export type Proteina = 'pollo' | 'cerdo' | 'birria' | 'mixto';
+
 export interface MenuItem {
   nombre: string;
   precio: number;
   descripcion: string;
   opciones: string[];
   disponible: boolean;
+  proteina?: Proteina;
 }
 
 export interface MenuCategoria {

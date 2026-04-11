@@ -34,12 +34,19 @@ async function formatMenuForPrompt(restauranteId) {
   const config = await getRestauranteConfig(restauranteId);
   const menu = await getMenu(restauranteId);
   const moneda = config.moneda;
+  const proteinasBloqueadas = config.proteinasBloqueadas ?? [];
 
   const lines = [];
   for (const categoria of menu) {
     lines.push(`\n### ${categoria.nombre}`);
     for (const item of categoria.items) {
-      if (item.disponible === false) continue; // omitir productos agotados
+      // Filtrar por disponibilidad
+      if (item.disponible === false) continue;
+      // Filtrar por proteínas bloqueadas
+      if (item.proteina && proteinasBloqueadas.includes(item.proteina)) continue;
+      // Filtrar mixtos si pollo o cerdo está bloqueado
+      if (item.proteina === 'mixto' && (proteinasBloqueadas.includes('pollo') || proteinasBloqueadas.includes('cerdo'))) continue;
+
       let line = `- ${item.nombre}: ${moneda}${item.precio} — ${item.descripcion}`;
       if (item.opciones && item.opciones.length > 0) {
         line += ` [Opciones: ${item.opciones.join(', ')}]`;

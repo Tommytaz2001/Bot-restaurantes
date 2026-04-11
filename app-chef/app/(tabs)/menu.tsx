@@ -8,8 +8,9 @@ import { StatusBar } from 'expo-status-bar';
 import {
   getCategorias, addCategoria, updateCategoriaNombre, updateCategoriaOrden,
   deleteCategoria, addItem, updateItem, deleteItem, toggleDisponible,
-  type MenuCategoria, type MenuItem,
+  type MenuCategoria, type MenuItem, type Proteina,
 } from '../../src/services/menuAdminService';
+import { getProteinasBloqueadas, setProteinasBloqueadas, estaItemBloqueadoPorProteina, type Proteina as ProteinaType } from '../../src/services/proteinasService';
 
 // ─── Modals ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,15 @@ function CategoriaModal({
 }
 
 const EMPTY_ITEM: Omit<MenuItem, 'disponible'> = {
-  nombre: '', precio: 0, descripcion: '', opciones: [],
+  nombre: '', precio: 0, descripcion: '', opciones: [], proteina: undefined,
+};
+
+const PROTEINAS: Proteina[] = ['pollo', 'cerdo', 'birria', 'mixto'];
+const PROTEINA_LABELS: Record<Proteina, string> = {
+  pollo: 'Pollo',
+  cerdo: 'Cerdo',
+  birria: 'Birria',
+  mixto: 'Mixto',
 };
 
 function ProductoModal({
@@ -136,6 +145,21 @@ function ProductoModal({
               onChangeText={setOpcionesRaw}
             />
 
+            <Text style={styles.label}>Proteína asociada</Text>
+            <View style={styles.proteinChips}>
+              {[undefined, ...PROTEINAS].map((p) => (
+                <TouchableOpacity
+                  key={p ?? 'ninguna'}
+                  style={[styles.chip, form.proteina === p && styles.chipActive]}
+                  onPress={() => setForm((f) => ({ ...f, proteina: p }))}
+                >
+                  <Text style={[styles.chipText, form.proteina === p && styles.chipTextActive]}>
+                    {p ? PROTEINA_LABELS[p] : 'Ninguna'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.btnCancel} onPress={onClose}>
                 <Text style={styles.btnCancelText}>Cancelar</Text>
@@ -154,6 +178,69 @@ function ProductoModal({
   );
 }
 
+// ─── Proteínas Modal ─────────────────────────────────────────────────────────
+
+function ProteinasModal({
+  visible, onClose, onSave, bloqueadas,
+}: {
+  visible: boolean;
+  bloqueadas: ProteinaType[];
+  onClose: () => void;
+  onSave: (bloqueadas: ProteinaType[]) => void;
+}) {
+  const [tempBloqueadas, setTempBloqueadas] = useState<ProteinaType[]>(bloqueadas);
+
+  useEffect(() => {
+    if (visible) setTempBloqueadas(bloqueadas);
+  }, [visible, bloqueadas]);
+
+  function toggleProteina(p: ProteinaType) {
+    setTempBloqueadas((b) =>
+      b.includes(p) ? b.filter((x) => x !== p) : [...b, p],
+    );
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.modalBox}>
+          <Text style={styles.modalTitle}>Gestionar Proteínas</Text>
+          <Text style={styles.hintText}>Deshabilitá proteínas agotadas. Los platillos se ocultarán automáticamente.</Text>
+
+          <View style={styles.proteinGroup}>
+            {(['pollo', 'cerdo', 'birria'] as ProteinaType[]).map((p) => (
+              <View key={p} style={styles.proteinRow}>
+                <Text style={styles.proteinLabel}>{PROTEINA_LABELS[p]}</Text>
+                <Switch
+                  value={tempBloqueadas.includes(p)}
+                  onValueChange={() => toggleProteina(p)}
+                  trackColor={{ false: '#2a2a2a', true: '#EF4444' }}
+                  thumbColor={tempBloqueadas.includes(p) ? '#8B0000' : '#555'}
+                />
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.btnCancel} onPress={onClose}>
+              <Text style={styles.btnCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btnPrimary}
+              onPress={() => {
+                onSave(tempBloqueadas);
+                onClose();
+              }}
+            >
+              <Text style={styles.btnPrimaryText}>Guardar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function MenuScreen() {
@@ -161,6 +248,7 @@ export default function MenuScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [proteinasBloqueadas, setProteinasBloqueadas] = useState<ProteinaType[]>([]);
 
   // Categoria modal state
   const [catModal, setCatModal] = useState(false);
@@ -170,11 +258,18 @@ export default function MenuScreen() {
   const [prodModal, setProdModal] = useState(false);
   const [editingProd, setEditingProd] = useState<{ cat: MenuCategoria; idx: number | null } | null>(null);
 
+  // Proteínas modal state
+  const [proteinModal, setProteinModal] = useState(false);
+
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getCategorias();
+      const [data, bloqueadas] = await Promise.all([
+        getCategorias(),
+        getProteinasBloqueadas(),
+      ]);
       setCategorias(data);
+      setProteinasBloqueadas(bloqueadas);
     } catch {
       Alert.alert('Error', 'No se pudo cargar el menú.');
     } finally {
@@ -186,6 +281,21 @@ export default function MenuScreen() {
 
   function toggleExpand(id: string) {
     setExpanded((e) => ({ ...e, [id]: !e[id] }));
+  }
+
+  // ── Proteínas actions ────────────────────────────────────────────────────────
+
+  async function handleSaveProteinas(bloqueadas: ProteinaType[]) {
+    setSaving(true);
+    try {
+      await setProteinasBloqueadas(bloqueadas);
+      setProteinasBloqueadas(bloqueadas);
+      await cargar(); // Recarga menú para reflejar cambios visuales
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar las proteínas.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   // ── Category actions ──────────────────────────────────────────────────────
@@ -340,9 +450,14 @@ export default function MenuScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Menú</Text>
-        <TouchableOpacity style={styles.addCatBtn} onPress={openNewCat} disabled={saving}>
-          <Text style={styles.addCatBtnText}>+ Categoría</Text>
-        </TouchableOpacity>
+        <View style={styles.headerBtns}>
+          <TouchableOpacity style={styles.proteinBtn} onPress={() => setProteinModal(true)} disabled={saving}>
+            <Text style={styles.proteinBtnText}>🥩 Proteínas</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addCatBtn} onPress={openNewCat} disabled={saving}>
+            <Text style={styles.addCatBtnText}>+ Categoría</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -401,24 +516,26 @@ export default function MenuScreen() {
                   <View style={styles.itemsWrap}>
                     {cat.items.map((item, itemIdx) => {
                       const disponible = item.disponible ?? true;
+                      const bloqueadoPorProteina = estaItemBloqueadoPorProteina(item.proteina, proteinasBloqueadas);
+                      const deshabilitado = !disponible || bloqueadoPorProteina;
                       return (
                         <View key={itemIdx} style={styles.itemRow}>
                           <View style={styles.itemInfo}>
-                            <Text style={[styles.itemNombre, !disponible && styles.itemAgotado]}>
+                            <Text style={[styles.itemNombre, deshabilitado && styles.itemAgotado]}>
                               {item.nombre}
                             </Text>
                             <Text style={styles.itemPrecio}>C${item.precio}</Text>
-                            {!disponible && (
+                            {deshabilitado && (
                               <Text style={styles.agotadoBadge}>AGOTADO</Text>
                             )}
                           </View>
                           <View style={styles.itemActions}>
                             <Switch
-                              value={disponible}
+                              value={disponible && !bloqueadoPorProteina}
                               onValueChange={() => handleToggleDisponible(cat, itemIdx)}
                               trackColor={{ false: '#3A1A1A', true: '#14532D' }}
-                              thumbColor={disponible ? '#22C55E' : '#EF4444'}
-                              disabled={saving}
+                              thumbColor={deshabilitado ? '#EF4444' : '#22C55E'}
+                              disabled={saving || bloqueadoPorProteina}
                             />
                             <TouchableOpacity onPress={() => openEditProd(cat, itemIdx)} style={styles.iconBtn}>
                               <Text style={styles.iconBtnText}>✏️</Text>
@@ -457,9 +574,15 @@ export default function MenuScreen() {
       />
       <ProductoModal
         visible={prodModal}
-        inicial={prodInicial ? { nombre: prodInicial.nombre, precio: prodInicial.precio, descripcion: prodInicial.descripcion, opciones: prodInicial.opciones ?? [] } : null}
+        inicial={prodInicial ? { nombre: prodInicial.nombre, precio: prodInicial.precio, descripcion: prodInicial.descripcion, opciones: prodInicial.opciones ?? [], proteina: prodInicial.proteina } : null}
         onClose={() => setProdModal(false)}
         onSave={handleSaveProd}
+      />
+      <ProteinasModal
+        visible={proteinModal}
+        bloqueadas={proteinasBloqueadas}
+        onClose={() => setProteinModal(false)}
+        onSave={handleSaveProteinas}
       />
     </SafeAreaView>
   );
@@ -485,6 +608,21 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  headerBtns: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  proteinBtn: {
+    backgroundColor: '#8B4513',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  proteinBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
   addCatBtn: {
     backgroundColor: '#F59E0B',
@@ -704,5 +842,59 @@ const styles = StyleSheet.create({
   btnPrimaryText: {
     color: '#111',
     fontWeight: '700',
+  },
+  // Proteínas modal styles
+  hintText: {
+    color: '#666',
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  proteinGroup: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  proteinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#111',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  proteinLabel: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // Proteína chips
+  proteinChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    backgroundColor: '#111',
+  },
+  chipActive: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
+  },
+  chipText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: '#111',
   },
 });
