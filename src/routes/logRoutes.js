@@ -5,10 +5,11 @@ const express = require('express');
 const router = express.Router();
 const LOG_FILE = path.join(__dirname, '../../data/logs.ndjson');
 
-// GET /logs/data?limit=200&filter=<texto>
+// GET /logs/data?limit=200&filter=<texto>&after=<isoTimestamp>
 router.get('/data', (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+  const limit  = Math.min(parseInt(req.query.limit) || 200, 500);
   const filter = (req.query.filter || '').toLowerCase();
+  const after  = req.query.after || null; // solo logs con ts > after
 
   let lines = [];
   try {
@@ -18,20 +19,13 @@ router.get('/data', (req, res) => {
       .split('\n')
       .filter(Boolean)
       .map(line => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
+        try { return JSON.parse(line); } catch { return null; }
       })
       .filter(Boolean);
-  } catch (_) {
-    /* archivo no existe aún */
-  }
+  } catch (_) { /* archivo no existe aún */ }
 
-  if (filter) {
-    lines = lines.filter(e => e.msg.toLowerCase().includes(filter));
-  }
+  if (after)  lines = lines.filter(e => e.ts > after);
+  if (filter) lines = lines.filter(e => e.msg.toLowerCase().includes(filter));
 
   res.json(lines.slice(-limit));
 });
