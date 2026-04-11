@@ -23,7 +23,16 @@ function iniciarListenerNotificaciones() {
         if (change.type !== 'modified') continue;
 
         const order = { id: change.doc.id, ...change.doc.data() };
-        const { estado, telefono, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = order;
+        const { estado, telefono, jid, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = order;
+
+        // Preferir el JID completo (siempre correcto, incluye @s.whatsapp.net o @lid).
+        // Fallback a telefono para pedidos guardados antes de que se agregara el campo jid.
+        const destino = jid || telefono;
+
+        if (!destino) {
+          console.warn(`[notificaciones] Pedido ${order.id} sin jid ni telefono — omitiendo notificación`);
+          continue;
+        }
 
         const pendientes = [];
 
@@ -53,13 +62,13 @@ function iniciarListenerNotificaciones() {
 
         for (const { clave, mensaje } of pendientes) {
           try {
-            await sendWhatsAppMessage(telefono, mensaje);
+            await sendWhatsAppMessage(destino, mensaje);
             await updateDoc(doc(db, 'pedidos', order.id), {
               [`notificaciones_enviadas.${clave}`]: true,
             });
-            console.log(`[notificaciones] "${clave}" enviada a ${telefono} (pedido ${order.id})`);
+            console.log(`[notificaciones] "${clave}" enviada a ${destino} (pedido ${order.id})`);
           } catch (err) {
-            console.error(`[notificaciones] Error enviando "${clave}" a ${telefono}:`, err.message);
+            console.error(`[notificaciones] Error enviando "${clave}" a ${destino} (pedido ${order.id}):`, err.message);
           }
         }
       }
