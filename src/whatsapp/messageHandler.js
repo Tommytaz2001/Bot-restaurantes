@@ -67,6 +67,7 @@ async function verificarHorario(restauranteId) {
   try {
     const config = await getRestauranteConfig(restauranteId);
     const horario = config.horario;
+    log(`[Horario] config.horario=${JSON.stringify(horario ?? null)}`);
     if (!horario) return { abierto: true };
 
     const ahora = new Date();

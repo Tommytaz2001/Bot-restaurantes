@@ -1,5 +1,6 @@
 import { db } from './firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getBackendUrl } from './backendConfig';
 
 const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
 
@@ -58,4 +59,11 @@ export async function getHorario(): Promise<Horario> {
 
 export async function saveHorario(horario: Horario): Promise<void> {
   await setDoc(doc(db, 'restaurantes', RESTAURANTE_ID), { horario }, { merge: true });
+  // Invalida el caché del backend para que lea el horario actualizado de inmediato
+  try {
+    const backendUrl = await getBackendUrl();
+    await fetch(`${backendUrl}/whatsapp/cache/clear`, { method: 'POST' });
+  } catch {
+    // No crítico — el caché expira solo en 5 minutos
+  }
 }

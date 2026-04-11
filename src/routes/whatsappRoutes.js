@@ -1,6 +1,7 @@
 const express = require('express');
 const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateService');
 const { handleWebhook } = require('../whatsapp/metaWebhook');
+const { clearMenuCache } = require('../services/menuService');
 
 const router = express.Router();
 
@@ -22,6 +23,12 @@ router.post('/pause', (req, res) => {
 router.post('/resume', (req, res) => {
   reanudarBot();
   res.json({ botActivo: true });
+});
+
+// POST /whatsapp/cache/clear — invalida el caché de configuración (llamar tras cambios en Firestore)
+router.post('/cache/clear', (req, res) => {
+  clearMenuCache();
+  res.json({ ok: true });
 });
 
 // POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API
