@@ -33,7 +33,7 @@ services:
     ports:
       - "6543:8080"
     environment:
-      - SERVER_URL=${EVOLUTION_API_URL}
+      - SERVER_URL=http://evolution-api:8080
       - AUTHENTICATION_TYPE=apikey
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - QRCODE_LIMIT=30
