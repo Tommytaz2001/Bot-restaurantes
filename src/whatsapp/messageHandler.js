@@ -40,8 +40,13 @@ function detectarRepartidor(telefono) {
   return false;
 }
 
-// Horario de atención leído desde Firestore (restaurantes/{id}.horario.apertura / .cierre)
-// Formato: "HH:MM" en hora Nicaragua (UTC-6). Si no hay config, el bot está siempre abierto.
+// Horario de atención leído desde Firestore (restaurantes/{id}.horario)
+// Soporta formato por día: { lunes: { abre, apertura, cierre }, ... }
+// y formato antiguo flat: { apertura, cierre }
+// Zona horaria: Nicaragua (UTC-6)
+
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
 function parsearMinutos(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + (m || 0);
@@ -54,16 +59,40 @@ function formatHora12(hhmm) {
   return `${h12}:${String(m || 0).padStart(2, '0')} ${period}`;
 }
 
-async function estaEnHorario(restauranteId) {
+/**
+ * Verifica si el bot debe atender ahora.
+ * @returns {{ abierto: true } | { abierto: false, razon: 'dia_cerrado'|'fuera_horario', apertura?: string, cierre?: string }}
+ */
+async function verificarHorario(restauranteId) {
   try {
     const config = await getRestauranteConfig(restauranteId);
     const horario = config.horario;
-    if (!horario?.apertura || !horario?.cierre) return true; // sin config = siempre abierto
+    if (!horario) return { abierto: true };
+
     const ahora = new Date();
+    // Minutos transcurridos en el día (hora Nicaragua UTC-6)
     const minutosNica = ((ahora.getUTCHours() - 6 + 24) % 24) * 60 + ahora.getUTCMinutes();
-    return minutosNica >= parsearMinutos(horario.apertura) && minutosNica <= parsearMinutos(horario.cierre);
+    // Día de la semana en Nicaragua
+    const nowNica = new Date(ahora.getTime() - 6 * 60 * 60 * 1000);
+    const diaNica = DIAS_SEMANA[nowNica.getUTCDay()];
+
+    // Formato nuevo: por día de semana
+    if (horario[diaNica] !== undefined) {
+      const diaConfig = horario[diaNica];
+      if (!diaConfig.abre) return { abierto: false, razon: 'dia_cerrado' };
+      if (!diaConfig.apertura || !diaConfig.cierre) return { abierto: true };
+      const dentro = minutosNica >= parsearMinutos(diaConfig.apertura) && minutosNica <= parsearMinutos(diaConfig.cierre);
+      if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: diaConfig.apertura, cierre: diaConfig.cierre };
+      return { abierto: true };
+    }
+
+    // Formato antiguo: flat apertura/cierre
+    if (!horario.apertura || !horario.cierre) return { abierto: true };
+    const dentro = minutosNica >= parsearMinutos(horario.apertura) && minutosNica <= parsearMinutos(horario.cierre);
+    if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: horario.apertura, cierre: horario.cierre };
+    return { abierto: true };
   } catch {
-    return true; // si falla la lectura, no bloquear al cliente
+    return { abierto: true }; // si falla la lectura, no bloquear al cliente
   }
 }
 
@@ -96,16 +125,16 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   }
 
   // 1. Verificar horario de atención (configurable desde Firestore: restaurantes/{id}.horario)
-  if (!(await estaEnHorario(restauranteId))) {
-    try {
-      const config = await getRestauranteConfig(restauranteId);
-      const apertura = formatHora12(config.horario?.apertura ?? '15:00');
-      const cierre   = formatHora12(config.horario?.cierre   ?? '21:30');
+  const estadoHorario = await verificarHorario(restauranteId);
+  if (!estadoHorario.abierto) {
+    if (estadoHorario.razon === 'dia_cerrado') {
+      await sendReply('🔒 Hoy no estamos atendiendo. ¡Te esperamos otro día! 🍔');
+    } else {
+      const apertura = formatHora12(estadoHorario.apertura ?? '15:00');
+      const cierre   = formatHora12(estadoHorario.cierre   ?? '21:30');
       await sendReply(
         `⏰ En este momento estamos fuera de horario. Nuestro horario de atención es de *${apertura}* a *${cierre}*.\n\n¡Te esperamos pronto! 🍔`,
       );
-    } catch {
-      await sendReply('⏰ Estamos fuera de horario. ¡Te esperamos pronto! 🍔');
     }
     return;
   }

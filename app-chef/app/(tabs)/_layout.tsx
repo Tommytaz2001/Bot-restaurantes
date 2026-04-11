@@ -68,6 +68,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon emoji="🥗" focused={focused} />,
         }}
       />
+      <Tabs.Screen
+        name="horarios"
+        options={{
+          title: 'Horarios',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🕐" focused={focused} />,
+        }}
+      />
     </Tabs>
   );
 }
