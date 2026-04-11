@@ -91,7 +91,7 @@ function debeIgnorar(texto) {
 async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply, sendTyping = null }) {
   // 0. Kill switch — bot pausado desde la app
   if (!estaActivo()) {
-    console.log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
+    log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
     return;
   }
 
@@ -138,7 +138,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     // Re-intentar resolución del teléfono: tras el debounce los contactos suelen estar en caché
     const telefonoFinal = resolverFn ? resolverFn() : telefono;
     if (telefonoFinal !== telefono) {
-      console.log(`[messageHandler] @lid resuelto: ${telefono} → ${telefonoFinal}`);
+      log(`[messageHandler] @lid resuelto: ${telefono} → ${telefonoFinal}`);
     }
 
     // Si el @lid no pudo resolverse al número real, pasamos null para que el agente
@@ -146,11 +146,11 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     const esLidNoResuelto = remoteJid?.endsWith('@lid') && telefonoFinal === telefono;
     const telefonoParaPedido = esLidNoResuelto ? null : telefonoFinal;
     if (esLidNoResuelto) {
-      console.log(`[messageHandler] @lid sin resolver — el agente pedirá el número al cliente`);
+      log(`[messageHandler] @lid sin resolver — el agente pedirá el número al cliente`);
     }
 
     const esRepartidor = detectarRepartidor(telefono);
-    console.log(`[messageHandler] Procesando de ${telefonoFinal}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
+    log(`[messageHandler] Procesando de ${telefonoFinal}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
     log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
 
     // Indicador de "escribiendo..." mientras OpenAI procesa
@@ -168,7 +168,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
       await sendReply(result.reply);
       log(`[WA_OUT] telefono=${telefono} chars=${result.reply.length}`);
     } catch (err) {
-      console.error(`[messageHandler] Error procesando mensaje de ${telefono}:`, err.message);
+      log(`[messageHandler] Error procesando mensaje de ${telefono}: ${err.message}`);
       await sendReply('Lo siento, tuve un problema. Por favor intenta de nuevo en un momento. 🙏');
     }
   }, DEBOUNCE_MS));

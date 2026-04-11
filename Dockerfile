@@ -9,7 +9,6 @@ RUN npm ci --omit=dev
 # ── Production stage ──────────────────────────────────────────────────────────
 FROM node:20-slim
 
-# Baileys necesita openssl para las operaciones criptográficas
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     && rm -rf /var/lib/apt/lists/*

@@ -15,18 +15,19 @@ if [ -f .env ]; then
   set -a; source .env; set +a
 fi
 
-API_URL="${EVOLUTION_API_URL:-http://localhost:8080}"
+# Desde el host siempre usamos localhost, sin importar lo que diga .env
+API_URL="${EVOLUTION_SETUP_URL:-http://localhost:8080}"
 API_KEY="${EVOLUTION_API_KEY:?Variable EVOLUTION_API_KEY requerida}"
 INSTANCE="${EVOLUTION_INSTANCE:-bot-restaurantes}"
 BOT_URL="${EVOLUTION_WEBHOOK_URL:-http://bot-restaurantes:3001/whatsapp/webhook}"
 
-echo "=== Evolution API Setup ==="
+echo "=== Evolution API Setup (v1) ==="
 echo "API URL:   $API_URL"
 echo "Instance:  $INSTANCE"
 echo "Webhook:   $BOT_URL"
 echo ""
 
-# 1. Crear instancia
+# 1. Crear instancia (v1 no necesita campo integration)
 echo "[1/3] Creando instancia '$INSTANCE'..."
 curl -s -X POST "$API_URL/instance/create" \
   -H "Content-Type: application/json" \
@@ -35,13 +36,14 @@ curl -s -X POST "$API_URL/instance/create" \
 echo ""
 echo ""
 
-# 2. Configurar webhook
+# 2. Configurar webhook (v1: campos van directo, sin wrapper)
 echo "[2/3] Configurando webhook..."
 curl -s -X POST "$API_URL/webhook/set/$INSTANCE" \
   -H "Content-Type: application/json" \
   -H "apikey: $API_KEY" \
   -d "{
     \"url\": \"$BOT_URL\",
+    \"enabled\": true,
     \"webhook_by_events\": false,
     \"events\": [\"MESSAGES_UPSERT\"]
   }" | head -c 500
@@ -51,6 +53,7 @@ echo ""
 # 3. Obtener QR para conectar WhatsApp
 echo "[3/3] Obteniendo QR de conexion..."
 echo "Escanea el QR desde WhatsApp > Dispositivos vinculados > Vincular dispositivo"
+echo "Tambien disponible en: http://localhost:3001/whatsapp/qr"
 echo ""
 curl -s "$API_URL/instance/connect/$INSTANCE" \
   -H "apikey: $API_KEY" | head -c 2000

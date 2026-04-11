@@ -4,6 +4,7 @@ const cors = require('cors');
 const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
+const logRoutes = require('./src/routes/logRoutes');
 const { requireAuth } = require('./src/middleware/authMiddleware');
 const { requestLogger } = require('./src/middleware/requestLogger');
 
@@ -17,6 +18,7 @@ app.use(requestLogger);
 app.use('/chat', chatRoutes);
 app.use('/orders', requireAuth, orderRoutes);
 app.use('/whatsapp', whatsappRoutes);
+app.use('/logs', logRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -31,6 +33,9 @@ if (require.main === module) {
   });
 
   if (process.env.WHATSAPP_ENABLED === 'true') {
+    const { setupEvolution } = require('./src/services/evolutionSetup');
+    setupEvolution(); // fire-and-forget: crea instancia y webhook si no existen
+
     const { iniciarListenerNotificaciones } = require('./src/services/notificacionService');
     iniciarListenerNotificaciones();
 

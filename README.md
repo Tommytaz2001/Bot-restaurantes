@@ -1,270 +1,257 @@
-# Bot Urbano — Agente IA de Pedidos
+# Bot Urbano — Agente IA de Pedidos por WhatsApp
 
-Bot conversacional que toma pedidos por WhatsApp usando OpenAI GPT-4o-mini y guarda los pedidos en Firebase Firestore. Testeable vía REST.
+Bot conversacional que toma pedidos por WhatsApp usando OpenAI GPT-4o-mini, los guarda en Firebase Firestore y notifica en tiempo real a una app de cocina (app-chef).
+
+---
+
+## Arquitectura
+
+```
+  Cliente WhatsApp
+        |
+        | (mensaje)
+        v
+  ┌──────────────┐     webhook HTTP      ┌──────────────────┐
+  │ Evolution API │ ──────────────────>   │   Bot Backend    │
+  │  (Baileys)   │ <──────────────────   │   (Node.js)      │
+  │  Docker :8080 │    REST sendText     │   Docker :3001   │
+  └──────────────┘                       └────────┬─────────┘
+                                                  │
+                                    ┌─────────────┼─────────────┐
+                                    v             v             v
+                              ┌──────────┐ ┌──────────┐ ┌───────────┐
+                              │ OpenAI   │ │ Firebase │ │ Firebase  │
+                              │ GPT-4o   │ │Firestore │ │ Storage   │
+                              │ mini     │ │(pedidos) │ │(comprob.) │
+                              └──────────┘ └──────────┘ └───────────┘
+```
+
+**Evolution API** envuelve Baileys (libreria no oficial de WhatsApp) y lo expone como REST API dentro de Docker. Ventajas:
+- Sin tramites de Meta — funciona con cualquier numero de WhatsApp
+- Webhook interno por red Docker — no necesita URL publica
+- Gestion de sesion automatica (reconexiones, QR, persistencia)
+- API REST limpia para enviar/recibir mensajes
+
+> La imagen de Evolution API incluye un **patch custom** para soportar el formato LID de WhatsApp (ver `evolution-api/Dockerfile`).
 
 ---
 
 ## Requisitos
 
-- Node.js 20+
-- Cuenta Firebase con proyecto Firestore habilitado
+- Docker >= 24 y Docker Compose >= 2.20
+- Cuenta Firebase con Firestore y Storage habilitados
 - API Key de OpenAI
+- Un numero de WhatsApp para vincular al bot
 
 ---
 
-## Instalación
+## Setup rapido
+
+### 1. Clonar y configurar variables
 
 ```bash
-npm install
+git clone https://github.com/tu-usuario/bot-restaurantes.git
+cd bot-restaurantes
+cp .env.example .env
+# Editar .env con tus valores reales (ver seccion "Variables de entorno")
 ```
 
-Crea el archivo `.env` en la raíz (ver `.env.example`):
-
-```env
-OPENAI_API_KEY=sk-proj-...
-FIREBASE_API_KEY=AIzaSy...
-FIREBASE_PROJECT_ID=tu-proyecto
-FIREBASE_STORAGE_BUCKET=tu-proyecto.firebasestorage.app
-PORT=3001
-```
-
-Carga el menú inicial en Firestore (solo la primera vez):
+### 2. Levantar servicios
 
 ```bash
-node scripts/seedMenu.js
+docker compose up -d --build
 ```
+
+Esto levanta:
+- **backend** (`:3001`) — Bot + API REST
+- **evolution-api** (`:8080`) — WhatsApp via Baileys
+
+### 3. Crear instancia WhatsApp y vincular
+
+```bash
+bash scripts/setup-evolution.sh
+```
+
+Este script:
+1. Crea la instancia en Evolution API
+2. Configura el webhook (apunta al backend)
+3. Genera el QR para vincular WhatsApp
+
+### 4. Escanear QR
+
+Abre en el navegador:
+
+```
+http://localhost:3001/whatsapp/qr
+```
+
+Escanea el QR desde WhatsApp > Dispositivos vinculados > Vincular dispositivo.
+
+### 5. Verificar
+
+```bash
+# Salud del backend
+curl http://localhost:3001/health
+
+# Estado de WhatsApp
+curl http://localhost:3001/whatsapp/status
+
+# Estado de conexion en Evolution API
+curl http://localhost:8080/instance/connectionState/bot-restaurantes \
+  -H "apikey: TU_API_KEY"
+```
+
+Envia un mensaje al numero vinculado desde otro WhatsApp — el bot debe responder.
+
+---
+
+## Variables de entorno
+
+Todas las variables estan documentadas en `.env.example`. Referencia rapida:
+
+| Variable | Donde obtenerla | Ejemplo |
+|---|---|---|
+| `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `sk-proj-...` |
+| `FIREBASE_API_KEY` | Firebase Console > Config del proyecto | `AIzaSy...` |
+| `FIREBASE_PROJECT_ID` | Firebase Console > Config del proyecto | `mi-proyecto-123` |
+| `FIREBASE_STORAGE_BUCKET` | Firebase Console > Storage | `mi-proyecto.firebasestorage.app` |
+| `EVOLUTION_API_KEY` | Tu la defines (cualquier string seguro) | `openssl rand -hex 32` |
+| `EVOLUTION_INSTANCE` | Nombre que quieras para la instancia | `bot-restaurantes` |
+| `EVOLUTION_API_URL` | Automatico en Docker | `http://evolution-api:8080` |
+| `RESTAURANTE_ID` | ID del documento en Firestore `restaurantes/` | `urbano` |
 
 ---
 
 ## Comandos
 
-| Comando | Descripción |
+| Comando | Descripcion |
 |---|---|
-| `npm run dev` | Servidor local con hot-reload (nodemon) en puerto 3001 |
-| `npm start` | Servidor en producción |
-| `npm test` | Correr todos los tests (unit + integración) |
-| `npm run test:unit` | Solo tests unitarios (sin Firebase ni OpenAI) |
+| `docker compose up -d --build` | Levantar todos los servicios |
+| `docker compose logs -f backend` | Ver logs del bot en tiempo real |
+| `docker compose logs -f evolution-api` | Ver logs de Evolution API |
+| `docker compose restart backend` | Reiniciar solo el bot |
+| `docker compose down` | Detener todo (sesion WhatsApp persiste en volumen) |
+| `npm run dev` | Servidor local sin Docker (nodemon, puerto 3001) |
+| `npm test` | Correr tests Jest |
 
 ---
 
 ## Endpoints
 
 ### `GET /health`
-Verifica que el servidor esté corriendo.
-
-```bash
-curl http://localhost:3001/health
-```
-
-**Respuesta:**
-```json
-{ "status": "ok" }
-```
-
----
+Estado del servidor.
 
 ### `POST /chat`
-Envía un mensaje al bot y recibe su respuesta. Mantiene el historial de conversación por `sessionId`.
+Envia un mensaje al bot via REST (testing sin WhatsApp).
 
-**Body:**
 ```json
 {
-  "message": "string",        // Mensaje del usuario (requerido)
-  "sessionId": "string",      // ID único de la sesión/conversación (requerido)
-  "restauranteId": "string",  // ID del restaurante en Firestore (requerido)
-  "telefono": "string"        // Teléfono del cliente — opcional, el bot lo pide si no se envía
+  "message": "hola quiero pedir",
+  "sessionId": "cliente-001",
+  "restauranteId": "urbano"
 }
 ```
-
-**Respuesta normal:**
-```json
-{
-  "reply": "¡Hola! ¿Qué te gustaría ordenar hoy en Urbano?",
-  "order": null
-}
-```
-
-**Respuesta cuando se confirma un pedido:**
-```json
-{
-  "reply": "¡Listo! Tu pedido ha sido registrado. Te llegará pronto.",
-  "order": {
-    "id": "uuid-generado",
-    "restauranteId": "urbano",
-    "cliente": "Juan Pérez",
-    "telefono": "+50512345678",
-    "direccion": "Barrio Linda Vista, casa 5",
-    "productos": [
-      { "nombre": "Clásica", "cantidad": 1, "precio_unitario": 160, "opcion": null }
-    ],
-    "total": 160,
-    "moneda": "C$",
-    "metodo_pago": "efectivo",
-    "estado": "pendiente_pago",
-    "comprobante_url": null,
-    "createdAt": "..."
-  }
-}
-```
-
-**Errores:**
-| Código | Causa |
-|---|---|
-| `400` | Falta `message`, `sessionId` o `restauranteId` |
-| `404` | `restauranteId` no existe en Firestore |
-| `503` | Error interno (OpenAI o Firebase no disponible) |
-
----
 
 ### `GET /orders/:id`
-Consulta un pedido guardado por su ID.
+Consulta un pedido por ID.
 
-**Respuesta:**
-```json
-{
-  "id": "uuid",
-  "restauranteId": "urbano",
-  "cliente": "Juan Pérez",
-  "telefono": "+50512345678",
-  "direccion": "Barrio Linda Vista, casa 5",
-  "productos": [...],
-  "total": 160,
-  "moneda": "C$",
-  "metodo_pago": "efectivo",
-  "estado": "pendiente_pago",
-  "comprobante_url": null
-}
-```
+### `POST /orders/:id/status`
+Cambia el estado de un pedido (usado por app-chef). Envia notificacion al cliente por WhatsApp.
 
-**Errores:**
-| Código | Causa |
-|---|---|
-| `404` | Pedido no encontrado |
-| `503` | Error de Firebase |
+### `POST /whatsapp/webhook`
+Recibe eventos de Evolution API (mensajes entrantes). No llamar manualmente.
 
----
+### `GET /whatsapp/qr`
+Pagina HTML con el QR para vincular WhatsApp.
 
-## Ejemplos curl — Conversación completa
+### `GET /whatsapp/status`
+Estado del bot (activo/pausado).
 
-### 1. Saludo inicial
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "hola",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-
-### 2. Pedir el menú
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "¿qué hamburguesas tienen?",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-
-### 3. Hacer un pedido
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "quiero una Clásica y una Coca Cola",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-
-### 4. Dar datos de entrega
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Me llamo Juan Pérez, mi dirección es Barrio Linda Vista casa 5, teléfono +50512345678",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-
-### 5. Elegir método de pago
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "pago en efectivo",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-
-### 6. Confirmar pedido (guarda en Firestore)
-```bash
-curl -X POST http://localhost:3001/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "sí, confirmo",
-    "sessionId": "cliente-001",
-    "restauranteId": "urbano"
-  }'
-```
-> La respuesta incluirá `"order": { "id": "...", "estado": "pendiente_pago", ... }`
-
-### 7. Consultar el pedido guardado
-```bash
-curl http://localhost:3001/orders/{id-del-pedido}
-```
-
----
-
-## Estados de un pedido
-
-| Estado | Significado |
-|---|---|
-| `pendiente` | Pedido recibido, pago por transferencia — esperando comprobante |
-| `pendiente_pago` | Pedido recibido, pago en efectivo al recibir |
-| `pagado` | Pago confirmado |
+### `POST /whatsapp/pause` / `POST /whatsapp/resume`
+Pausa/reanuda el bot (deja de responder mensajes).
 
 ---
 
 ## Estructura del proyecto
 
 ```
-├── index.js                    — Entry point Express
-├── prompts/
-│   └── agent.txt               — System prompt del agente (editable sin reiniciar)
+├── index.js                        — Entry point Express
+├── docker-compose.yml              — Backend + Evolution API
+├── Dockerfile                      — Imagen del backend
+├── evolution-api/
+│   └── Dockerfile                  — Imagen custom de Evolution API (patch LID)
 ├── scripts/
-│   └── seedMenu.js             — Carga menú inicial en Firestore
-├── firebase/
-│   └── firestore.rules         — Reglas de seguridad Firestore
+│   ├── seedMenu.js                 — Carga menu inicial en Firestore
+│   └── setup-evolution.sh          — Crea instancia + webhook en Evolution API
+├── prompts/
+│   └── agent.txt                   — System prompt del agente IA
 ├── src/
+│   ├── whatsapp/
+│   │   ├── metaWebhook.js          — Handler del webhook de Evolution API
+│   │   ├── metaSender.js           — Envio de mensajes via Evolution API REST
+│   │   └── messageHandler.js       — Logica de procesamiento de mensajes
 │   ├── agent/
-│   │   ├── agentService.js     — Lógica principal del agente IA
-│   │   └── sessionStore.js     — Historial de conversación en memoria
+│   │   ├── agentService.js         — Agente IA (OpenAI + function calling)
+│   │   └── sessionStore.js         — Historial de conversacion en memoria
 │   ├── orders/
-│   │   ├── orderService.js     — Guardar/consultar pedidos en Firestore
-│   │   └── orderValidator.js   — Validación del schema de pedido
+│   │   ├── orderService.js         — CRUD de pedidos en Firestore
+│   │   └── orderValidator.js       — Validacion del schema de pedido
 │   ├── routes/
-│   │   ├── chatRoutes.js       — POST /chat
-│   │   └── orderRoutes.js      — GET /orders/:id
+│   │   ├── chatRoutes.js           — POST /chat
+│   │   ├── orderRoutes.js          — GET/POST /orders
+│   │   └── whatsappRoutes.js       — Webhook + QR + status
 │   └── services/
-│       ├── firebaseService.js  — Inicialización Firebase
-│       ├── menuService.js      — Menú desde Firestore con caché 5 min
-│       └── openaiService.js    — Wrapper GPT-4o-mini con function calling
-└── tests/                      — 30 tests (unit + integración)
+│       ├── firebaseService.js      — Inicializacion Firebase
+│       ├── menuService.js          — Menu desde Firestore (cache 5 min)
+│       ├── openaiService.js        — Wrapper GPT-4o-mini
+│       ├── notificacionService.js  — Listener Firestore para notificar clientes
+│       └── notificacionQueue.js    — Cola de notificaciones pendientes
+└── tests/                          — Tests unitarios e integracion
 ```
+
+---
+
+## Flujo de un pedido
+
+1. Cliente escribe por WhatsApp
+2. Evolution API recibe el mensaje y lo envia al backend via webhook
+3. Backend lo pasa a OpenAI con historial de conversacion
+4. IA responde en lenguaje natural (menu, precios, datos)
+5. Al confirmar pedido → genera JSON → guarda en Firestore → responde confirmacion
+6. App-chef ve el pedido en tiempo real y cambia estado
+7. Cambio de estado → backend notifica al cliente por WhatsApp
+8. Cliente envia comprobante (imagen) → se guarda en Firebase Storage
 
 ---
 
 ## Firestore — Colecciones
 
 ```
-restaurantes/{restauranteId}          — Config del restaurante (nombre, moneda, país)
-restaurantes/{restauranteId}/menu/    — Categorías del menú con items y precios
+restaurantes/{restauranteId}          — Config del restaurante (nombre, moneda, pais)
+restaurantes/{restauranteId}/menu/    — Categorias del menu con items y precios
 pedidos/{pedidoId}                    — Pedidos confirmados
 ```
 
-Para agregar un nuevo restaurante, crea el documento en Firestore manualmente o crea un nuevo script de seed siguiendo la misma estructura que `scripts/seedMenu.js`.
+---
+
+## Patch LID de WhatsApp
+
+WhatsApp migro a un formato de identificacion interno llamado **LID** (Linked ID). En lugar de `593XXXXXXXXX@s.whatsapp.net`, ahora usa `188411776393263@lid`.
+
+Evolution API v1.8.x valida si el numero existe en WhatsApp antes de enviar (`onWhatsApp()`), pero esta funcion solo funciona con numeros de telefono, no con LIDs. Esto causa `exists: false` y bloquea el envio.
+
+El archivo `evolution-api/Dockerfile` aplica un patch que agrega `@lid` a la lista de excepciones del chequeo de existencia, permitiendo enviar mensajes a contactos identificados por LID.
+
+---
+
+## Solucion de problemas
+
+| Problema | Causa | Solucion |
+|---|---|---|
+| QR no aparece | Instancia no creada | `bash scripts/setup-evolution.sh` |
+| Bot no responde mensajes | Webhook no configurado | Re-ejecutar `setup-evolution.sh` |
+| `exists: false` al enviar | Formato LID sin patch | Verificar que se usa la imagen custom (`build: ./evolution-api`) |
+| `WHATSAPP_ENABLED` no activa | Variable no es `true` | Verificar `.env` |
+| Error Firebase al iniciar | Credenciales incorrectas | Verificar `FIREBASE_PROJECT_ID` y `FIREBASE_API_KEY` |
+| Puerto 3001 ocupado | Otro proceso usa el puerto | Cambiar `PORT` en `.env` |
+| Sesion perdida tras reinicio | Volumen no persistido | Verificar `evolution_instances` volume en docker-compose |

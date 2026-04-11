@@ -9,9 +9,6 @@ services:
       - "${PORT:-3001}:${PORT:-3001}"
     env_file:
       - .env
-    environment:
-      - PUID=1000
-      - PGID=101
     volumes:
       - ${BACKEND_VOLUME:-backend_data}:/app/data
     depends_on:
@@ -25,10 +22,14 @@ services:
       - bot-network
 
   # ── Evolution API (WhatsApp via Baileys + REST) ──────────────────────────────
+  # Imagen custom con patch para soporte de WhatsApp LID format
   evolution-api:
-    image: atendai/evolution-api:v2.2.3
+    build: ./evolution-api
     container_name: evolution-api
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "8080:8080"
     environment:
@@ -44,107 +45,8 @@ services:
     networks:
       - bot-network
 
-  # ── Elasticsearch ─────────────────────────────────────────────────────────────
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-8.13.4}
-    container_name: elasticsearch
-    restart: unless-stopped
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=true
-      - xpack.security.http.ssl.enabled=false
-      - xpack.license.self_generated.type=basic
-      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - PUID=1000
-      - PGID=101
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
-    volumes:
-      - ${ES_VOLUME:-es_data}:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf -u elastic:$$ELASTIC_PASSWORD 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
-      interval: 20s
-      timeout: 10s
-      retries: 15
-      start_period: 60s
-    networks:
-      - bot-network
-
-  # ── ES setup: setea contraseña de kibana_system antes de arrancar Kibana ──────
-  es-setup:
-    image: alpine:3.19
-    container_name: es-setup
-    restart: "no"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    environment:
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-    command:
-      - sh
-      - -c
-      - |
-        apk add --no-cache curl --quiet
-        echo "[es-setup] Seteando password de kibana_system..."
-        RESP=$$(curl -s -o /tmp/out.txt -w "%{http_code}" \
-          -u "elastic:$$ELASTIC_PASSWORD" \
-          -X POST "http://elasticsearch:9200/_security/user/kibana_system/_password" \
-          -H "Content-Type: application/json" \
-          -d "{\"password\":\"$$ELASTIC_PASSWORD\"}")
-        echo "[es-setup] HTTP $$RESP — $$(cat /tmp/out.txt)"
-        exit 0
-    networks:
-      - bot-network
-
-  # ── Kibana ────────────────────────────────────────────────────────────────────
-  kibana:
-    image: docker.elastic.co/kibana/kibana:${ELASTIC_VERSION:-8.13.4}
-    container_name: kibana
-    restart: unless-stopped
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
-      - SERVER_NAME=${KIBANA_SERVER_NAME:-kibana}
-      - SERVER_PUBLICBASEURL=${KIBANA_PUBLIC_URL:-http://localhost:5601}
-      - LOGGING_ROOT_LEVEL=${KIBANA_LOG_LEVEL:-warn}
-    ports:
-      - "${KIBANA_PORT:-5601}:5601"
-    depends_on:
-      es-setup:
-        condition: service_completed_successfully
-    networks:
-      - bot-network
-
-  # ── Kibana setup (corre una vez y termina) ───────────────────────────────────
-  kibana-setup:
-    image: alpine:3.19
-    container_name: kibana-setup
-    depends_on:
-      - kibana
-      - elasticsearch
-    environment:
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - KIBANA_INDEX_PATTERN=${KIBANA_INDEX_PATTERN:-bot-logs-*}
-      - KIBANA_DATA_VIEW_ID=${KIBANA_DATA_VIEW_ID:-bot-logs}
-      - KIBANA_DATA_VIEW_TITLE=${KIBANA_DATA_VIEW_TITLE:-Bot Logs}
-    volumes:
-      - ./kibana:/setup:ro
-    command: ["/bin/sh", "/setup/setup.sh"]
-    restart: "no"
-    networks:
-      - bot-network
-
-
 volumes:
+  backend_data:
   evolution_instances:
 
 networks:

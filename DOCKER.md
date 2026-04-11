@@ -10,86 +10,89 @@
 
 ## 1. Configurar variables de entorno
 
-Copia el archivo de ejemplo y completa los valores reales:
-
 ```bash
 cp .env.example .env
 ```
 
-Edita `.env`:
+Edita `.env` con tus valores reales. Cada variable esta documentada en `.env.example` con instrucciones de donde obtenerla.
+
+Las variables minimas para funcionar:
 
 ```env
 OPENAI_API_KEY=sk-proj-...
 FIREBASE_API_KEY=AIzaSy...
 FIREBASE_PROJECT_ID=tu-proyecto
 FIREBASE_STORAGE_BUCKET=tu-proyecto.firebasestorage.app
-PORT=3001
-BACKEND_URL=http://IP-DEL-SERVIDOR:3001
 WHATSAPP_ENABLED=true
 RESTAURANTE_ID=urbano
+EVOLUTION_API_KEY=una-clave-segura
+EVOLUTION_INSTANCE=bot-restaurantes
+EVOLUTION_API_URL=http://evolution-api:8080
 ```
 
-> ⚠️ **Nunca subas `.env` al repositorio.** Está en `.gitignore` por defecto.
+> **Nunca subas `.env` al repositorio.** Esta en `.gitignore` por defecto.
 
 ---
 
-## 2. Construir y levantar el contenedor
+## 2. Construir y levantar
 
 ```bash
-# Construir imagen y levantar en segundo plano
 docker compose up -d --build
+```
 
-# Ver logs en tiempo real
-docker compose logs -f
+Esto levanta 2 contenedores:
+
+| Servicio | Puerto | Descripcion |
+|---|---|---|
+| `backend` | 3001 | Bot + API REST (Node.js) |
+| `evolution-api` | 8080 | WhatsApp via Baileys (REST API) |
+
+Verificar que estan corriendo:
+
+```bash
+docker compose ps
 ```
 
 ---
 
-## 3. Escanear el QR de WhatsApp
+## 3. Crear instancia WhatsApp
 
-Al iniciar por primera vez, el backend genera un QR para vincular WhatsApp.
+Ejecutar **una sola vez** despues de levantar los contenedores:
 
-**Abre tu navegador y ve a:**
+```bash
+bash scripts/setup-evolution.sh
+```
+
+Este script:
+1. Crea la instancia de WhatsApp en Evolution API
+2. Configura el webhook (para que los mensajes lleguen al backend)
+3. Muestra el QR para vincular
+
+> Si recreas los contenedores con `docker compose down && docker compose up -d`, la sesion persiste en el volumen `evolution_instances`. Pero si eliminas el volumen, debes ejecutar el script de nuevo.
+
+---
+
+## 4. Escanear QR de WhatsApp
+
+Abre en el navegador:
 
 ```
 http://IP-DEL-SERVIDOR:3001/whatsapp/qr
 ```
 
-Verás una página como esta con el QR listo para escanear:
+- **QR visible** → WhatsApp > Dispositivos vinculados > Vincular dispositivo > escanea
+- **"WhatsApp conectado"** → sesion establecida correctamente
+- La pagina se recarga cada 30 segundos automaticamente
 
-- **Iniciando...** → espera unos segundos, la página se actualiza automáticamente
-- **QR visible** → abre WhatsApp → Dispositivos vinculados → Vincular dispositivo → escanea
-- **Bot activo** → sesión establecida correctamente
-
-Una vez escaneado, la sesión se guarda en Firestore (`baileys_sessions`) y no necesitas escanear de nuevo aunque reinicies el contenedor.
-
-> Si necesitas verificar el estado por API: `GET /whatsapp/status`
-> ```json
-> { "status": "connected", "hasQR": false, "connectedAt": "2024-01-15T10:30:00Z" }
-> ```
-
----
-
-## 4. Comandos útiles
+Verificar por API:
 
 ```bash
-# Ver estado del contenedor
-docker compose ps
+# Estado del bot
+curl http://localhost:3001/whatsapp/status
 
-# Reiniciar el servicio
-docker compose restart backend
-
-# Detener sin borrar
-docker compose stop
-
-# Detener y eliminar contenedor (la sesión persiste en Firestore)
-docker compose down
-
-# Ver las últimas 100 líneas de logs
-docker compose logs --tail=100 backend
-
-# Acceder al contenedor para debugging
-docker compose exec backend sh
+# Estado de conexion de Evolution API
+curl http://localhost:8080/instance/connectionState/bot-restaurantes \
+  -H "apikey: TU_API_KEY"
 ```
 
 ---
@@ -98,61 +101,84 @@ docker compose exec backend sh
 
 ```bash
 curl http://localhost:3001/health
-# Respuesta esperada: {"status":"ok"}
+# {"status":"ok"}
+```
+
+Envia un mensaje al numero vinculado desde otro WhatsApp. El bot debe responder.
+
+---
+
+## 6. Comandos utiles
+
+```bash
+# Ver logs del backend en tiempo real
+docker compose logs -f backend
+
+# Ver logs de Evolution API
+docker compose logs -f evolution-api
+
+# Reiniciar solo el bot (sin tocar WhatsApp)
+docker compose restart backend
+
+# Detener sin borrar volumenes (sesion persiste)
+docker compose stop
+
+# Detener y eliminar contenedores (sesion persiste en volumen)
+docker compose down
+
+# Detener y eliminar TODO incluyendo volumenes (requiere re-setup)
+docker compose down -v
+
+# Reconstruir imagen del backend tras cambios de codigo
+docker compose up -d --build backend
+
+# Acceder al contenedor para debugging
+docker compose exec backend sh
 ```
 
 ---
 
-## 6. Actualizar a nueva versión
+## 7. Actualizar a nueva version
 
 ```bash
-# 1. Bajar los últimos cambios
 git pull
-
-# 2. Reconstruir imagen y reemplazar contenedor
 docker compose up -d --build
-
-# La sesión de WhatsApp persiste en Firestore — no necesitas re-escanear
 ```
+
+La sesion de WhatsApp persiste en el volumen — no necesitas re-escanear.
 
 ---
 
-## 7. Despliegue en servidor remoto (SSH)
+## 8. Despliegue en servidor remoto
 
-### Opción A — Copiar archivos con scp
+### Opcion A — Clonar desde git
 
 ```bash
-# Desde tu máquina local, copiar el proyecto al servidor
-scp -r . usuario@IP-SERVIDOR:/opt/bot-restaurantes
-
-# Conectarse al servidor
 ssh usuario@IP-SERVIDOR
-
-# Ir al directorio y levantar
-cd /opt/bot-restaurantes
-docker compose up -d --build
-```
-
-### Opción B — Clonar desde git en el servidor
-
-```bash
-# En el servidor
 git clone https://github.com/tu-usuario/bot-restaurantes.git /opt/bot-restaurantes
 cd /opt/bot-restaurantes
-
-# Crear .env con los valores reales
 cp .env.example .env
-nano .env
-
-# Levantar
+nano .env                          # Completar con valores reales
 docker compose up -d --build
+bash scripts/setup-evolution.sh    # Crear instancia WhatsApp
+# Abrir http://IP:3001/whatsapp/qr y escanear QR
+```
+
+### Opcion B — Copiar con scp
+
+```bash
+scp -r . usuario@IP-SERVIDOR:/opt/bot-restaurantes
+ssh usuario@IP-SERVIDOR
+cd /opt/bot-restaurantes
+docker compose up -d --build
+bash scripts/setup-evolution.sh
 ```
 
 ---
 
-## 8. Exponer al exterior (nginx como proxy inverso)
+## 9. Proxy inverso con nginx (opcional)
 
-Si quieres usar un dominio propio o HTTPS, instala nginx en el servidor:
+Para usar dominio propio o HTTPS:
 
 ```nginx
 # /etc/nginx/sites-available/bot-restaurantes
@@ -169,15 +195,14 @@ server {
 ```
 
 ```bash
-# Activar sitio y recargar nginx
 sudo ln -s /etc/nginx/sites-available/bot-restaurantes /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# HTTPS con Let's Encrypt (opcional)
+# HTTPS con Let's Encrypt
 sudo certbot --nginx -d tu-dominio.com
 ```
 
-Actualiza `BACKEND_URL=https://tu-dominio.com` en `.env` y reinicia:
+Actualiza `BACKEND_URL` en `.env` y reinicia:
 
 ```bash
 docker compose restart backend
@@ -185,28 +210,20 @@ docker compose restart backend
 
 ---
 
-## 9. Auto-restart al reiniciar el servidor
+## 10. Auto-restart
 
-El `docker-compose.yml` ya incluye `restart: unless-stopped`, lo que significa que el contenedor se reinicia automáticamente si el servidor se reinicia o si el proceso cae.
-
-Para verificarlo:
-
-```bash
-# Simular reinicio del servidor
-sudo reboot
-
-# Al volver, verificar que el contenedor ya está corriendo
-docker compose ps
-```
+`docker-compose.yml` incluye `restart: unless-stopped` en ambos servicios. Los contenedores se reinician automaticamente si el servidor se reinicia o si el proceso cae.
 
 ---
 
-## Solución de problemas
+## Solucion de problemas
 
-| Problema | Causa probable | Solución |
+| Problema | Causa probable | Solucion |
 |---|---|---|
-| QR no aparece en logs | `WHATSAPP_ENABLED` no es `true` | Verificar `.env` |
-| `Connection Closed` al notificar | WhatsApp desconectado | `docker compose restart backend` y re-escanear QR |
-| `Error al iniciar Firebase` | Variables Firebase incorrectas | Verificar `FIREBASE_PROJECT_ID` y `FIREBASE_API_KEY` |
-| Puerto 3001 ocupado | Otro proceso usa el puerto | Cambiar `PORT=3002` en `.env` y el mapeo en `docker-compose.yml` |
-| Sesión perdida tras reinicio | `baileys_sessions` en Firestore vacío | Escanear QR nuevamente |
+| QR no aparece | Instancia no creada en Evolution API | `bash scripts/setup-evolution.sh` |
+| Bot no responde | Webhook no configurado | Re-ejecutar `setup-evolution.sh` |
+| `exists: false` al enviar | LID sin patch aplicado | Verificar `build: ./evolution-api` en docker-compose |
+| Error Firebase | Credenciales incorrectas | Verificar variables `FIREBASE_*` en `.env` |
+| Puerto ocupado | Otro proceso usa 3001 o 8080 | Cambiar `PORT` en `.env` |
+| Sesion perdida | Volumen eliminado | `bash scripts/setup-evolution.sh` + escanear QR |
+| `WHATSAPP_ENABLED` no activa | Variable no es `true` en `.env` | Corregir y `docker compose restart backend` |

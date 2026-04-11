@@ -8,6 +8,7 @@
 const { recibirMensaje } = require('./messageHandler');
 const { sendWhatsAppMessage } = require('./metaSender');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
+const { log } = require('../utils/logger');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
@@ -55,23 +56,41 @@ async function downloadMediaEvolution(key) {
 async function handleWebhook(req, res) {
   res.sendStatus(200); // Responder inmediatamente
 
-  const { event, instance, data } = req.body || {};
+  const body = req.body || {};
+  const event = (body.event || '').toLowerCase();
 
-  // Solo procesar eventos de mensajes
+  log(`[Webhook] Evento recibido: "${body.event}"`);
+
+  // Solo procesar eventos de mensajes (v1: messages.upsert, posible variante en mayúsculas)
   if (event !== 'messages.upsert') return;
 
-  const key = data?.key || {};
-  const message = data?.message || {};
-  const messageType = data?.messageType;
+  // v1 puede enviar data como array o como objeto
+  const messages = Array.isArray(body.data) ? body.data : [body.data];
+
+  for (const data of messages) {
+    await _processMessage(data);
+  }
+}
+
+async function _processMessage(data) {
+  if (!data) return;
+
+  const key = data.key || {};
+  const message = data.message || {};
+  const messageType = data.messageType;
 
   // Ignorar mensajes propios y grupos
   if (key.fromMe || key.remoteJid?.endsWith('@g.us')) return;
 
-  // Extraer número de teléfono limpio desde remoteJid
+  // Extraer número de teléfono y remoteJid completo
   const remoteJid = key.remoteJid || '';
-  const telefono = remoteJid.split('@')[0]; // "50512345678@s.whatsapp.net" → "50512345678"
+  const telefono = remoteJid.split('@')[0];
 
   if (!telefono) return;
+
+  // Para enviar respuestas usamos el remoteJid completo (@lid o @s.whatsapp.net)
+  // Evolution API necesita el JID completo para LIDs
+  const replyTo = remoteJid;
 
   const messageId = key.id;
   const contactName = data?.pushName || null;
@@ -85,21 +104,20 @@ async function handleWebhook(req, res) {
     try {
       const pedidoPendiente = await findPedidoPendientePago(telefono);
       if (pedidoPendiente) {
-        console.log(`[Webhook] Imagen de ${telefono} → comprobante para pedido ${pedidoPendiente.id}`);
+        log(`[Webhook] Imagen de ${telefono} → comprobante para pedido ${pedidoPendiente.id}`);
         const { buffer, mimeType } = await downloadMediaEvolution(key);
         await attachComprobante(pedidoPendiente.id, buffer, mimeType);
-        await sendWhatsAppMessage(
-          telefono,
+        await sendWhatsAppMessage(replyTo,
           '✅ *Comprobante recibido.* El chef verificará tu pago y confirmará el pedido en breve. 🙏',
         );
-        console.log(`[Webhook] Comprobante guardado para pedido ${pedidoPendiente.id}`);
+        log(`[Webhook] Comprobante guardado para pedido ${pedidoPendiente.id}`);
         return;
       }
     } catch (err) {
-      console.error(`[Webhook] Error procesando comprobante de ${telefono}:`, err.message);
+      log(`[Webhook] Error procesando comprobante de ${telefono}: ${err.message}`);
     }
     // Sin pedido pendiente → responder que solo se atiende por texto
-    await sendWhatsAppMessage(telefono, MSG_MEDIA).catch(() => {});
+    await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
     return;
   }
 
@@ -109,33 +127,33 @@ async function handleWebhook(req, res) {
   if (!texto) {
     const MEDIA_TYPES = ['audioMessage', 'videoMessage', 'documentMessage', 'stickerMessage'];
     if (MEDIA_TYPES.includes(messageType)) {
-      console.log(`[Webhook] Media (${messageType}) de ${telefono} → respondiendo`);
-      await sendWhatsAppMessage(telefono, MSG_MEDIA).catch(() => {});
+      log(`[Webhook] Media (${messageType}) de ${telefono} → respondiendo`);
+      await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
     } else {
-      console.log(`[Webhook] Mensaje ignorado de ${telefono} (tipo: ${messageType})`);
+      log(`[Webhook] Mensaje ignorado de ${telefono} (tipo: ${messageType})`);
     }
     return;
   }
 
   texto = texto.trim();
 
-  console.log(`[Webhook] ← ${telefono}: ${texto.substring(0, 80)}`);
+  log(`[Webhook] ← ${telefono}: ${texto.substring(0, 80)}`);
 
-  // Procesar mensaje
+  // Procesar mensaje (telefono para Firestore, replyTo para respuestas WhatsApp)
   await recibirMensaje({
     telefono,
-    remoteJid: telefono, // Evolution entrega remoteJid con @s.whatsapp.net, extraemos número limpio
+    remoteJid: replyTo,
     texto,
     restauranteId: RESTAURANTE_ID,
     contactName,
     esMensajeReenviado: !!(message.contextInfo?.isForwarded),
-    sendTyping: () => Promise.resolve(), // Evolution API no soporta typing indicator (usar markAsRead como alternativa)
+    sendTyping: () => Promise.resolve(),
     sendReply: async (reply) => {
       try {
-        await sendWhatsAppMessage(telefono, reply);
-        console.log(`[Webhook] → ${telefono}: ${reply.substring(0, 80)}`);
+        await sendWhatsAppMessage(replyTo, reply);
+        log(`[Webhook] → ${telefono}: ${reply.substring(0, 80)}`);
       } catch (err) {
-        console.error(`[Webhook] Error enviando respuesta a ${telefono}:`, err.message);
+        log(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`);
       }
     },
   });

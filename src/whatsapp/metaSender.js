@@ -28,7 +28,7 @@ async function sendWhatsAppMessage(to, text) {
     },
     body: JSON.stringify({
       number: to,
-      text,
+      textMessage: { text },
     }),
   });
 
