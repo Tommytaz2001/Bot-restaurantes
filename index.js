@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
@@ -12,6 +13,7 @@ const app = express();
 app.use(cors());
 
 app.use(express.json());
+app.use(cookieParser(process.env.LOGS_SESSION_SECRET || 'cambiar_este_secreto'));
 
 app.use(requestLogger);
 

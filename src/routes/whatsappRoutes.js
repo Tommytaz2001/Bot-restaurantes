@@ -2,11 +2,12 @@ const express = require('express');
 const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateService');
 const { handleWebhook } = require('../whatsapp/metaWebhook');
 const { clearMenuCache } = require('../services/menuService');
+const { requireAuth } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 // GET /whatsapp/status — estado del bot
-router.get('/status', (req, res) => {
+router.get('/status', requireAuth, (req, res) => {
   res.json({
     status: 'active',
     botActivo: estaActivo(),
@@ -14,18 +15,19 @@ router.get('/status', (req, res) => {
 });
 
 // POST /whatsapp/pause — pausa el bot (deja de responder mensajes)
-router.post('/pause', (req, res) => {
+router.post('/pause', requireAuth, (req, res) => {
   pausarBot();
   res.json({ botActivo: false });
 });
 
 // POST /whatsapp/resume — reanuda el bot
-router.post('/resume', (req, res) => {
+router.post('/resume', requireAuth, (req, res) => {
   reanudarBot();
   res.json({ botActivo: true });
 });
 
 // POST /whatsapp/cache/clear — invalida el caché de configuración (llamar tras cambios en Firestore)
+// Sin auth: operación idempotente, no destructiva. La llama la app al guardar menú/horarios.
 router.post('/cache/clear', (req, res) => {
   clearMenuCache();
   res.json({ ok: true });

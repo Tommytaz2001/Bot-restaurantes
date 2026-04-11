@@ -5,11 +5,108 @@ const express = require('express');
 const router = express.Router();
 const LOG_FILE = path.join(__dirname, '../../data/logs.ndjson');
 
+// ── Auth middleware ────────────────────────────────────────────────────────────
+
+function requireLogs(req, res, next) {
+  const session = req.signedCookies?.logs_session;
+  if (session && session === process.env.LOGS_USER) return next();
+
+  // Solicitudes de datos (fetch desde el browser): devolver 401 en vez de redirigir
+  if (req.path === '/data') {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  res.redirect('/logs/login');
+}
+
+// ── Login ──────────────────────────────────────────────────────────────────────
+
+router.get('/login', (req, res) => {
+  // Si ya está logueado, redirigir directo a /logs
+  const session = req.signedCookies?.logs_session;
+  if (session && session === process.env.LOGS_USER) return res.redirect('/logs');
+
+  const error = req.query.error
+    ? '<p class="error">Usuario o contraseña incorrectos.</p>'
+    : '';
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Logs — Acceso</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f; color: #e0e0e0;
+      display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    }
+    .card {
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+      padding: 2rem; width: 100%; max-width: 360px;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1.5rem; color: #fff; }
+    label { display: block; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+    input {
+      width: 100%; padding: 10px 12px; background: #2a2a2a; border: 1px solid #444;
+      border-radius: 6px; color: #e0e0e0; font-size: 14px; margin-bottom: 1rem;
+    }
+    input:focus { outline: none; border-color: #4a9eff; }
+    button {
+      width: 100%; padding: 10px; background: #4a9eff; border: none;
+      border-radius: 6px; color: #000; font-weight: 700; font-size: 14px; cursor: pointer;
+    }
+    button:hover { background: #60afff; }
+    .error { color: #ff6b6b; font-size: 13px; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📋 Bot Logs</h1>
+    ${error}
+    <form method="POST" action="/logs/login">
+      <label for="user">Usuario</label>
+      <input type="text" id="user" name="user" autocomplete="username" required autofocus>
+      <label for="pass">Contraseña</label>
+      <input type="password" id="pass" name="pass" autocomplete="current-password" required>
+      <button type="submit">Ingresar</button>
+    </form>
+  </div>
+</body>
+</html>`);
+});
+
+router.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+  const { user, pass } = req.body;
+  const validUser = process.env.LOGS_USER;
+  const validPass = process.env.LOGS_PASSWORD;
+
+  if (validUser && validPass && user === validUser && pass === validPass) {
+    res.cookie('logs_session', user, {
+      signed: true,
+      httpOnly: true,
+      maxAge: 8 * 60 * 60 * 1000, // 8 horas
+      sameSite: 'lax',
+    });
+    return res.redirect('/logs');
+  }
+  res.redirect('/logs/login?error=1');
+});
+
+router.get('/logout', (req, res) => {
+  res.clearCookie('logs_session');
+  res.redirect('/logs/login');
+});
+
+// ── Data endpoint ──────────────────────────────────────────────────────────────
+
 // GET /logs/data?limit=200&filter=<texto>&after=<isoTimestamp>
-router.get('/data', (req, res) => {
+router.get('/data', requireLogs, (req, res) => {
   const limit  = Math.min(parseInt(req.query.limit) || 200, 500);
   const filter = (req.query.filter || '').toLowerCase();
-  const after  = req.query.after || null; // solo logs con ts > after
+  const after  = req.query.after || null;
 
   let lines = [];
   try {
@@ -30,8 +127,9 @@ router.get('/data', (req, res) => {
   res.json(lines.slice(-limit));
 });
 
-// GET /logs - página HTML con auto-refresco
-router.get('/', (req, res) => {
+// ── Logs viewer (HTML) ─────────────────────────────────────────────────────────
+
+router.get('/', requireLogs, (req, res) => {
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -119,6 +217,17 @@ router.get('/', (req, res) => {
       color: #000;
     }
 
+    button.logout {
+      background: transparent;
+      border-color: #3a3a3a;
+      color: #666;
+    }
+
+    button.logout:hover {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
     .status {
       font-size: 12px;
       color: #888;
@@ -176,7 +285,6 @@ router.get('/', (req, res) => {
       max-width: 800px;
     }
 
-    /* Colores por tipo de log */
     .log-error { color: #ff6b6b; }
     .log-warn { color: #ffa500; }
     .log-http { color: #888; }
@@ -212,6 +320,9 @@ router.get('/', (req, res) => {
           <button id="clearBtn" title="Limpiar tabla">
             🗑️ Limpiar
           </button>
+          <button class="logout" onclick="window.location.href='/logs/logout'" title="Cerrar sesión">
+            Salir
+          </button>
         </div>
         <div class="status" id="status">Actualizando...</div>
       </div>
@@ -240,7 +351,6 @@ router.get('/', (req, res) => {
     let allLogs = [];
     let autoScroll = true;
     let lastUpdate = Date.now();
-    // Persistir el corte de clear en localStorage para sobrevivir recargas
     let clearedBeforeTs = localStorage.getItem('logs_cleared_ts') || null;
 
     function getLogClass(message) {
@@ -306,8 +416,13 @@ router.get('/', (req, res) => {
           ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedBeforeTs)}\`
           : '/logs/data?limit=500';
         const response = await fetch(url);
-        const logs = await response.json();
 
+        if (response.status === 401) {
+          window.location.href = '/logs/login';
+          return;
+        }
+
+        const logs = await response.json();
         allLogs = logs;
         lastUpdate = Date.now();
         renderLogs();
@@ -322,7 +437,6 @@ router.get('/', (req, res) => {
       }
     }
 
-    // Event listeners
     filterInput.addEventListener('input', renderLogs);
 
     autoScrollBtn.addEventListener('click', () => {
@@ -331,7 +445,6 @@ router.get('/', (req, res) => {
     });
 
     clearBtn.addEventListener('click', () => {
-      // Usar el timestamp del último log del servidor para evitar clock skew
       clearedBeforeTs = allLogs.length > 0
         ? allLogs[allLogs.length - 1].ts
         : new Date().toISOString();
@@ -340,10 +453,7 @@ router.get('/', (req, res) => {
       logsTable.innerHTML = '<tr><td colspan="2" class="empty-state"><p>Pantalla limpiada — esperando nuevos logs...</p></td></tr>';
     });
 
-    // Cargar logs inicialmente
     fetchLogs();
-
-    // Auto-refresh cada 5 segundos
     setInterval(fetchLogs, 5000);
   </script>
 </body>

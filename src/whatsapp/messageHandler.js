@@ -67,29 +67,37 @@ async function verificarHorario(restauranteId) {
   try {
     const config = await getRestauranteConfig(restauranteId);
     const horario = config.horario;
-    log(`[Horario] config.horario=${JSON.stringify(horario ?? null)}`);
     if (!horario) return { abierto: true };
 
     const ahora = new Date();
-    // Minutos transcurridos en el día (hora Nicaragua UTC-6)
-    const minutosNica = ((ahora.getUTCHours() - 6 + 24) % 24) * 60 + ahora.getUTCMinutes();
-    // Día de la semana en Nicaragua
-    const nowNica = new Date(ahora.getTime() - 6 * 60 * 60 * 1000);
-    const diaNica = DIAS_SEMANA[nowNica.getUTCDay()];
+    const offsetHoras = parseInt(process.env.TZ_OFFSET ?? '-6', 10);
+    // Minutos transcurridos en el día (hora local según TZ_OFFSET)
+    const minutosLocal = ((ahora.getUTCHours() + offsetHoras + 24) % 24) * 60 + ahora.getUTCMinutes();
+    // Día de la semana local
+    const nowLocal = new Date(ahora.getTime() + offsetHoras * 60 * 60 * 1000);
+    const diaLocal = DIAS_SEMANA[nowLocal.getUTCDay()];
+
+    const horaLocalStr = `${String(Math.floor(minutosLocal / 60)).padStart(2, '0')}:${String(minutosLocal % 60).padStart(2, '0')}`;
+    const horaUTCStr   = `${String(ahora.getUTCHours()).padStart(2, '0')}:${String(ahora.getUTCMinutes()).padStart(2, '0')}`;
+    log(`[Horario] UTC=${horaUTCStr} local(${offsetHoras >= 0 ? '+' : ''}${offsetHoras}h)=${horaLocalStr} dia=${diaLocal}`);
+    log(`[Horario] config.horario[${diaLocal}]=${JSON.stringify(horario[diaLocal] ?? null)}`);
 
     // Formato nuevo: por día de semana
-    if (horario[diaNica] !== undefined) {
-      const diaConfig = horario[diaNica];
+    if (horario[diaLocal] !== undefined) {
+      const diaConfig = horario[diaLocal];
       if (!diaConfig.abre) return { abierto: false, razon: 'dia_cerrado' };
       if (!diaConfig.apertura || !diaConfig.cierre) return { abierto: true };
-      const dentro = minutosNica >= parsearMinutos(diaConfig.apertura) && minutosNica <= parsearMinutos(diaConfig.cierre);
+      const aperturaMin = parsearMinutos(diaConfig.apertura);
+      const cierreMin   = parsearMinutos(diaConfig.cierre);
+      const dentro = minutosLocal >= aperturaMin && minutosLocal <= cierreMin;
+      log(`[Horario] check: ${minutosLocal}min >= ${aperturaMin} && <= ${cierreMin} → ${dentro ? 'ABIERTO' : 'CERRADO'}`);
       if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: diaConfig.apertura, cierre: diaConfig.cierre };
       return { abierto: true };
     }
 
     // Formato antiguo: flat apertura/cierre
     if (!horario.apertura || !horario.cierre) return { abierto: true };
-    const dentro = minutosNica >= parsearMinutos(horario.apertura) && minutosNica <= parsearMinutos(horario.cierre);
+    const dentro = minutosLocal >= parsearMinutos(horario.apertura) && minutosLocal <= parsearMinutos(horario.cierre);
     if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: horario.apertura, cierre: horario.cierre };
     return { abierto: true };
   } catch {

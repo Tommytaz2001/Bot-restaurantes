@@ -122,7 +122,10 @@ async function _processMessage(data) {
   }
 
   // ── Extraer texto ────────────────────────────────────────────────────────────
-  let texto = message.conversation || message.imageMessage?.caption || null;
+  let texto = message.conversation
+    || message.extendedTextMessage?.text
+    || message.imageMessage?.caption
+    || null;
 
   if (!texto) {
     const MEDIA_TYPES = ['audioMessage', 'videoMessage', 'documentMessage', 'stickerMessage'];
