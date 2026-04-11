@@ -9,6 +9,7 @@ import { usePedidosStore } from '../../src/store/pedidosStore';
 import { usePedidosActivos } from '../../src/hooks/usePedidos';
 import { PedidoCard } from '../../src/components/PedidoCard';
 import { useAuthStore } from '../../src/store/authStore';
+import { auth } from '../../src/services/firebaseConfig';
 import { getBackendUrl } from '../../src/services/backendConfig';
 import { BackendConfigModal } from '../../src/components/BackendConfigModal';
 
@@ -26,11 +27,17 @@ export default function PedidosScreen() {
     (p) => p.cambio_solicitado?.estado === 'pendiente_chef'
   ).length;
 
+  async function authHeaders(): Promise<Record<string, string>> {
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   const fetchStatus = useCallback(async (url: string) => {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${url}/whatsapp/status`, { signal: controller.signal }).finally(() => clearTimeout(timer));
+      const headers = await authHeaders();
+      const res = await fetch(`${url}/whatsapp/status`, { headers, signal: controller.signal }).finally(() => clearTimeout(timer));
       const data = await res.json();
       setBotActivo(data.botActivo ?? true);
     } catch (err) {
@@ -53,8 +60,10 @@ export default function PedidosScreen() {
       const endpoint = botActivo ? '/whatsapp/pause' : '/whatsapp/resume';
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
+      const headers = await authHeaders();
       const res = await fetch(`${backend}${endpoint}`, {
         method: 'POST',
+        headers,
         signal: controller.signal,
       }).finally(() => clearTimeout(timer));
       const data = await res.json();

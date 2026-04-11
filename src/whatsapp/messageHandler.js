@@ -136,15 +136,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   // 1. Verificar horario de atención (configurable desde Firestore: restaurantes/{id}.horario)
   const estadoHorario = await verificarHorario(restauranteId);
   if (!estadoHorario.abierto) {
-    if (estadoHorario.razon === 'dia_cerrado') {
-      await sendReply('🔒 Hoy no estamos atendiendo. ¡Te esperamos otro día! 🍔');
-    } else {
-      const apertura = formatHora12(estadoHorario.apertura ?? '15:00');
-      const cierre   = formatHora12(estadoHorario.cierre   ?? '21:30');
-      await sendReply(
-        `⏰ En este momento estamos fuera de horario. Nuestro horario de atención es de *${apertura}* a *${cierre}*.\n\n¡Te esperamos pronto! 🍔`,
-      );
-    }
+    log(`[messageHandler] Fuera de horario (${estadoHorario.razon}) — ignorando mensaje de ${telefono}`);
     return;
   }
 
