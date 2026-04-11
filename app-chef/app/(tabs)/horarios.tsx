@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Switch, TextInput, Alert, ActivityIndicator,
+  Switch, Alert, ActivityIndicator, Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -11,14 +11,28 @@ import {
   DIAS, DIAS_LABELS,
 } from '../../src/services/horarioService';
 
-function validarHora(v: string): boolean {
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+const HORAS = Array.from({ length: 18 }, (_, i) => i + 6); // 6..23
+const MINUTOS = [0, 15, 30, 45];
+
+type TimePicker = {
+  dia: DiaSemana;
+  campo: 'apertura' | 'cierre';
+  hora: number;
+  minuto: number;
+};
+
+function pad(n: number) { return String(n).padStart(2, '0'); }
+
+function parseHora(s: string): { hora: number; minuto: number } {
+  const [h, m] = s.split(':').map(Number);
+  return { hora: isNaN(h) ? 10 : h, minuto: isNaN(m) ? 0 : m };
 }
 
 export default function HorariosScreen() {
   const [horario, setHorario] = useState<Horario | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [timePicker, setTimePicker] = useState<TimePicker | null>(null);
   const insets = useSafeAreaInsets();
 
   const cargar = useCallback(async () => {
@@ -40,20 +54,24 @@ export default function HorariosScreen() {
     setHorario({ ...horario, [dia]: { ...horario[dia], abre: !horario[dia].abre } });
   }
 
-  function setHora(dia: DiaSemana, campo: 'apertura' | 'cierre', valor: string) {
+  function openTimePicker(dia: DiaSemana, campo: 'apertura' | 'cierre') {
     if (!horario) return;
-    setHorario({ ...horario, [dia]: { ...horario[dia], [campo]: valor } });
+    const { hora, minuto } = parseHora(horario[dia][campo]);
+    // Snap minuto al más cercano de los 4 opciones
+    const minutoCercano = MINUTOS.reduce((prev, curr) =>
+      Math.abs(curr - minuto) < Math.abs(prev - minuto) ? curr : prev, 0);
+    setTimePicker({ dia, campo, hora, minuto: minutoCercano });
+  }
+
+  function applyTime() {
+    if (!timePicker || !horario) return;
+    const { dia, campo, hora, minuto } = timePicker;
+    setHorario({ ...horario, [dia]: { ...horario[dia], [campo]: `${pad(hora)}:${pad(minuto)}` } });
+    setTimePicker(null);
   }
 
   async function handleGuardar() {
     if (!horario) return;
-    for (const dia of DIAS) {
-      const d = horario[dia];
-      if (d.abre && (!validarHora(d.apertura) || !validarHora(d.cierre))) {
-        Alert.alert('Horario inválido', `Revisá el horario de ${DIAS_LABELS[dia]}.\nUsá formato HH:MM (ej: 10:00)`);
-        return;
-      }
-    }
     setSaving(true);
     try {
       await saveHorario(horario);
@@ -76,19 +94,15 @@ export default function HorariosScreen() {
       {loading ? (
         <ActivityIndicator color="#F59E0B" style={{ marginTop: 48 }} />
       ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: Math.max(32, insets.bottom + 16) }]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: Math.max(32, insets.bottom + 24) }]}>
           <Text style={styles.hint}>
-            Configurá los días y horarios de atención. El bot responderá automáticamente fuera del horario.
+            Tocá las horas para cambiarlas. El bot responde automáticamente fuera del horario.
           </Text>
 
           {horario && DIAS.map((dia) => {
             const d = horario[dia];
-            const aperturaValida = d.apertura.length === 0 || validarHora(d.apertura);
-            const cierreValido   = d.cierre.length === 0   || validarHora(d.cierre);
-
             return (
               <View key={dia} style={[styles.card, !d.abre && styles.cardCerrado]}>
-                {/* Header row: día + toggle */}
                 <View style={styles.cardHeader}>
                   <Text style={[styles.diaNombre, !d.abre && styles.diaCerrado]}>
                     {DIAS_LABELS[dia]}
@@ -107,37 +121,30 @@ export default function HorariosScreen() {
                   </View>
                 </View>
 
-                {/* Time inputs (only when open) */}
                 {d.abre && (
                   <View style={styles.horasRow}>
                     <View style={styles.horaItem}>
                       <Text style={styles.horaLabel}>APERTURA</Text>
-                      <TextInput
-                        style={[styles.horaInput, !aperturaValida && styles.inputError]}
-                        value={d.apertura}
-                        onChangeText={(v) => setHora(dia, 'apertura', v)}
-                        placeholder="10:00"
-                        placeholderTextColor="#444"
-                        keyboardType="numbers-and-punctuation"
-                        maxLength={5}
-                        editable={!saving}
-                      />
+                      <TouchableOpacity
+                        style={styles.horaBtn}
+                        onPress={() => openTimePicker(dia, 'apertura')}
+                        disabled={saving}
+                      >
+                        <Text style={styles.horaBtnText}>{d.apertura}</Text>
+                      </TouchableOpacity>
                     </View>
 
                     <Text style={styles.horaSep}>→</Text>
 
                     <View style={styles.horaItem}>
                       <Text style={styles.horaLabel}>CIERRE</Text>
-                      <TextInput
-                        style={[styles.horaInput, !cierreValido && styles.inputError]}
-                        value={d.cierre}
-                        onChangeText={(v) => setHora(dia, 'cierre', v)}
-                        placeholder="22:00"
-                        placeholderTextColor="#444"
-                        keyboardType="numbers-and-punctuation"
-                        maxLength={5}
-                        editable={!saving}
-                      />
+                      <TouchableOpacity
+                        style={styles.horaBtn}
+                        onPress={() => openTimePicker(dia, 'cierre')}
+                        disabled={saving}
+                      >
+                        <Text style={styles.horaBtnText}>{d.cierre}</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 )}
@@ -157,6 +164,62 @@ export default function HorariosScreen() {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Time Picker Modal */}
+      <Modal visible={timePicker !== null} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { paddingBottom: Math.max(20, insets.bottom + 16) }]}>
+            <Text style={styles.modalTitle}>
+              {timePicker?.campo === 'apertura' ? 'Hora de apertura' : 'Hora de cierre'}
+            </Text>
+
+            <Text style={styles.timeDisplay}>
+              {timePicker ? `${pad(timePicker.hora)}:${pad(timePicker.minuto)}` : '--:--'}
+            </Text>
+
+            <Text style={styles.pickerLabel}>HORA</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
+              <View style={styles.pickerRowInner}>
+                {HORAS.map(h => (
+                  <TouchableOpacity
+                    key={h}
+                    style={[styles.pickerCell, timePicker?.hora === h && styles.pickerCellActive]}
+                    onPress={() => timePicker && setTimePicker({ ...timePicker, hora: h })}
+                  >
+                    <Text style={[styles.pickerCellText, timePicker?.hora === h && styles.pickerCellTextActive]}>
+                      {pad(h)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <Text style={[styles.pickerLabel, { marginTop: 12 }]}>MINUTOS</Text>
+            <View style={styles.minutosRow}>
+              {MINUTOS.map(m => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.pickerCell, styles.pickerCellWide, timePicker?.minuto === m && styles.pickerCellActive]}
+                  onPress={() => timePicker && setTimePicker({ ...timePicker, minuto: m })}
+                >
+                  <Text style={[styles.pickerCellText, timePicker?.minuto === m && styles.pickerCellTextActive]}>
+                    {pad(m)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setTimePicker(null)}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={applyTime}>
+                <Text style={styles.confirmBtnText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -182,7 +245,6 @@ const styles = StyleSheet.create({
   list: {
     padding: 12,
     gap: 10,
-    paddingBottom: 32,
   },
   hint: {
     color: '#555',
@@ -245,20 +307,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 5,
   },
-  horaInput: {
+  horaBtn: {
     backgroundColor: '#111',
     borderWidth: 1,
     borderColor: '#2A2A2A',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  horaBtnText: {
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
-    textAlign: 'center',
-  },
-  inputError: {
-    borderColor: '#EF4444',
   },
   horaSep: {
     color: '#444',
@@ -279,5 +339,108 @@ const styles = StyleSheet.create({
     color: '#111',
     fontWeight: '700',
     fontSize: 16,
+  },
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#181818',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    gap: 8,
+  },
+  modalTitle: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  timeDisplay: {
+    color: '#FFFFFF',
+    fontSize: 52,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 4,
+    marginBottom: 8,
+  },
+  pickerLabel: {
+    color: '#555',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  pickerScroll: {
+    flexGrow: 0,
+  },
+  pickerRowInner: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  minutosRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  pickerCell: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#252525',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerCellWide: {
+    flex: 1,
+    width: undefined,
+  },
+  pickerCellActive: {
+    backgroundColor: '#F59E0B',
+  },
+  pickerCellText: {
+    color: '#777',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerCellTextActive: {
+    color: '#111',
+    fontWeight: '800',
+  },
+  modalBtns: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: '#252525',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    color: '#888',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: '#F59E0B',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    color: '#111',
+    fontWeight: '700',
+    fontSize: 15,
   },
 });
