@@ -5,7 +5,7 @@
  * POST /whatsapp/webhook — eventos de Evolution API (mensajes entrantes, cambios de estado, etc.)
  */
 
-const { recibirMensaje } = require('./messageHandler');
+const { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario } = require('./messageHandler');
 const { sendWhatsAppMessage } = require('./metaSender');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 const { log } = require('../utils/logger');
@@ -116,8 +116,14 @@ async function _processMessage(data) {
     } catch (err) {
       log(`[Webhook] Error procesando comprobante de ${telefono}: ${err.message}`);
     }
-    // Sin pedido pendiente → responder que solo se atiende por texto
-    await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
+    // Sin pedido pendiente → verificar horario antes de responder
+    const horarioImg = await verificarHorario(RESTAURANTE_ID);
+    if (!horarioImg.abierto) {
+      const sendReplyImg = (msg) => sendWhatsAppMessage(replyTo, msg);
+      await enviarMensajeFueraDeHorario(telefono, horarioImg, sendReplyImg);
+    } else {
+      await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
+    }
     return;
   }
 
@@ -130,8 +136,16 @@ async function _processMessage(data) {
   if (!texto) {
     const MEDIA_TYPES = ['audioMessage', 'videoMessage', 'documentMessage', 'stickerMessage'];
     if (MEDIA_TYPES.includes(messageType)) {
-      log(`[Webhook] Media (${messageType}) de ${telefono} → respondiendo`);
-      await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
+      // Verificar horario antes de responder media
+      const horarioMedia = await verificarHorario(RESTAURANTE_ID);
+      if (!horarioMedia.abierto) {
+        log(`[Webhook] Media (${messageType}) de ${telefono} fuera de horario`);
+        const sendReplyMedia = (msg) => sendWhatsAppMessage(replyTo, msg);
+        await enviarMensajeFueraDeHorario(telefono, horarioMedia, sendReplyMedia);
+      } else {
+        log(`[Webhook] Media (${messageType}) de ${telefono} → respondiendo`);
+        await sendWhatsAppMessage(replyTo, MSG_MEDIA).catch(() => {});
+      }
     } else {
       log(`[Webhook] Mensaje ignorado de ${telefono} (tipo: ${messageType})`);
     }

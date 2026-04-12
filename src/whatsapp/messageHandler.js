@@ -105,6 +105,31 @@ async function verificarHorario(restauranteId) {
   }
 }
 
+// Cooldown para mensajes fuera de horario — evita spamear al mismo número
+const _fueraHorarioCooldown = new Map(); // telefono -> timestamp
+const FUERA_HORARIO_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutos
+
+async function enviarMensajeFueraDeHorario(telefono, estadoHorario, sendReply) {
+  const ahora = Date.now();
+  const ultimo = _fueraHorarioCooldown.get(telefono) ?? 0;
+  if (ahora - ultimo < FUERA_HORARIO_COOLDOWN_MS) {
+    log(`[messageHandler] Fuera de horario — cooldown activo para ${telefono}, no reenviar`);
+    return;
+  }
+  _fueraHorarioCooldown.set(telefono, ahora);
+
+  let mensaje;
+  if (estadoHorario.razon === 'dia_cerrado') {
+    mensaje = '🔒 Hoy no estamos atendiendo. ¡Te esperamos pronto! 🍔';
+  } else {
+    const apertura = formatHora12(estadoHorario.apertura);
+    const cierre = formatHora12(estadoHorario.cierre);
+    mensaje = `🔒 Estamos fuera de horario. Nuestro horario de hoy es de *${apertura}* a *${cierre}*. ¡Te esperamos! 🍔`;
+  }
+
+  await sendReply(mensaje);
+}
+
 const _timers = new Map();  // telefono -> timeoutId
 const _buffers = new Map(); // telefono -> string[]
 
@@ -136,7 +161,8 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   // 1. Verificar horario de atención (configurable desde Firestore: restaurantes/{id}.horario)
   const estadoHorario = await verificarHorario(restauranteId);
   if (!estadoHorario.abierto) {
-    log(`[messageHandler] Fuera de horario (${estadoHorario.razon}) — ignorando mensaje de ${telefono}`);
+    log(`[messageHandler] Fuera de horario (${estadoHorario.razon}) — respondiendo a ${telefono}`);
+    await enviarMensajeFueraDeHorario(telefono, estadoHorario, sendReply);
     return;
   }
 
@@ -204,4 +230,4 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   }, DEBOUNCE_MS));
 }
 
-module.exports = { recibirMensaje };
+module.exports = { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario };
