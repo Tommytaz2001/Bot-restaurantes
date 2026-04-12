@@ -426,14 +426,32 @@ export default function MenuScreen() {
   }
 
   async function handleToggleDisponible(cat: MenuCategoria, idx: number) {
-    setSaving(true);
+    const oldDisponible = cat.items[idx].disponible ?? true;
+    const newDisponible = !oldDisponible;
+
+    // Optimistic update — UI flips instantly
+    setCategorias(prev => prev.map(c =>
+      c.id !== cat.id ? c : {
+        ...c,
+        items: c.items.map((item, i) =>
+          i !== idx ? item : { ...item, disponible: newDisponible }
+        ),
+      }
+    ));
+
     try {
       await toggleDisponible(cat.id, cat.items, idx);
-      await cargar();
-    } catch {
-      Alert.alert('Error', 'No se pudo actualizar el estado.');
-    } finally {
-      setSaving(false);
+    } catch (error: any) {
+      // Revert on failure
+      setCategorias(prev => prev.map(c =>
+        c.id !== cat.id ? c : {
+          ...c,
+          items: c.items.map((item, i) =>
+            i !== idx ? item : { ...item, disponible: oldDisponible }
+          ),
+        }
+      ));
+      Alert.alert('Error', `No se pudo actualizar: ${error?.message || 'Error desconocido'}`);
     }
   }
 
