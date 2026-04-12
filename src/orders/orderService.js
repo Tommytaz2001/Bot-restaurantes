@@ -27,6 +27,47 @@ async function findExistingOrder(sessionId) {
   return { id: d.id, ...d.data() };
 }
 
+/**
+ * Busca cualquier pedido activo (pendiente → en_camino) asociado a un teléfono.
+ * Sirve para rehidratar el contexto del agente cuando la sesión en memoria expiró.
+ */
+async function findActiveOrderByPhone(telefono) {
+  if (!telefono) return null;
+  const q = query(
+    collection(db, 'pedidos'),
+    where('sessionId', '==', telefono),
+    where('estado', 'in', ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino']),
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  const d = snapshot.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+/**
+ * Busca la dirección de la última entrega completada para un teléfono.
+ * Permite ofrecer la dirección anterior a clientes frecuentes.
+ */
+async function findLastDeliveryAddress(telefono) {
+  if (!telefono) return null;
+  const q = query(
+    collection(db, 'pedidos'),
+    where('sessionId', '==', telefono),
+    where('estado', '==', 'entregado'),
+    where('tipo_entrega', '==', 'delivery'),
+  );
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  let latest = null;
+  for (const d of snapshot.docs) {
+    const data = d.data();
+    if (!latest || (data.createdAt?.toMillis?.() > latest.createdAt?.toMillis?.())) {
+      latest = data;
+    }
+  }
+  return latest?.direccion || null;
+}
+
 async function saveOrder(orderData) {
   // Check for duplicate active order in same session
   const existing = await findExistingOrder(orderData.sessionId);
@@ -183,4 +224,4 @@ function estadoLegible(estado) {
   return ESTADOS_LEGIBLES[estado] ?? estado;
 }
 
-module.exports = { saveOrder, getOrder, findPedidoPendientePago, attachComprobante, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible };
+module.exports = { saveOrder, getOrder, findPedidoPendientePago, attachComprobante, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress };

@@ -40,16 +40,17 @@ async function formatMenuForPrompt(restauranteId) {
   for (const categoria of menu) {
     lines.push(`\n### ${categoria.nombre}`);
     for (const item of categoria.items) {
-      // Filtrar por disponibilidad
-      if (item.disponible === false) continue;
-      // Filtrar por proteínas bloqueadas
-      if (item.proteina && proteinasBloqueadas.includes(item.proteina)) continue;
-      // Filtrar mixtos si pollo o cerdo está bloqueado
-      if (item.proteina === 'mixto' && (proteinasBloqueadas.includes('pollo') || proteinasBloqueadas.includes('cerdo'))) continue;
+      // Determinar si el ítem está agotado
+      const agotado = item.disponible === false
+        || (item.proteina && proteinasBloqueadas.includes(item.proteina))
+        || (item.proteina === 'mixto' && (proteinasBloqueadas.includes('pollo') || proteinasBloqueadas.includes('cerdo')));
 
       let line = `- ${item.nombre}: ${moneda}${item.precio} — ${item.descripcion}`;
       if (item.opciones && item.opciones.length > 0) {
         line += ` [Opciones: ${item.opciones.join(', ')}]`;
+      }
+      if (agotado) {
+        line += ' [AGOTADO]';
       }
       lines.push(line);
     }

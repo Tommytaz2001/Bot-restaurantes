@@ -3,7 +3,7 @@ const path = require('path');
 const { chatCompletion } = require('../services/openaiService');
 const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = require('../services/menuService');
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
-const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible } = require('../orders/orderService');
+const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress } = require('../orders/orderService');
 const { log } = require('../utils/logger');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
@@ -11,7 +11,7 @@ const PROMPT_TEMPLATE = fs.readFileSync(
   'utf-8'
 );
 
-async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false) {
+async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, activeOrder = null, lastAddress = null) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
@@ -23,20 +23,49 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false) 
     ? `\n## MODO REPARTIDOR\nEste chat proviene de un REPARTIDOR (moto/mandado) que pasa a retirar el pedido en el local, NO de un cliente final.\n\nComportamiento obligatorio:\n- NO preguntes nombre, dirección ni método de pago — no son necesarios.\n- Saluda brevemente y pide directamente qué quieren ordenar.\n- Al confirmar el pedido, usa siempre tipo_entrega: "retiro", direccion: "Retiro repartidor", cliente: "Repartidor", metodo_pago: "efectivo".\n- Después de guardar responde EXACTAMENTE: "✅ ¡Pedido recibido! Ya le avisamos al chef. Te notificamos aquí cuando esté listo para retirar. 🍔"\n- La consulta de estado y cancelación aplican igual que normalmente.`
     : '';
 
+  let contextoPedidoActivo = '';
+  if (activeOrder) {
+    const productos = (activeOrder.productos || [])
+      .map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
+    contextoPedidoActivo = `\n## PEDIDO ACTIVO\nEste cliente tiene un pedido activo.\n- Estado: ${estadoLegible(activeOrder.estado)}\n- Productos: ${productos}\n- Total: ${activeOrder.total} ${activeOrder.moneda || 'C$'}\n- Tipo entrega: ${activeOrder.tipo_entrega}\n\nNO inicies un nuevo pedido. Ofrece ayuda con su pedido actual (consultar estado, solicitar cambio, cancelar) o pregunta si desea hacer un pedido ADICIONAL separado.`;
+  }
+
+  let contextoDireccion = '';
+  if (lastAddress && !esRepartidor) {
+    contextoDireccion = `\n## DIRECCIÓN ANTERIOR\nLa última dirección de entrega de este cliente fue: "${lastAddress}".\nCuando pida delivery, ofrece: "¿Te lo enviamos a ${lastAddress} como la última vez, o a otra dirección?"\nSi confirma, usa esa dirección. Si da una nueva, usa la nueva.`;
+  }
+
   return PROMPT_TEMPLATE
     .replace(/{{NOMBRE_RESTAURANTE}}/g, config.nombre)
     .replace(/{{MONEDA}}/g, config.moneda)
     .replace('{{MENU}}', menuText)
     .replace('{{CUENTAS_BANCARIAS}}', cuentasBancariasText)
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
-    .replace('{{CONTEXTO_REPARTIDOR}}', contextoRepartidor);
+    .replace('{{CONTEXTO_REPARTIDOR}}', contextoRepartidor)
+    .replace('{{CONTEXTO_PEDIDO_ACTIVO}}', contextoPedidoActivo)
+    .replace('{{CONTEXTO_DIRECCION}}', contextoDireccion);
 }
 
 async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid, esRepartidor = false }) {
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
 
-  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, esRepartidor);
+  // Rehidratar contexto de pedido activo si la sesión en memoria expiró
+  let activeOrder = null;
+  if (!getLastOrderId(sessionId) && telefono) {
+    activeOrder = await findActiveOrderByPhone(telefono);
+    if (activeOrder) {
+      setLastOrderId(sessionId, activeOrder.id);
+      log(`[agentService] Pedido activo recuperado de Firestore: ${activeOrder.id} (${activeOrder.estado})`);
+    }
+  } else if (getLastOrderId(sessionId)) {
+    activeOrder = await findActiveOrderByPhone(telefono);
+  }
+
+  // Buscar dirección anterior para clientes frecuentes
+  const lastAddress = telefono ? await findLastDeliveryAddress(telefono) : null;
+
+  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, esRepartidor, activeOrder, lastAddress);
 
   // Capture history BEFORE addMessage to avoid duplication when spreading
   const history = getSession(sessionId);

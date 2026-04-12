@@ -295,6 +295,13 @@ export default function DetallePedidoScreen() {
       {/* Bottom action bar */}
       {!esFinal && (
         <View style={styles.actionBar}>
+          {pedido.metodo_pago === 'transferencia' && (pedido.estado === 'pendiente' || pedido.estado === 'pendiente_pago') && (
+            <View style={styles.transferenciaBanner}>
+              <Text style={styles.transferenciaBannerText}>
+                ⚠️ Pago por transferencia — verifica el comprobante antes de confirmar
+              </Text>
+            </View>
+          )}
           {(pedido.estado === 'pendiente' || pedido.estado === 'pendiente_pago') && (
             <View style={styles.actionRow}>
               <ActionBtn
@@ -533,6 +540,20 @@ const styles = StyleSheet.create({
     color: '#22C55E',
     fontSize: 13,
     fontWeight: '600',
+  },
+  transferenciaBanner: {
+    backgroundColor: '#1F1A0D',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F59E0B33',
+  },
+  transferenciaBannerText: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   cambioSection: {
     backgroundColor: '#18120A',

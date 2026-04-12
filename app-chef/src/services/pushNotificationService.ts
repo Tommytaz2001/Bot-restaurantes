@@ -13,7 +13,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 import { db } from './firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -76,4 +76,26 @@ export async function registerPushToken(): Promise<void> {
   } catch (err: any) {
     console.warn('[pushService] Error registrando token:', err.message);
   }
+}
+
+/**
+ * Refresca el token push automáticamente cuando la app vuelve a primer plano
+ * o cuando el OS rota el token subyacente (FCM/APNs).
+ * Retorna función de cleanup para useEffect.
+ */
+export function setupTokenRefresh(): () => void {
+  const appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
+    if (state === 'active') {
+      registerPushToken().catch(() => {});
+    }
+  });
+
+  const tokenSub = Notifications.addPushTokenListener(() => {
+    registerPushToken().catch(() => {});
+  });
+
+  return () => {
+    appStateSub.remove();
+    tokenSub.remove();
+  };
 }

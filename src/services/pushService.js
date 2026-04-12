@@ -1,5 +1,5 @@
 const { db } = require('./firebaseService');
-const { doc, getDoc } = require('firebase/firestore');
+const { doc, getDoc, updateDoc, deleteField } = require('firebase/firestore');
 
 /**
  * Envía una push notification al chef via Expo Push API.
@@ -34,7 +34,14 @@ async function enviarPushAlChef(restauranteId, titulo, cuerpo) {
 
     const json = await res.json();
     if (json.data?.status === 'error') {
-      console.warn('[pushService] Error FCM:', json.data.message);
+      const errorType = json.data?.details?.error;
+      console.warn('[pushService] Error FCM:', json.data.message, errorType);
+      if (errorType === 'DeviceNotRegistered') {
+        await updateDoc(doc(db, 'restaurantes', restauranteId), {
+          push_token: deleteField(),
+        });
+        console.log('[pushService] Token stale eliminado para', restauranteId);
+      }
     } else {
       console.log(`[pushService] Push enviado al chef (${restauranteId})`);
     }
