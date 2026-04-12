@@ -120,6 +120,8 @@ export async function notificarCliente(id: string, tipo: TipoNotificacion, tiemp
     const token = await auth.currentUser?.getIdToken();
     const body: Record<string, any> = { tipo };
     if (tiempoEstimadoMin) body.tiempoEstimadoMin = tiempoEstimadoMin;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     await fetch(`${BACKEND_URL}/orders/${id}/notificar`, {
       method: 'POST',
       headers: {
@@ -127,7 +129,8 @@ export async function notificarCliente(id: string, tipo: TipoNotificacion, tiemp
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
   } catch (err) {
     console.warn('[notificarCliente] Error:', err);
   }

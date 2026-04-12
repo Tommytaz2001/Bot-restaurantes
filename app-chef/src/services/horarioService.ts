@@ -59,10 +59,13 @@ export async function getHorario(): Promise<Horario> {
 
 export async function saveHorario(horario: Horario): Promise<void> {
   await setDoc(doc(db, 'restaurantes', RESTAURANTE_ID), { horario }, { merge: true });
-  // Invalida el caché del backend para que lea el horario actualizado de inmediato
+  // Invalida el caché del backend (fire-and-forget con timeout de 3s)
   try {
     const backendUrl = await getBackendUrl();
-    await fetch(`${backendUrl}/whatsapp/cache/clear`, { method: 'POST' });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    fetch(`${backendUrl}/whatsapp/cache/clear`, { method: 'POST', signal: controller.signal })
+      .finally(() => clearTimeout(timeout));
   } catch {
     // No crítico — el caché expira solo en 5 minutos
   }
