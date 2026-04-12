@@ -73,6 +73,8 @@ function sortByCreatedAtDesc(pedidos: Pedido[]): Pedido[] {
 export function suscribirPedidosActivos(
   callback: (pedidos: Pedido[]) => void
 ): Unsubscribe {
+  const t0 = Date.now();
+  console.log('[suscribirPedidosActivos] Setting up listener...');
   const q = query(
     collection(db, 'pedidos'),
     where('restauranteId', '==', RESTAURANTE_ID),
@@ -82,6 +84,7 @@ export function suscribirPedidosActivos(
   return onSnapshot(
     q,
     (snapshot) => {
+      console.log(`[suscribirPedidosActivos] snapshot received: ${snapshot.docs.length} docs, fromCache=${snapshot.metadata.fromCache}, hasPendingWrites=${snapshot.metadata.hasPendingWrites} (${Date.now() - t0}ms since subscribe)`);
       const pedidos = sortByCreatedAtDesc(
         snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
       );
@@ -115,9 +118,12 @@ export function suscribirHistorial(
 export type TipoNotificacion = 'confirmado' | 'rechazado' | 'en_camino' | 'entregado' | 'cambio_aprobado' | 'cambio_rechazado';
 
 export async function notificarCliente(id: string, tipo: TipoNotificacion, tiempoEstimadoMin?: number): Promise<void> {
-  if (!BACKEND_URL) return;
+  if (!BACKEND_URL) { console.log('[notificarCliente] SKIP — no BACKEND_URL'); return; }
+  const t0 = Date.now();
+  console.log(`[notificarCliente] START pedido=${id} tipo=${tipo} url=${BACKEND_URL}`);
   try {
     const token = await auth.currentUser?.getIdToken();
+    console.log(`[notificarCliente] got token in ${Date.now() - t0}ms`);
     const body: Record<string, any> = { tipo };
     if (tiempoEstimadoMin) body.tiempoEstimadoMin = tiempoEstimadoMin;
     const controller = new AbortController();
@@ -131,13 +137,18 @@ export async function notificarCliente(id: string, tipo: TipoNotificacion, tiemp
       body: JSON.stringify(body),
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
+    console.log(`[notificarCliente] DONE in ${Date.now() - t0}ms`);
   } catch (err) {
-    console.warn('[notificarCliente] Error:', err);
+    console.warn(`[notificarCliente] FAILED in ${Date.now() - t0}ms:`, err);
   }
 }
 
 async function actualizarEstado(id: string, data: Record<string, any>) {
+  const t0 = Date.now();
+  const estado = data.estado ?? Object.keys(data).join(',');
+  console.log(`[actualizarEstado] START pedido=${id} → ${estado}`);
   await updateDoc(doc(db, 'pedidos', id), data);
+  console.log(`[actualizarEstado] DONE pedido=${id} in ${Date.now() - t0}ms`);
 }
 
 export const confirmarPedido = (id: string) =>

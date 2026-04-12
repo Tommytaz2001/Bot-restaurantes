@@ -22,3 +22,5 @@ export const auth = initializeAuth(app, {
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
+
+console.log('[FirebaseConfig] Firestore initialized with experimentalForceLongPolling: true');

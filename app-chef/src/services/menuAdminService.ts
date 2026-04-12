@@ -27,7 +27,10 @@ const menuCol = () => collection(db, 'restaurantes', RESTAURANTE_ID, 'menu');
 const categoriaDoc = (id: string) => doc(db, 'restaurantes', RESTAURANTE_ID, 'menu', id);
 
 export async function getCategorias(): Promise<MenuCategoria[]> {
+  const t0 = Date.now();
+  console.log('[getCategorias] START — reading menu from Firestore...');
   const snap = await getDocs(menuCol());
+  console.log(`[getCategorias] DONE in ${Date.now() - t0}ms — ${snap.docs.length} categorias`);
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() } as MenuCategoria))
     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));

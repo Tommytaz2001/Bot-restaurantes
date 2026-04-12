@@ -99,21 +99,26 @@ export default function DetallePedidoScreen() {
   }, [id]);
 
   const ejecutar = async (fn: () => Promise<void>, confirmMsg?: string) => {
+    const run = async () => {
+      setAccionando(true);
+      const t0 = Date.now();
+      console.log(`[ejecutar] START action on pedido=${id}`);
+      try {
+        await fn();
+        console.log(`[ejecutar] DONE in ${Date.now() - t0}ms`);
+      } catch (err) {
+        console.error(`[ejecutar] FAILED in ${Date.now() - t0}ms:`, err);
+      } finally {
+        setAccionando(false);
+      }
+    };
     if (confirmMsg) {
       Alert.alert('Confirmar acción', confirmMsg, [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          style: 'destructive',
-          onPress: async () => {
-            setAccionando(true);
-            try { await fn(); } finally { setAccionando(false); }
-          },
-        },
+        { text: 'Confirmar', style: 'destructive', onPress: run },
       ]);
     } else {
-      setAccionando(true);
-      try { await fn(); } finally { setAccionando(false); }
+      await run();
     }
   };
 

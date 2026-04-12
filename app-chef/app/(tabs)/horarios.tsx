@@ -73,10 +73,14 @@ export default function HorariosScreen() {
   async function handleGuardar() {
     if (!horario) return;
     setSaving(true);
+    const t0 = Date.now();
+    console.log('[handleGuardar] START');
     try {
       await saveHorario(horario);
+      console.log(`[handleGuardar] DONE in ${Date.now() - t0}ms`);
       Alert.alert('Guardado', 'Horarios actualizados correctamente.');
-    } catch {
+    } catch (err) {
+      console.error(`[handleGuardar] FAILED in ${Date.now() - t0}ms:`, err);
       Alert.alert('Error', 'No se pudo guardar el horario.');
     } finally {
       setSaving(false);

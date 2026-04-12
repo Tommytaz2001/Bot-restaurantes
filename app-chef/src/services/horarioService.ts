@@ -37,7 +37,10 @@ const DEFAULT_HORARIO: Horario = {
 };
 
 export async function getHorario(): Promise<Horario> {
+  const t0 = Date.now();
+  console.log('[getHorario] START — reading from Firestore...');
   const snap = await getDoc(doc(db, 'restaurantes', RESTAURANTE_ID));
+  console.log(`[getHorario] Firestore read done in ${Date.now() - t0}ms`);
   if (!snap.exists()) return { ...DEFAULT_HORARIO };
 
   const rawHorario = snap.data().horario;
@@ -58,7 +61,10 @@ export async function getHorario(): Promise<Horario> {
 }
 
 export async function saveHorario(horario: Horario): Promise<void> {
+  const t0 = Date.now();
+  console.log('[saveHorario] START — writing to Firestore...');
   await setDoc(doc(db, 'restaurantes', RESTAURANTE_ID), { horario }, { merge: true });
+  console.log(`[saveHorario] Firestore write done in ${Date.now() - t0}ms`);
   // Invalida el caché del backend (fire-and-forget con timeout de 3s)
   try {
     const backendUrl = await getBackendUrl();
@@ -69,4 +75,5 @@ export async function saveHorario(horario: Horario): Promise<void> {
   } catch {
     // No crítico — el caché expira solo en 5 minutos
   }
+  console.log(`[saveHorario] TOTAL ${Date.now() - t0}ms`);
 }
