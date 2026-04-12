@@ -70,5 +70,7 @@ export async function deleteItem(categoriaId: string, items: MenuItem[], idx: nu
 export async function toggleDisponible(categoriaId: string, items: MenuItem[], idx: number): Promise<void> {
   const next = [...items];
   next[idx] = { ...next[idx], disponible: !(next[idx].disponible ?? true) };
+  console.log(`[toggleDisponible] ${next[idx].nombre} → disponible=${next[idx].disponible} (doc=${categoriaId})`);
   await updateDoc(categoriaDoc(categoriaId), { items: next });
+  console.log(`[toggleDisponible] OK — write committed`);
 }
