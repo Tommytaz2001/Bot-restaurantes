@@ -89,15 +89,22 @@ async function verificarHorario(restauranteId) {
       if (!diaConfig.apertura || !diaConfig.cierre) return { abierto: true };
       const aperturaMin = parsearMinutos(diaConfig.apertura);
       const cierreMin   = parsearMinutos(diaConfig.cierre);
-      const dentro = minutosLocal >= aperturaMin && minutosLocal <= cierreMin;
-      log(`[Horario] check: ${minutosLocal}min >= ${aperturaMin} && <= ${cierreMin} → ${dentro ? 'ABIERTO' : 'CERRADO'}`);
+      // Horario nocturno (cruza medianoche): ej 23:00-08:00 → aperturaMin > cierreMin
+      const dentro = cierreMin < aperturaMin
+        ? (minutosLocal >= aperturaMin || minutosLocal <= cierreMin)
+        : (minutosLocal >= aperturaMin && minutosLocal <= cierreMin);
+      log(`[Horario] check: ${minutosLocal}min apertura=${aperturaMin} cierre=${cierreMin} nocturno=${cierreMin < aperturaMin} → ${dentro ? 'ABIERTO' : 'CERRADO'}`);
       if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: diaConfig.apertura, cierre: diaConfig.cierre };
       return { abierto: true };
     }
 
     // Formato antiguo: flat apertura/cierre
     if (!horario.apertura || !horario.cierre) return { abierto: true };
-    const dentro = minutosLocal >= parsearMinutos(horario.apertura) && minutosLocal <= parsearMinutos(horario.cierre);
+    const aperturaFlat = parsearMinutos(horario.apertura);
+    const cierreFlat   = parsearMinutos(horario.cierre);
+    const dentro = cierreFlat < aperturaFlat
+      ? (minutosLocal >= aperturaFlat || minutosLocal <= cierreFlat)
+      : (minutosLocal >= aperturaFlat && minutosLocal <= cierreFlat);
     if (!dentro) return { abierto: false, razon: 'fuera_horario', apertura: horario.apertura, cierre: horario.cierre };
     return { abierto: true };
   } catch {

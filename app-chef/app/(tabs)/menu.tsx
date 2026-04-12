@@ -10,7 +10,7 @@ import {
   deleteCategoria, addItem, updateItem, deleteItem, toggleDisponible,
   type MenuCategoria, type MenuItem, type Proteina,
 } from '../../src/services/menuAdminService';
-import { getProteinasBloqueadas, setProteinasBloqueadas, estaItemBloqueadoPorProteina, type Proteina as ProteinaType } from '../../src/services/proteinasService';
+import { getProteinasBloqueadas, setProteinasBloqueadas as saveProteinasBloqueadas, estaItemBloqueadoPorProteina, type Proteina as ProteinaType } from '../../src/services/proteinasService';
 
 // ─── Modals ──────────────────────────────────────────────────────────────────
 
@@ -288,7 +288,7 @@ export default function MenuScreen() {
   async function handleSaveProteinas(bloqueadas: ProteinaType[]) {
     setSaving(true);
     try {
-      await setProteinasBloqueadas(bloqueadas);
+      await saveProteinasBloqueadas(bloqueadas);
       setProteinasBloqueadas(bloqueadas);
       await cargar(); // Recarga menú para reflejar cambios visuales
     } catch {

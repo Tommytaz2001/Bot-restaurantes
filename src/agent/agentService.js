@@ -27,7 +27,21 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, 
   if (activeOrder) {
     const productos = (activeOrder.productos || [])
       .map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
-    contextoPedidoActivo = `\n## PEDIDO ACTIVO\nEste cliente tiene un pedido activo.\n- Estado: ${estadoLegible(activeOrder.estado)}\n- Productos: ${productos}\n- Total: ${activeOrder.total} ${activeOrder.moneda || 'C$'}\n- Tipo entrega: ${activeOrder.tipo_entrega}\n\nNO inicies un nuevo pedido. Ofrece ayuda con su pedido actual (consultar estado, solicitar cambio, cancelar) o pregunta si desea hacer un pedido ADICIONAL separado.`;
+    contextoPedidoActivo = `\n## ⚠️ PEDIDO ACTIVO — LEE ESTO ANTES DE RESPONDER
+Este cliente tiene un pedido activo que aún NO ha sido entregado.
+- Estado: ${estadoLegible(activeOrder.estado)}
+- Productos: ${productos}
+- Total: ${activeOrder.total} ${activeOrder.moneda || 'C$'}
+- Tipo entrega: ${activeOrder.tipo_entrega}${activeOrder.direccion ? `\n- Dirección: ${activeOrder.direccion}` : ''}
+
+**REGLAS OBLIGATORIAS cuando hay pedido activo:**
+1. NUNCA inicies un nuevo pedido automáticamente — ni siquiera si el cliente saluda o pide algo nuevo.
+2. Si el cliente saluda ("hola", "buenas", etc.), responde con saludo + mención del pedido activo.
+3. Si el cliente pide productos nuevos o quiere agregar algo, PREGUNTA PRIMERO: "¿Quieres agregar esto a tu pedido actual, o es un pedido nuevo aparte?"
+   - Si es para el pedido actual → usa solicitar_cambio_pedido con tipo "agregar_productos".
+   - Si es un pedido nuevo → solo entonces toma un nuevo pedido normalmente.
+4. Ofrece las opciones disponibles: consultar estado, solicitar cambio, agregar productos, o cancelar.
+5. Estas reglas tienen PRIORIDAD sobre las reglas de saludo y flujo de pedido de las secciones anteriores.`;
   }
 
   let contextoDireccion = '';
