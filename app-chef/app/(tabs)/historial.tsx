@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import { fetchHistorial, type FiltroHistorial, type HistorialPage } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
 import { ESTADO_CONFIG } from '../../src/constants/estados';
@@ -24,10 +25,10 @@ function formatFecha(ts: any): string {
   return d.toLocaleDateString('es-NI', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-function HistorialCard({ pedido }: { pedido: Pedido }) {
+function HistorialCard({ pedido, onPress }: { pedido: Pedido; onPress: () => void }) {
   const accentColor = ESTADO_CONFIG[pedido.estado]?.accent ?? '#555555';
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.accentLine, { backgroundColor: accentColor }]} />
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
@@ -44,11 +45,12 @@ function HistorialCard({ pedido }: { pedido: Pedido }) {
           {pedido.productos.map((p) => `${p.cantidad}× ${p.nombre}`).join('  ·  ')}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 export default function HistorialScreen() {
+  const router = useRouter();
   const [filtro, setFiltro]           = useState<FiltroHistorial>('todos');
   const [pedidos, setPedidos]         = useState<Pedido[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -161,7 +163,12 @@ export default function HistorialScreen() {
         <FlatList
           data={pedidos}
           keyExtractor={(p) => p.id}
-          renderItem={({ item }) => <HistorialCard pedido={item} />}
+          renderItem={({ item }) => (
+            <HistorialCard
+              pedido={item}
+              onPress={() => router.push(`/pedido/${item.id}`)}
+            />
+          )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           onEndReached={onEndReached}

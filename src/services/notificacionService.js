@@ -52,7 +52,27 @@ function iniciarListenerNotificaciones() {
         // Notificaciones por cambio de solicitud de modificación
         const estadoCambio = cambio_solicitado?.estado;
         if (estadoCambio === 'aprobado' && !notificaciones_enviadas.cambio_aprobado) {
-          pendientes.push({ clave: 'cambio_aprobado', mensaje: MENSAJES.cambio_aprobado });
+          let mensajeCambio = MENSAJES.cambio_aprobado;
+
+          // Incluir resumen actualizado del pedido con nuevo total
+          const productos = order.productos ?? [];
+          const moneda = order.moneda ?? 'C$';
+          if (productos.length > 0) {
+            const lineasProductos = productos
+              .map((p) => `• ${p.cantidad}× ${p.nombre}${p.opcion ? ` (${p.opcion})` : ''}`)
+              .join('\n');
+            const costoEnvio = order.costo_envio ?? 0;
+            const totalActual = order.total ?? 0;
+
+            mensajeCambio += '\n\n📋 *Resumen actualizado:*\n' + lineasProductos;
+            if (costoEnvio > 0) {
+              mensajeCambio += `\n\n💰 Subtotal: ${moneda}${totalActual - costoEnvio}`;
+              mensajeCambio += `\n🛵 Envío: ${moneda}${costoEnvio}`;
+            }
+            mensajeCambio += `\n💰 *Total: ${moneda}${totalActual}*`;
+          }
+
+          pendientes.push({ clave: 'cambio_aprobado', mensaje: mensajeCambio });
         }
         if (estadoCambio === 'rechazado' && !notificaciones_enviadas.cambio_rechazado) {
           pendientes.push({ clave: 'cambio_rechazado', mensaje: MENSAJES.cambio_rechazado });
