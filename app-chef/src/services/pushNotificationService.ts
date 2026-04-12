@@ -15,9 +15,10 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { db } from './firebaseConfig';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
+let _lastRegisteredToken: string | null = null;
 
 // Cómo manejar notificaciones cuando la app está en primer plano
 Notifications.setNotificationHandler({
@@ -67,11 +68,18 @@ export async function registerPushToken(): Promise<void> {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
     const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
     const token = tokenData.data;
+
+    // Solo escribir si el token cambió (evita escrituras innecesarias a Firestore)
+    if (token === _lastRegisteredToken) {
+      return;
+    }
+
     await setDoc(
       doc(db, 'restaurantes', RESTAURANTE_ID),
       { push_token: token },
       { merge: true },
     );
+    _lastRegisteredToken = token;
     console.log('[pushService] Token registrado:', token.substring(0, 30) + '...');
   } catch (err: any) {
     console.warn('[pushService] Error registrando token:', err.message);

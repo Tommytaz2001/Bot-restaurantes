@@ -2,9 +2,11 @@
  * Listener de Firestore que detecta cambios de estado en pedidos
  * y envía notificaciones WhatsApp automáticamente via Evolution API.
  */
-const { collection, onSnapshot, updateDoc, doc } = require('firebase/firestore');
-const { db } = require('./firebaseService');
+const { collection, onSnapshot, updateDoc, doc, query, where } = require('firebase/firestore');
+const { db, trackWrite, trackRead } = require('./firebaseService');
 const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
+
+const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
 const MENSAJES = {
   confirmado:       '✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔',
@@ -16,9 +18,15 @@ const MENSAJES = {
 };
 
 function iniciarListenerNotificaciones() {
-  onSnapshot(
+  // Filtrar solo pedidos de este restaurante para minimizar lecturas de Firestore
+  const q = query(
     collection(db, 'pedidos'),
+    where('restauranteId', '==', RESTAURANTE_ID),
+  );
+  onSnapshot(
+    q,
     async (snapshot) => {
+      trackRead('notificacionService:listener', `restaurante=${RESTAURANTE_ID}`, snapshot.docs.length);
       for (const change of snapshot.docChanges()) {
         if (change.type !== 'modified') continue;
 
@@ -86,6 +94,7 @@ function iniciarListenerNotificaciones() {
             await updateDoc(doc(db, 'pedidos', order.id), {
               [`notificaciones_enviadas.${clave}`]: true,
             });
+            trackWrite(`notificacion:${clave}`, `pedidoId=${order.id} | destino=${destino}`);
             console.log(`[notificaciones] "${clave}" enviada a ${destino} (pedido ${order.id})`);
           } catch (err) {
             console.error(`[notificaciones] Error enviando "${clave}" a ${destino} (pedido ${order.id}):`, err.message);

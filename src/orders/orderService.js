@@ -1,9 +1,9 @@
-const { db } = require('../services/firebaseService');
+const { db, trackWrite, trackRead } = require('../services/firebaseService');
 const { uploadComprobante } = require('../services/storageService');
 const { enviarPushAlChef } = require('../services/pushService');
 const { validateOrder } = require('./orderValidator');
 const {
-  collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, serverTimestamp,
+  collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, orderBy, limit, serverTimestamp,
 } = require('firebase/firestore');
 const { randomUUID } = require('crypto');
 
@@ -22,6 +22,7 @@ async function findExistingOrder(sessionId) {
     where('estado', 'in', ['pendiente', 'pendiente_pago']),
   );
   const snapshot = await getDocs(q);
+  trackRead('findExistingOrder', `sessionId=${sessionId}`, snapshot.docs.length);
   if (snapshot.empty) return null;
   const d = snapshot.docs[0];
   return { id: d.id, ...d.data() };
@@ -39,6 +40,7 @@ async function findActiveOrderByPhone(telefono) {
     where('estado', 'in', ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino']),
   );
   const snapshot = await getDocs(q);
+  trackRead('findActiveOrderByPhone', `telefono=${telefono}`, snapshot.docs.length);
   if (snapshot.empty) return null;
   const d = snapshot.docs[0];
   return { id: d.id, ...d.data() };
@@ -55,17 +57,13 @@ async function findLastDeliveryAddress(telefono) {
     where('sessionId', '==', telefono),
     where('estado', '==', 'entregado'),
     where('tipo_entrega', '==', 'delivery'),
+    orderBy('createdAt', 'desc'),
+    limit(1),
   );
   const snapshot = await getDocs(q);
+  trackRead('findLastDeliveryAddress', `telefono=${telefono}`, snapshot.docs.length);
   if (snapshot.empty) return null;
-  let latest = null;
-  for (const d of snapshot.docs) {
-    const data = d.data();
-    if (!latest || (data.createdAt?.toMillis?.() > latest.createdAt?.toMillis?.())) {
-      latest = data;
-    }
-  }
-  return latest?.direccion || null;
+  return snapshot.docs[0].data()?.direccion || null;
 }
 
 async function saveOrder(orderData) {
@@ -97,6 +95,7 @@ async function saveOrder(orderData) {
   };
 
   await setDoc(doc(db, 'pedidos', id), pedido);
+  trackWrite('saveOrder', `id=${id} | cliente=${orderData.cliente} | total=${subtotal + costoEnvio}`);
 
   // Push notification al chef (no-blocking)
   const tipoEntrega = orderData.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro';
@@ -111,6 +110,7 @@ async function saveOrder(orderData) {
 
 async function getOrder(id) {
   const snapshot = await getDoc(doc(db, 'pedidos', id));
+  trackRead('getOrder', `id=${id}`, snapshot.exists() ? 1 : 0);
   if (!snapshot.exists()) return null;
   return { id: snapshot.id, ...snapshot.data() };
 }
@@ -126,6 +126,7 @@ async function findPedidoPendientePago(sessionId) {
     where('estado', '==', 'pendiente_pago'),
   );
   const snapshot = await getDocs(q);
+  trackRead('findPedidoPendientePago', `sessionId=${sessionId}`, snapshot.docs.length);
   if (snapshot.empty) return null;
   const d = snapshot.docs[0];
   return { id: d.id, ...d.data() };
@@ -143,6 +144,7 @@ async function attachComprobante(pedidoId, imageBuffer, mimeType) {
     estado: 'pendiente',
     comprobanteAt: serverTimestamp(),
   });
+  trackWrite('attachComprobante', `pedidoId=${pedidoId} | mimeType=${mimeType}`);
   return url;
 }
 
@@ -178,6 +180,7 @@ async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modi
       solicitadoAt: serverTimestamp(),
     },
   });
+  trackWrite('solicitarCambio', `pedidoId=${pedidoId} | tipo=${tipo}`);
 
   return { pedidoId, descripcionCambio };
 }
@@ -198,6 +201,7 @@ async function cancelarPedido({ pedidoId }) {
   }
 
   await updateDoc(ref, { estado: 'cancelado', canceladoAt: serverTimestamp() });
+  trackWrite('cancelarPedido', `pedidoId=${pedidoId}`);
   return { pedidoId, cancelado: true };
 }
 

@@ -7,6 +7,9 @@ import {
   query,
   where,
   getDocs,
+  orderBy,
+  limit,
+  startAfter,
   serverTimestamp,
   type Unsubscribe,
   type QueryDocumentSnapshot,
@@ -85,6 +88,7 @@ export function suscribirPedidosActivos(
     q,
     (snapshot) => {
       console.log(`[suscribirPedidosActivos] snapshot received: ${snapshot.docs.length} docs, fromCache=${snapshot.metadata.fromCache}, hasPendingWrites=${snapshot.metadata.hasPendingWrites} (${Date.now() - t0}ms since subscribe)`);
+      console.log(`[📖 READ] suscribirPedidosActivos | docs=${snapshot.docs.length}`);
       const pedidos = sortByCreatedAtDesc(
         snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
       );
@@ -106,6 +110,7 @@ export function suscribirHistorial(
   return onSnapshot(
     q,
     (snapshot) => {
+      console.log(`[📖 READ] suscribirHistorial | docs=${snapshot.docs.length}`);
       const pedidos = sortByCreatedAtDesc(
         snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
       );
@@ -147,6 +152,7 @@ async function actualizarEstado(id: string, data: Record<string, any>) {
   const t0 = Date.now();
   const estado = data.estado ?? Object.keys(data).join(',');
   console.log(`[actualizarEstado] START pedido=${id} → ${estado}`);
+  console.log(`[📝 WRITE] actualizarEstado | pedido=${id} | estado=${estado}`);
   await updateDoc(doc(db, 'pedidos', id), data);
   console.log(`[actualizarEstado] DONE pedido=${id} in ${Date.now() - t0}ms`);
 }
@@ -186,6 +192,7 @@ export async function aprobarCambio(pedido: Pedido): Promise<void> {
     updateData.total = cambio.total_nuevo;
   }
 
+  console.log(`[📝 WRITE] aprobarCambio | pedido=${pedido.id} | tipo=${cambio.tipo}`);
   await updateDoc(doc(db, 'pedidos', pedido.id), updateData);
 }
 
@@ -238,32 +245,57 @@ export async function fetchHistorial(options: {
   filtro: FiltroHistorial;
   cursor?: QueryDocumentSnapshot<DocumentData> | null;
 }): Promise<HistorialPage> {
+  const t0 = Date.now();
   const { desde, hasta } = getDateRange(options.filtro);
 
-  // Sin orderBy en Firestore para evitar requerir índice compuesto.
-  // El filtro de fecha y el ordenamiento se aplican client-side.
-  const snapshot = await getDocs(query(
-    collection(db, 'pedidos'),
+  // Construir query con filtros server-side para minimizar lecturas
+  const constraints: any[] = [
     where('restauranteId', '==', RESTAURANTE_ID),
     where('estado', 'in', ['entregado', 'cancelado']),
-  ));
+  ];
 
-  let pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
+  // Filtro de fecha server-side (requiere índice compuesto)
+  if (desde) constraints.push(where('createdAt', '>=', desde));
+  if (hasta) constraints.push(where('createdAt', '<', hasta));
 
-  if (desde) {
-    const desdeMs = desde.getTime();
-    pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) >= desdeMs);
+  // Ordenar y limitar server-side
+  constraints.push(orderBy('createdAt', 'desc'));
+  constraints.push(limit(PAGE_SIZE + 1)); // +1 para detectar si hay más
+
+  if (options.cursor) constraints.push(startAfter(options.cursor));
+
+  let snapshot;
+  try {
+    snapshot = await getDocs(query(collection(db, 'pedidos'), ...constraints));
+    console.log(`[📖 READ] fetchHistorial | filtro=${options.filtro} | docs=${snapshot.docs.length} | elapsed=${Date.now() - t0}ms`);
+  } catch (indexErr: any) {
+    // Fallback si el índice compuesto no existe aún — lee limitado sin filtro de fecha
+    console.warn(`[fetchHistorial] Index missing, using fallback: ${indexErr?.message}`);
+    const fallbackConstraints: any[] = [
+      where('restauranteId', '==', RESTAURANTE_ID),
+      where('estado', 'in', ['entregado', 'cancelado']),
+    ];
+    snapshot = await getDocs(query(collection(db, 'pedidos'), ...fallbackConstraints));
+
+    let pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
+    if (desde) {
+      const desdeMs = desde.getTime();
+      pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) >= desdeMs);
+    }
+    if (hasta) {
+      const hastaMs = hasta.getTime();
+      pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) < hastaMs);
+    }
+    pedidos = sortByCreatedAtDesc(pedidos);
+    console.log(`[fetchHistorial] fallback done in ${Date.now() - t0}ms — ${snapshot.docs.length} docs read, ${pedidos.length} after filter`);
+    return { pedidos: pedidos.slice(0, PAGE_SIZE), cursor: null, hasMore: false };
   }
-  if (hasta) {
-    const hastaMs = hasta.getTime();
-    pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) < hastaMs);
-  }
 
-  pedidos = sortByCreatedAtDesc(pedidos);
+  const hasMore = snapshot.docs.length > PAGE_SIZE;
+  const docs = hasMore ? snapshot.docs.slice(0, PAGE_SIZE) : snapshot.docs;
+  const pedidos = docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
+  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
 
-  return {
-    pedidos: pedidos.slice(0, PAGE_SIZE),
-    cursor: null,
-    hasMore: false,
-  };
+  console.log(`[fetchHistorial] done in ${Date.now() - t0}ms — ${docs.length} docs, hasMore=${hasMore}`);
+  return { pedidos, cursor: lastDoc, hasMore };
 }

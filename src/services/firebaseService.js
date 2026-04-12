@@ -22,4 +22,40 @@ const app = getApps().length === 0
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-module.exports = { db, storage };
+// ── Write counter para diagnosticar uso de cuota ─────────────────────────────
+const _writeStats = { total: 0, bySource: {}, startedAt: Date.now() };
+const _readStats = { total: 0, bySource: {}, startedAt: Date.now() };
+
+function trackWrite(source, details = '') {
+  _writeStats.total++;
+  _writeStats.bySource[source] = (_writeStats.bySource[source] || 0) + 1;
+  const elapsed = Math.round((Date.now() - _writeStats.startedAt) / 1000 / 60);
+
+  console.log(
+    `[📝 WRITE #${_writeStats.total}] ${source} ${details ? '- ' + details : ''} (${elapsed}min elapsed)`,
+  );
+
+  if (_writeStats.total % 10 === 0) {
+    console.log(`[📊 WriteStats] Total: ${_writeStats.total} | ${JSON.stringify(_writeStats.bySource)}`);
+  }
+}
+
+function trackRead(source, details = '', docCount = 0) {
+  _readStats.total++;
+  _readStats.bySource[source] = (_readStats.bySource[source] || 0) + 1;
+  const elapsed = Math.round((Date.now() - _readStats.startedAt) / 1000 / 60);
+
+  const docInfo = docCount > 0 ? ` [${docCount} docs]` : '';
+  console.log(
+    `[📖 READ #${_readStats.total}] ${source} ${details ? '- ' + details : ''}${docInfo} (${elapsed}min elapsed)`,
+  );
+
+  if (_readStats.total % 20 === 0) {
+    console.log(`[📊 ReadStats] Total: ${_readStats.total} | ${JSON.stringify(_readStats.bySource)}`);
+  }
+}
+
+function getWriteStats() { return { ..._writeStats, uptimeMin: Math.round((Date.now() - _writeStats.startedAt) / 1000 / 60) }; }
+function getReadStats() { return { ..._readStats, uptimeMin: Math.round((Date.now() - _readStats.startedAt) / 1000 / 60) }; }
+
+module.exports = { db, storage, trackWrite, trackRead, getWriteStats, getReadStats };

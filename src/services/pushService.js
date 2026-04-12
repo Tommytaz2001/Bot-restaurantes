@@ -1,4 +1,4 @@
-const { db } = require('./firebaseService');
+const { db, trackWrite } = require('./firebaseService');
 const { doc, getDoc, updateDoc, deleteField } = require('firebase/firestore');
 
 /**
@@ -40,6 +40,7 @@ async function enviarPushAlChef(restauranteId, titulo, cuerpo) {
         await updateDoc(doc(db, 'restaurantes', restauranteId), {
           push_token: deleteField(),
         });
+        trackWrite('pushService:deleteToken');
         console.log('[pushService] Token stale eliminado para', restauranteId);
       }
     } else {

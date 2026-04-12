@@ -3,6 +3,7 @@ const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateServ
 const { handleWebhook } = require('../whatsapp/metaWebhook');
 const { clearMenuCache } = require('../services/menuService');
 const { requireAuth } = require('../middleware/authMiddleware');
+const { getWriteStats } = require('../services/firebaseService');
 
 const router = express.Router();
 
@@ -31,6 +32,11 @@ router.post('/resume', requireAuth, (req, res) => {
 router.post('/cache/clear', (req, res) => {
   clearMenuCache();
   res.json({ ok: true });
+});
+
+// GET /whatsapp/write-stats — diagnóstico de escrituras Firestore
+router.get('/write-stats', (req, res) => {
+  res.json(getWriteStats());
 });
 
 // POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API

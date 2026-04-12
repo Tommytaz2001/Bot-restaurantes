@@ -47,6 +47,15 @@ if (require.main === module) {
   } else {
     console.log('[WhatsApp] Listener de notificaciones desactivado (WHATSAPP_ENABLED != true)');
   }
+
+  // Log de escrituras Firestore cada 10 minutos para diagnosticar cuota
+  const { getWriteStats } = require('./src/services/firebaseService');
+  setInterval(() => {
+    const stats = getWriteStats();
+    if (stats.total > 0) {
+      console.log(`[WriteTracker] ${stats.total} writes in ${stats.uptimeMin}min:`, JSON.stringify(stats.bySource));
+    }
+  }, 10 * 60 * 1000).unref();
 }
 
 module.exports = app;

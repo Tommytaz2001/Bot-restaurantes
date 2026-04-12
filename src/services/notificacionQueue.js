@@ -1,4 +1,4 @@
-const { db } = require('./firebaseService');
+const { db, trackWrite } = require('./firebaseService');
 const {
   collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp,
 } = require('firebase/firestore');
@@ -17,6 +17,7 @@ async function encolarNotificacion({ telefono, mensaje, pedidoId }) {
       pedidoId: pedidoId ?? null,
       creadoAt: serverTimestamp(),
     });
+    trackWrite('queue:enqueue');
     console.log(`[notificacionQueue] Notificación encolada para ${telefono}`);
   } catch (err) {
     console.error('[notificacionQueue] Error encolando:', err.message);
@@ -47,6 +48,7 @@ async function procesarCola() {
     try {
       await sendWhatsAppMessage(destino, mensaje);
       await deleteDoc(doc(db, QUEUE_COL, d.id));
+      trackWrite('queue:dequeue');
       console.log(`[notificacionQueue] ✓ Enviada a ${destino} desde cola`);
     } catch (err) {
       console.warn(`[notificacionQueue] Fallo enviando a ${destino}:`, err.message);

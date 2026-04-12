@@ -1,6 +1,6 @@
 const express = require('express');
 const { getOrder } = require('../orders/orderService');
-const { db } = require('../services/firebaseService');
+const { db, trackWrite, trackRead, getWriteStats, getReadStats } = require('../services/firebaseService');
 const { doc, updateDoc } = require('firebase/firestore');
 const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
 const { encolarNotificacion } = require('../services/notificacionQueue');
@@ -18,6 +18,24 @@ router.get('/:id', async (req, res) => {
     console.error('[orderRoutes] Error:', err.message);
     return res.status(503).json({ error: 'Servicio temporalmente no disponible' });
   }
+});
+
+// Endpoint de debug para ver estadísticas de Firebase
+router.get('/debug/stats', (req, res) => {
+  const writeStats = getWriteStats();
+  const readStats = getReadStats();
+  console.log(`\n╔════════════════════════════════════════════════════╗`);
+  console.log(`║         📊 FIREBASE USAGE STATISTICS 📊             ║`);
+  console.log(`╠════════════════════════════════════════════════════╣`);
+  console.log(`║ WRITES:                                            ║`);
+  console.log(`║   Total: ${writeStats.total}`);
+  console.log(`║   Sources: ${JSON.stringify(writeStats.bySource)}`);
+  console.log(`║ READS:                                             ║`);
+  console.log(`║   Total: ${readStats.total}`);
+  console.log(`║   Sources: ${JSON.stringify(readStats.bySource)}`);
+  console.log(`║ Uptime: ${writeStats.uptimeMin} minutes                      ║`);
+  console.log(`╚════════════════════════════════════════════════════╝\n`);
+  return res.json({ writes: writeStats, reads: readStats });
 });
 
 const MENSAJES_NOTIFICACION = {
@@ -52,12 +70,14 @@ router.post('/:id/notificar', async (req, res) => {
       const mins = Number(tiempoEstimadoMin);
       mensaje = `✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔\n\n🕐 Tiempo estimado: *${mins} minutos*.`;
       await updateDoc(doc(db, 'pedidos', order.id), { tiempo_estimado_min: mins });
+      trackWrite('orderRoutes:eta', `pedidoId=${order.id} | minutos=${mins}`);
     }
 
     // Marcar como enviada ANTES de enviar para que el listener de Firestore no duplique
     await updateDoc(doc(db, 'pedidos', order.id), {
       [`notificaciones_enviadas.${tipo}`]: true,
     });
+    trackWrite(`orderRoutes:notif:${tipo}`, `pedidoId=${order.id}`);
 
     await enviarNotificacion(order, mensaje);
 
