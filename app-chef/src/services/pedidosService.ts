@@ -1,22 +1,7 @@
-import { db, auth } from './firebaseConfig';
-import {
-  collection,
-  doc,
-  updateDoc,
-  onSnapshot,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit,
-  startAfter,
-  serverTimestamp,
-  type Unsubscribe,
-  type QueryDocumentSnapshot,
-  type DocumentData,
-} from 'firebase/firestore';
-
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
+import { auth } from './firebaseConfig';
+import { authFetch, getAuthToken } from './apiClient';
+import { getBackendUrl } from './backendConfig';
+import EventSource from 'react-native-sse';
 
 export type EstadoPedido =
   | 'pendiente'
@@ -62,78 +47,112 @@ export interface Pedido {
   tiempo_estimado_min?: number;
 }
 
-const ESTADOS_ACTIVOS: EstadoPedido[] = ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino'];
-const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
+function getTimestampMs(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === 'string') return new Date(ts).getTime();
+  return (ts.seconds ?? 0) * 1000;
+}
 
 function sortByCreatedAtDesc(pedidos: Pedido[]): Pedido[] {
-  return pedidos.sort((a, b) => {
-    const at = (a.createdAt as any)?.seconds ?? 0;
-    const bt = (b.createdAt as any)?.seconds ?? 0;
-    return bt - at;
-  });
+  return pedidos.sort((a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt));
 }
+
+// ─── Listeners SSE ────────────────────────────────────────────────────────────
 
 export function suscribirPedidosActivos(
   callback: (pedidos: Pedido[]) => void
-): Unsubscribe {
-  const t0 = Date.now();
-  console.log('[suscribirPedidosActivos] Setting up listener...');
-  const q = query(
-    collection(db, 'pedidos'),
-    where('restauranteId', '==', RESTAURANTE_ID),
-    where('estado', 'in', ESTADOS_ACTIVOS),
-  );
+): () => void {
+  let es: EventSource | null = null;
+  let cancelled = false;
 
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      console.log(`[suscribirPedidosActivos] snapshot received: ${snapshot.docs.length} docs, fromCache=${snapshot.metadata.fromCache}, hasPendingWrites=${snapshot.metadata.hasPendingWrites} (${Date.now() - t0}ms since subscribe)`);
-      console.log(`[📖 READ] suscribirPedidosActivos | docs=${snapshot.docs.length}`);
-      const pedidos = sortByCreatedAtDesc(
-        snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
-      );
-      callback(pedidos);
-    },
-    (err) => console.error('[Firestore] suscribirPedidosActivos error:', err.message),
-  );
+  (async () => {
+    const [url, token] = await Promise.all([getBackendUrl(), getAuthToken()]);
+    if (cancelled) return;
+    console.log('[suscribirPedidosActivos] Connecting SSE...');
+    es = new EventSource(`${url}/pedidos-admin/activos/stream?token=${token}`);
+    es.addEventListener('message', (e: any) => {
+      const pedidos = JSON.parse(e.data) as Pedido[];
+      console.log(`[suscribirPedidosActivos] snapshot received: ${pedidos.length} docs`);
+      callback(sortByCreatedAtDesc(pedidos));
+    });
+    es.addEventListener('error', (e: any) => {
+      console.warn('[SSE activos] error:', e);
+    });
+  })();
+
+  return () => {
+    cancelled = true;
+    es?.close();
+  };
 }
 
 export function suscribirHistorial(
   callback: (pedidos: Pedido[]) => void
-): Unsubscribe {
-  const q = query(
-    collection(db, 'pedidos'),
-    where('restauranteId', '==', RESTAURANTE_ID),
-    where('estado', 'in', ['entregado', 'cancelado']),
-  );
+): () => void {
+  let es: EventSource | null = null;
+  let cancelled = false;
 
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      console.log(`[📖 READ] suscribirHistorial | docs=${snapshot.docs.length}`);
-      const pedidos = sortByCreatedAtDesc(
-        snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido))
-      );
-      callback(pedidos);
-    },
-    (err) => console.error('[Firestore] suscribirHistorial error:', err.message),
-  );
+  (async () => {
+    const [url, token] = await Promise.all([getBackendUrl(), getAuthToken()]);
+    if (cancelled) return;
+    es = new EventSource(`${url}/pedidos-admin/historial/stream?token=${token}`);
+    es.addEventListener('message', (e: any) => {
+      const pedidos = JSON.parse(e.data) as Pedido[];
+      console.log(`[suscribirHistorial] snapshot received: ${pedidos.length} docs`);
+      callback(sortByCreatedAtDesc(pedidos));
+    });
+    es.addEventListener('error', (e: any) => {
+      console.warn('[SSE historial] error:', e);
+    });
+  })();
+
+  return () => {
+    cancelled = true;
+    es?.close();
+  };
 }
+
+export function suscribirPedido(
+  id: string,
+  callback: (pedido: Pedido) => void
+): () => void {
+  let es: EventSource | null = null;
+  let cancelled = false;
+
+  (async () => {
+    const [url, token] = await Promise.all([getBackendUrl(), getAuthToken()]);
+    if (cancelled) return;
+    es = new EventSource(`${url}/pedidos-admin/${id}/stream?token=${token}`);
+    es.addEventListener('message', (e: any) => {
+      const pedido = JSON.parse(e.data) as Pedido;
+      callback(pedido);
+    });
+    es.addEventListener('error', (e: any) => {
+      console.warn(`[SSE pedido:${id}] error:`, e);
+    });
+  })();
+
+  return () => {
+    cancelled = true;
+    es?.close();
+  };
+}
+
+// ─── Notificar cliente (ya iba al backend, se conserva) ──────────────────────
 
 export type TipoNotificacion = 'confirmado' | 'rechazado' | 'en_camino' | 'entregado' | 'cambio_aprobado' | 'cambio_rechazado';
 
 export async function notificarCliente(id: string, tipo: TipoNotificacion, tiempoEstimadoMin?: number): Promise<void> {
-  if (!BACKEND_URL) { console.log('[notificarCliente] SKIP — no BACKEND_URL'); return; }
   const t0 = Date.now();
-  console.log(`[notificarCliente] START pedido=${id} tipo=${tipo} url=${BACKEND_URL}`);
+  console.log(`[notificarCliente] START pedido=${id} tipo=${tipo}`);
   try {
     const token = await auth.currentUser?.getIdToken();
-    console.log(`[notificarCliente] got token in ${Date.now() - t0}ms`);
+    const backendUrl = await getBackendUrl();
     const body: Record<string, any> = { tipo };
     if (tiempoEstimadoMin) body.tiempoEstimadoMin = tiempoEstimadoMin;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    await fetch(`${BACKEND_URL}/orders/${id}/notificar`, {
+    await fetch(`${backendUrl}/orders/${id}/notificar`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -148,154 +167,72 @@ export async function notificarCliente(id: string, tipo: TipoNotificacion, tiemp
   }
 }
 
-async function actualizarEstado(id: string, data: Record<string, any>) {
-  const t0 = Date.now();
-  const estado = data.estado ?? Object.keys(data).join(',');
-  console.log(`[actualizarEstado] START pedido=${id} → ${estado}`);
-  console.log(`[📝 WRITE] actualizarEstado | pedido=${id} | estado=${estado}`);
-  await updateDoc(doc(db, 'pedidos', id), data);
-  console.log(`[actualizarEstado] DONE pedido=${id} in ${Date.now() - t0}ms`);
-}
-
-export const confirmarPedido = (id: string) =>
-  actualizarEstado(id, { estado: 'confirmado' });
+// ─── Writes de estado (ahora van al backend) ─────────────────────────────────
 
 export async function confirmarPedidoConETA(id: string, tiempoEstimadoMin?: number): Promise<void> {
-  const update: Record<string, any> = { estado: 'confirmado' };
-  if (tiempoEstimadoMin) update.tiempo_estimado_min = tiempoEstimadoMin;
-  await actualizarEstado(id, update);
-  // El listener de Firestore en el backend detecta el cambio y envía la notificación al cliente
-}
-
-export const marcarEnCamino = (id: string) =>
-  actualizarEstado(id, { estado: 'en_camino' });
-
-export const marcarEntregado = (id: string) =>
-  actualizarEstado(id, { estado: 'entregado', entregadoAt: serverTimestamp() });
-
-export const rechazarPedido = (id: string) =>
-  actualizarEstado(id, { estado: 'cancelado', canceladoAt: serverTimestamp() });
-
-export async function aprobarCambio(pedido: Pedido): Promise<void> {
-  const cambio = pedido.cambio_solicitado!;
-  const updateData: Record<string, any> = {
-    'cambio_solicitado.estado': 'aprobado',
-    'cambio_solicitado.respondidoAt': serverTimestamp(),
-  };
-
-  if (
-    cambio.tipo === 'agregar_productos' &&
-    cambio.productos_nuevos?.length &&
-    cambio.total_nuevo != null
-  ) {
-    updateData.productos = [...pedido.productos, ...cambio.productos_nuevos];
-    updateData.total = cambio.total_nuevo;
-  }
-
-  console.log(`[📝 WRITE] aprobarCambio | pedido=${pedido.id} | tipo=${cambio.tipo}`);
-  await updateDoc(doc(db, 'pedidos', pedido.id), updateData);
-}
-
-export const rechazarCambio = (id: string) =>
-  actualizarEstado(id, {
-    'cambio_solicitado.estado': 'rechazado',
-    'cambio_solicitado.respondidoAt': serverTimestamp(),
+  console.log(`[📝 WRITE] confirmarPedidoConETA | pedido=${id}`);
+  const res = await authFetch(`/pedidos-admin/${id}/confirmar`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tiempoEstimadoMin }),
   });
+  if (!res.ok) throw new Error(`confirmarPedidoConETA failed: ${res.status}`);
+}
+
+export const confirmarPedido = (id: string) => confirmarPedidoConETA(id);
+
+export async function marcarEnCamino(id: string): Promise<void> {
+  console.log(`[📝 WRITE] marcarEnCamino | pedido=${id}`);
+  const res = await authFetch(`/pedidos-admin/${id}/en-camino`, { method: 'PATCH' });
+  if (!res.ok) throw new Error(`marcarEnCamino failed: ${res.status}`);
+}
+
+export async function marcarEntregado(id: string): Promise<void> {
+  console.log(`[📝 WRITE] marcarEntregado | pedido=${id}`);
+  const res = await authFetch(`/pedidos-admin/${id}/entregado`, { method: 'PATCH' });
+  if (!res.ok) throw new Error(`marcarEntregado failed: ${res.status}`);
+}
+
+export async function rechazarPedido(id: string): Promise<void> {
+  console.log(`[📝 WRITE] rechazarPedido | pedido=${id}`);
+  const res = await authFetch(`/pedidos-admin/${id}/rechazar`, { method: 'PATCH' });
+  if (!res.ok) throw new Error(`rechazarPedido failed: ${res.status}`);
+}
+
+export async function aprobarCambio(pedidoId: string): Promise<void> {
+  console.log(`[📝 WRITE] aprobarCambio | pedido=${pedidoId}`);
+  const res = await authFetch(`/pedidos-admin/${pedidoId}/cambio/aprobar`, { method: 'PATCH' });
+  if (!res.ok) throw new Error(`aprobarCambio failed: ${res.status}`);
+}
+
+export async function rechazarCambio(id: string): Promise<void> {
+  console.log(`[📝 WRITE] rechazarCambio | pedido=${id}`);
+  const res = await authFetch(`/pedidos-admin/${id}/cambio/rechazar`, { method: 'PATCH' });
+  if (!res.ok) throw new Error(`rechazarCambio failed: ${res.status}`);
+}
 
 // ─── Historial paginado ────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 20;
-
 export type FiltroHistorial = 'todos' | 'hoy' | 'ayer' | '7dias' | '30dias';
-
-function getDateRange(filtro: FiltroHistorial): { desde?: Date; hasta?: Date } {
-  const now = new Date();
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-  switch (filtro) {
-    case 'hoy':
-      return { desde: startOfDay(now) };
-    case 'ayer': {
-      const ayer = new Date(now);
-      ayer.setDate(ayer.getDate() - 1);
-      return { desde: startOfDay(ayer), hasta: startOfDay(now) };
-    }
-    case '7dias': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      return { desde: startOfDay(d) };
-    }
-    case '30dias': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 30);
-      return { desde: startOfDay(d) };
-    }
-    default:
-      return {};
-  }
-}
 
 export interface HistorialPage {
   pedidos: Pedido[];
-  cursor: QueryDocumentSnapshot<DocumentData> | null;
+  afterTs: string | null;
   hasMore: boolean;
 }
 
 export async function fetchHistorial(options: {
   filtro: FiltroHistorial;
-  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+  afterTs?: string | null;
 }): Promise<HistorialPage> {
+  const { filtro, afterTs } = options;
+  const params = new URLSearchParams({ filtro });
+  if (afterTs) params.set('afterTs', afterTs);
+
+  console.log(`[fetchHistorial] START filtro=${filtro} afterTs=${afterTs ?? 'null'}`);
   const t0 = Date.now();
-  const { desde, hasta } = getDateRange(options.filtro);
-
-  // Construir query con filtros server-side para minimizar lecturas
-  const constraints: any[] = [
-    where('restauranteId', '==', RESTAURANTE_ID),
-    where('estado', 'in', ['entregado', 'cancelado']),
-  ];
-
-  // Filtro de fecha server-side (requiere índice compuesto)
-  if (desde) constraints.push(where('createdAt', '>=', desde));
-  if (hasta) constraints.push(where('createdAt', '<', hasta));
-
-  // Ordenar y limitar server-side
-  constraints.push(orderBy('createdAt', 'desc'));
-  constraints.push(limit(PAGE_SIZE + 1)); // +1 para detectar si hay más
-
-  if (options.cursor) constraints.push(startAfter(options.cursor));
-
-  let snapshot;
-  try {
-    snapshot = await getDocs(query(collection(db, 'pedidos'), ...constraints));
-    console.log(`[📖 READ] fetchHistorial | filtro=${options.filtro} | docs=${snapshot.docs.length} | elapsed=${Date.now() - t0}ms`);
-  } catch (indexErr: any) {
-    // Fallback si el índice compuesto no existe aún — lee limitado sin filtro de fecha
-    console.warn(`[fetchHistorial] Index missing, using fallback: ${indexErr?.message}`);
-    const fallbackConstraints: any[] = [
-      where('restauranteId', '==', RESTAURANTE_ID),
-      where('estado', 'in', ['entregado', 'cancelado']),
-    ];
-    snapshot = await getDocs(query(collection(db, 'pedidos'), ...fallbackConstraints));
-
-    let pedidos = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
-    if (desde) {
-      const desdeMs = desde.getTime();
-      pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) >= desdeMs);
-    }
-    if (hasta) {
-      const hastaMs = hasta.getTime();
-      pedidos = pedidos.filter((p) => (p.createdAt?.toDate?.()?.getTime() ?? 0) < hastaMs);
-    }
-    pedidos = sortByCreatedAtDesc(pedidos);
-    console.log(`[fetchHistorial] fallback done in ${Date.now() - t0}ms — ${snapshot.docs.length} docs read, ${pedidos.length} after filter`);
-    return { pedidos: pedidos.slice(0, PAGE_SIZE), cursor: null, hasMore: false };
-  }
-
-  const hasMore = snapshot.docs.length > PAGE_SIZE;
-  const docs = hasMore ? snapshot.docs.slice(0, PAGE_SIZE) : snapshot.docs;
-  const pedidos = docs.map((d) => ({ id: d.id, ...d.data() } as Pedido));
-  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
-
-  console.log(`[fetchHistorial] done in ${Date.now() - t0}ms — ${docs.length} docs, hasMore=${hasMore}`);
-  return { pedidos, cursor: lastDoc, hasMore };
+  const res = await authFetch(`/pedidos-admin/historial?${params.toString()}`);
+  if (!res.ok) throw new Error(`fetchHistorial failed: ${res.status}`);
+  const result = await res.json() as HistorialPage;
+  console.log(`[fetchHistorial] done in ${Date.now() - t0}ms — ${result.pedidos.length} docs, hasMore=${result.hasMore}`);
+  return result;
 }

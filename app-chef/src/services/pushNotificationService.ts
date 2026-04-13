@@ -14,10 +14,8 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform, AppState, AppStateStatus } from 'react-native';
-import { db } from './firebaseConfig';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { authFetch } from './apiClient';
 
-const RESTAURANTE_ID = process.env.EXPO_PUBLIC_RESTAURANTE_ID ?? 'urbano';
 let _lastRegisteredToken: string | null = null;
 
 // Cómo manejar notificaciones cuando la app está en primer plano
@@ -32,7 +30,7 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * Solicita permiso y registra el Expo Push Token en Firestore.
+ * Solicita permiso y registra el Expo Push Token en el backend.
  * Llama esta función una vez al autenticarse el chef.
  */
 export async function registerPushToken(): Promise<void> {
@@ -69,16 +67,17 @@ export async function registerPushToken(): Promise<void> {
     const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
     const token = tokenData.data;
 
-    // Solo escribir si el token cambió (evita escrituras innecesarias a Firestore)
+    // Solo escribir si el token cambió (evita escrituras innecesarias al backend)
     if (token === _lastRegisteredToken) {
       return;
     }
 
-    await setDoc(
-      doc(db, 'restaurantes', RESTAURANTE_ID),
-      { push_token: token },
-      { merge: true },
-    );
+    const res = await authFetch('/restaurante/push-token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) throw new Error(`registerPushToken failed: ${res.status}`);
+
     _lastRegisteredToken = token;
     console.log('[pushService] Token registrado:', token.substring(0, 30) + '...');
   } catch (err: any) {

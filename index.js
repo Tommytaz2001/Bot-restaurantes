@@ -6,6 +6,9 @@ const chatRoutes = require('./src/routes/chatRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
 const logRoutes = require('./src/routes/logRoutes');
+const pedidosAdminRoutes = require('./src/routes/pedidosAdminRoutes');
+const restauranteRoutes = require('./src/routes/restauranteRoutes');
+const menuAdminRoutes = require('./src/routes/menuAdminRoutes');
 const { requireAuth } = require('./src/middleware/authMiddleware');
 const { requestLogger } = require('./src/middleware/requestLogger');
 
@@ -21,6 +24,9 @@ app.use('/chat', chatRoutes);
 app.use('/orders', requireAuth, orderRoutes);
 app.use('/whatsapp', whatsappRoutes);
 app.use('/logs', logRoutes);
+app.use('/pedidos-admin', pedidosAdminRoutes);
+app.use('/restaurante', requireAuth, restauranteRoutes);
+app.use('/menu-admin', requireAuth, menuAdminRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

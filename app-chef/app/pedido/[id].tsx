@@ -6,11 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../src/services/firebaseConfig';
 import {
   confirmarPedidoConETA, marcarEnCamino, marcarEntregado,
-  rechazarPedido, aprobarCambio, rechazarCambio,
+  rechazarPedido, aprobarCambio, rechazarCambio, suscribirPedido,
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
@@ -92,10 +90,7 @@ export default function DetallePedidoScreen() {
 
   useEffect(() => {
     if (!id) return;
-    const unsub = onSnapshot(doc(db, 'pedidos', id), (snap) => {
-      if (snap.exists()) setPedido({ id: snap.id, ...snap.data() } as Pedido);
-    });
-    return unsub;
+    return suscribirPedido(id, setPedido);
   }, [id]);
 
   const ejecutar = async (fn: () => Promise<void>, confirmMsg?: string) => {
@@ -272,7 +267,7 @@ export default function DetallePedidoScreen() {
                 label="Aprobar cambio"
                 color="#22C55E"
                 onPress={() => ejecutar(async () => {
-                  await aprobarCambio(pedido);
+                  await aprobarCambio(pedido.id);
                 })}
                 loading={accionando}
               />

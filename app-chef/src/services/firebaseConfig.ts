@@ -1,6 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -17,10 +16,3 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
-
-// Long polling es más estable que WebSocket en React Native
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-});
-
-console.log('[FirebaseConfig] Firestore initialized with experimentalForceLongPolling: true');

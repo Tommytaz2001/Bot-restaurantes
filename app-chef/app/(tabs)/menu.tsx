@@ -289,8 +289,7 @@ export default function MenuScreen() {
     setSaving(true);
     try {
       await saveProteinasBloqueadas(bloqueadas);
-      setProteinasBloqueadas(bloqueadas);
-      await cargar(); // Recarga menú para reflejar cambios visuales
+      setProteinasBloqueadas(bloqueadas); // UI recalcula estaItemBloqueadoPorProteina automáticamente
     } catch {
       Alert.alert('Error', 'No se pudo guardar las proteínas.');
     } finally {
@@ -388,9 +387,9 @@ export default function MenuScreen() {
     setSaving(true);
     try {
       if (idx === null) {
-        await addItem(cat.id, cat.items, item);
+        await addItem(cat.id, item);
       } else {
-        await updateItem(cat.id, cat.items, idx, { ...item, disponible: cat.items[idx].disponible ?? true });
+        await updateItem(cat.id, idx, { ...item, disponible: cat.items[idx].disponible ?? true });
       }
       setProdModal(false);
       await cargar();
@@ -412,7 +411,7 @@ export default function MenuScreen() {
           onPress: async () => {
             setSaving(true);
             try {
-              await deleteItem(cat.id, cat.items, idx);
+              await deleteItem(cat.id, idx);
               await cargar();
             } catch {
               Alert.alert('Error', 'No se pudo eliminar el producto.');
@@ -440,7 +439,7 @@ export default function MenuScreen() {
     ));
 
     try {
-      await toggleDisponible(cat.id, cat.items, idx);
+      await toggleDisponible(cat.id, idx);
     } catch (error: any) {
       // Revert on failure
       setCategorias(prev => prev.map(c =>
