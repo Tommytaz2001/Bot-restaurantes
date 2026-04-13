@@ -11,7 +11,7 @@ const GUARDAR_PEDIDO_TOOL = {
       type: 'object',
       properties: {
         cliente: { type: 'string', description: 'Nombre completo del cliente' },
-        telefono: { type: 'string', description: 'Número de teléfono del cliente' },
+        telefono: { type: 'string', description: 'Número de teléfono del cliente. Solo requerido para delivery. Para retiro en local, omitir este campo.' },
         tipo_entrega: { type: 'string', enum: ['delivery', 'retiro'], description: 'Tipo de entrega: "delivery" si el cliente pidió envío a domicilio, "retiro" si pasa a retirar al local' },
         direccion: { type: 'string', description: 'Dirección de entrega. Para retiro usa "Retiro en local"' },
         productos: {
@@ -38,7 +38,7 @@ const GUARDAR_PEDIDO_TOOL = {
         },
         metodo_pago: { type: 'string', enum: ['transferencia', 'efectivo'], description: 'Método de pago elegido por el cliente' },
       },
-      required: ['cliente', 'telefono', 'tipo_entrega', 'direccion', 'productos', 'costo_envio', 'total', 'metodo_pago'],
+      required: ['cliente', 'tipo_entrega', 'direccion', 'productos', 'costo_envio', 'total', 'metodo_pago'],
     },
   },
 };

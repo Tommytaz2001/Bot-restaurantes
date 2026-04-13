@@ -17,7 +17,7 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, 
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
   const telefonoContexto = telefono
     ? `El número de teléfono del cliente es: ${telefono}. No necesitas pedírselo.`
-    : 'No tienes el número de teléfono del cliente. Pídelo durante el proceso de pedido.';
+    : 'No tienes el número de teléfono del cliente. Si el pedido es DELIVERY, pídelo. Si es RETIRO EN LOCAL, no lo necesitas — omite el campo telefono al guardar el pedido.';
 
   const contextoRepartidor = esRepartidor
     ? `\n## MODO REPARTIDOR\nEste chat proviene de un REPARTIDOR (moto/mandado) que pasa a retirar el pedido en el local, NO de un cliente final.\n\nComportamiento obligatorio:\n- NO preguntes nombre, dirección ni método de pago — no son necesarios.\n- Saluda brevemente y pide directamente qué quieren ordenar.\n- Al confirmar el pedido, usa siempre tipo_entrega: "retiro", direccion: "Retiro repartidor", cliente: "Repartidor", metodo_pago: "efectivo".\n- Después de guardar responde EXACTAMENTE: "✅ ¡Pedido recibido! Ya le avisamos al chef. Te notificamos aquí cuando esté listo para retirar. 🍔"\n- La consulta de estado y cancelación aplican igual que normalmente.`

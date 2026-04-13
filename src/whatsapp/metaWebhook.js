@@ -9,6 +9,8 @@ const { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario } = requir
 const { sendWhatsAppMessage } = require('./metaSender');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 const { log } = require('../utils/logger');
+const { estaActivo } = require('../services/botStateService');
+const { getSession } = require('../agent/sessionStore');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
@@ -82,6 +84,12 @@ async function _processMessage(data) {
   // Ignorar mensajes propios y grupos
   if (key.fromMe || key.remoteJid?.endsWith('@g.us')) return;
 
+  // Kill switch — bot pausado desde la app (cubre texto, imágenes y cualquier media)
+  if (!estaActivo()) {
+    log(`[Webhook] Bot pausado — ignorando mensaje entrante`);
+    return;
+  }
+
   // Extraer número de teléfono y remoteJid completo
   const remoteJid = key.remoteJid || '';
   const telefono = remoteJid.split('@')[0];
@@ -116,7 +124,14 @@ async function _processMessage(data) {
     } catch (err) {
       log(`[Webhook] Error procesando comprobante de ${telefono}: ${err.message}`);
     }
-    // Sin pedido pendiente → verificar horario antes de responder
+    // Sin pedido pendiente_pago → si hay sesión activa, el usuario está a mitad de un pedido
+    // (puede haber enviado el comprobante antes de confirmar). Ignorar silenciosamente.
+    const sessionMsgs = getSession(telefono);
+    if (sessionMsgs.length > 0) {
+      log(`[Webhook] Imagen de ${telefono} ignorada — sesión activa sin pedido pendiente_pago`);
+      return;
+    }
+    // Sin sesión ni pedido pendiente → verificar horario antes de responder
     const horarioImg = await verificarHorario(RESTAURANTE_ID);
     if (!horarioImg.abierto) {
       const sendReplyImg = (msg) => sendWhatsAppMessage(replyTo, msg);

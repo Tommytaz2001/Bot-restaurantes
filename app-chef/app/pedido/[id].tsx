@@ -341,7 +341,7 @@ export default function DetallePedidoScreen() {
 
           {pedido.estado === 'confirmado' && (
             <ActionBtn
-              label="🛵  Marcar en camino"
+              label={pedido.tipo_entrega === 'retiro' ? '🏪  Listo para retirar' : '🛵  Marcar en camino'}
               color="#3B82F6"
               textColor="#fff"
               onPress={() => ejecutar(async () => {
@@ -353,7 +353,7 @@ export default function DetallePedidoScreen() {
 
           {pedido.estado === 'en_camino' && (
             <ActionBtn
-              label="✓  Marcar como entregado"
+              label={pedido.tipo_entrega === 'retiro' ? '✓  Cliente retiró' : '✓  Marcar como entregado'}
               color="#22C55E"
               onPress={() => ejecutar(async () => {
                 await marcarEntregado(pedido.id);

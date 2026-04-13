@@ -1,9 +1,14 @@
 function validateOrder(order) {
-  const required = ['cliente', 'telefono', 'tipo_entrega', 'direccion', 'productos', 'total', 'metodo_pago'];
+  const required = ['cliente', 'tipo_entrega', 'direccion', 'productos', 'total', 'metodo_pago'];
   for (const field of required) {
     if (!order[field] && order[field] !== 0) {
       throw new Error(`Campo requerido faltante: ${field}`);
     }
+  }
+
+  // Teléfono requerido solo para delivery
+  if (order.tipo_entrega === 'delivery' && !order.telefono) {
+    throw new Error('Campo requerido faltante: telefono (requerido para delivery)');
   }
 
   if (!Array.isArray(order.productos) || order.productos.length === 0) {
