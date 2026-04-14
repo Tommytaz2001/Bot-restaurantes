@@ -63,6 +63,9 @@ async function setProteinasBloqueadas(bloqueadas) {
 // ─── Push token ───────────────────────────────────────────────────────────────
 
 async function registerPushToken(token) {
+  trackRead('restauranteService:registerPushToken');
+  const snap = await getDoc(doc(db, 'restaurantes', RESTAURANTE_ID));
+  if (snap.data()?.push_token === token) return;
   trackWrite('restauranteService:registerPushToken');
   await setDoc(doc(db, 'restaurantes', RESTAURANTE_ID), { push_token: token }, { merge: true });
 }

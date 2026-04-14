@@ -15,6 +15,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { authFetch } from './apiClient';
+import { auth } from './firebaseConfig';
 
 let _lastRegisteredToken: string | null = null;
 
@@ -59,6 +60,10 @@ export async function registerPushToken(): Promise<void> {
 
   if (finalStatus !== 'granted') {
     console.log('[pushService] Permiso de notificaciones denegado por el usuario');
+    return;
+  }
+
+  if (!auth.currentUser) {
     return;
   }
 
