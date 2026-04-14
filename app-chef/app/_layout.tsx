@@ -20,13 +20,16 @@ export default function RootLayout() {
       router.replace('/(auth)/login');
     } else if (user && inAuth) {
       router.replace('/(tabs)');
-    } else if (user) {
-      // Registrar token push cuando el chef está autenticado
-      registerPushToken().catch(() => {});
-      const cleanupRefresh = setupTokenRefresh();
-      return () => cleanupRefresh();
     }
   }, [user, loading, segments]);
+
+  // Push token: solo cuando cambia el usuario (no en cada cambio de ruta)
+  useEffect(() => {
+    if (!user) return;
+    registerPushToken().catch(() => {});
+    const cleanupRefresh = setupTokenRefresh();
+    return () => cleanupRefresh();
+  }, [user]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

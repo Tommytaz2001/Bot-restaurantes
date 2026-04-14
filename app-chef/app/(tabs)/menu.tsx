@@ -270,7 +270,8 @@ export default function MenuScreen() {
       ]);
       setCategorias(data);
       setProteinasBloqueadas(bloqueadas);
-    } catch {
+    } catch (err: any) {
+      console.error('[MenuScreen] cargar falló:', err?.message ?? err);
       Alert.alert('Error', 'No se pudo cargar el menú.');
     } finally {
       setLoading(false);

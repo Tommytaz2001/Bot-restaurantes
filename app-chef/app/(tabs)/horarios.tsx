@@ -40,7 +40,8 @@ export default function HorariosScreen() {
     try {
       const data = await getHorario();
       setHorario(data);
-    } catch {
+    } catch (err: any) {
+      console.error('[HorariosScreen] cargar falló:', err?.message ?? err);
       Alert.alert('Error', 'No se pudo cargar el horario.');
     } finally {
       setLoading(false);
