@@ -181,12 +181,13 @@ function ProductoModal({
 // ─── Proteínas Modal ─────────────────────────────────────────────────────────
 
 function ProteinasModal({
-  visible, onClose, onSave, bloqueadas,
+  visible, onClose, onSave, bloqueadas, saving,
 }: {
   visible: boolean;
   bloqueadas: ProteinaType[];
   onClose: () => void;
   onSave: (bloqueadas: ProteinaType[]) => void;
+  saving: boolean;
 }) {
   const [tempBloqueadas, setTempBloqueadas] = useState<ProteinaType[]>(bloqueadas);
 
@@ -226,7 +227,8 @@ function ProteinasModal({
               <Text style={styles.btnCancelText}>Cancelar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.btnPrimary}
+              style={[styles.btnPrimary, saving && styles.btnDisabled]}
+              disabled={saving}
               onPress={() => {
                 onSave(tempBloqueadas);
                 onClose();
@@ -264,12 +266,8 @@ export default function MenuScreen() {
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, bloqueadas] = await Promise.all([
-        getCategorias(),
-        getProteinasBloqueadas(),
-      ]);
+      const data = await getCategorias();
       setCategorias(data);
-      setProteinasBloqueadas(bloqueadas);
     } catch (err: any) {
       console.error('[MenuScreen] cargar falló:', err?.message ?? err);
       Alert.alert('Error', 'No se pudo cargar el menú.');
@@ -278,7 +276,12 @@ export default function MenuScreen() {
     }
   }, []);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    cargar();
+    getProteinasBloqueadas()
+      .then(setProteinasBloqueadas)
+      .catch((err) => console.error('[MenuScreen] proteinas falló:', err?.message));
+  }, [cargar]);
 
   function toggleExpand(id: string) {
     setExpanded((e) => ({ ...e, [id]: !e[id] }));
@@ -601,6 +604,7 @@ export default function MenuScreen() {
         bloqueadas={proteinasBloqueadas}
         onClose={() => setProteinModal(false)}
         onSave={handleSaveProteinas}
+        saving={saving}
       />
     </SafeAreaView>
   );
