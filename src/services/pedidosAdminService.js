@@ -1,14 +1,12 @@
 const { db, trackWrite, trackRead } = require('./firebaseService');
-const admin = require('./firebaseAdmin');
 const {
   doc, getDoc, collection, getDocs, updateDoc, query, where, orderBy, limit, startAfter,
+  serverTimestamp,
 } = require('firebase/firestore');
 const { serializeDoc } = require('../utils/firestoreUtils');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? 'urbano';
 const PAGE_SIZE = 20;
-
-const serverTimestamp = () => admin.firestore.FieldValue.serverTimestamp();
 
 // ─── Helpers de fecha ────────────────────────────────────────────────────────
 

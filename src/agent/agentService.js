@@ -138,13 +138,17 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       } else {
         try {
           const { descripcion_cambio, tipo, productos_nuevos } = JSON.parse(toolCall.function.arguments);
-          await solicitarCambioPedido({
+          const resultado = await solicitarCambioPedido({
             pedidoId,
             descripcionCambio: descripcion_cambio,
             tipo: tipo ?? 'modificacion',
             productosNuevos: productos_nuevos ?? null,
           });
-          toolResult = JSON.stringify({ exito: true, pedidoId });
+          toolResult = JSON.stringify({
+            exito: true,
+            pedidoId,
+            aplicadoDirectamente: resultado.aplicadoDirectamente ?? false,
+          });
         } catch (err) {
           toolResult = JSON.stringify({ error: err.message });
         }

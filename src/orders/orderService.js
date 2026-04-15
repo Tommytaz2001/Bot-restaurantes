@@ -150,18 +150,34 @@ async function attachComprobante(pedidoId, imageBuffer, mimeType) {
 
 /**
  * Registra una solicitud de cambio sobre un pedido activo.
- * El chef la ve en la app y aprueba o rechaza.
+ * Si el pedido aún no fue confirmado por el chef, aplica el cambio directamente.
+ * Si ya fue confirmado, crea cambio_solicitado para que el chef apruebe o rechace.
  */
 async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modificacion', productosNuevos = null }) {
   const ref = doc(db, 'pedidos', pedidoId);
   const snapshot = await getDoc(ref);
   if (!snapshot.exists()) throw new Error('Pedido no encontrado');
 
+  const pedidoActual = snapshot.data();
+  const estadosPendientes = ['pendiente', 'pendiente_pago'];
+
+  // Pedido sin confirmar: aplicar directamente sin flujo de aprobación
+  if (estadosPendientes.includes(pedidoActual.estado) && tipo === 'agregar_productos' && productosNuevos?.length > 0) {
+    const productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
+    const subtotalNuevos = productosNuevos.reduce((sum, p) => sum + p.precio_unitario * p.cantidad, 0);
+    await updateDoc(ref, {
+      productos: [...pedidoActual.productos, ...productosNormalizados],
+      total: pedidoActual.total + subtotalNuevos,
+    });
+    trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
+    return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
+  }
+
+  // Pedido ya confirmado: solicitar aprobación del chef
   let totalNuevo = null;
   let productosNormalizados = null;
 
   if (tipo === 'agregar_productos' && productosNuevos?.length > 0) {
-    const pedidoActual = snapshot.data();
     const subtotalNuevos = productosNuevos.reduce(
       (sum, p) => sum + p.precio_unitario * p.cantidad,
       0,
