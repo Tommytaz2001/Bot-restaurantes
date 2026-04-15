@@ -153,24 +153,38 @@ async function attachComprobante(pedidoId, imageBuffer, mimeType) {
  * Si el pedido aún no fue confirmado por el chef, aplica el cambio directamente.
  * Si ya fue confirmado, crea cambio_solicitado para que el chef apruebe o rechace.
  */
-async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modificacion', productosNuevos = null }) {
+async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modificacion', productosNuevos = null, datosEntrega = null }) {
   const ref = doc(db, 'pedidos', pedidoId);
   const snapshot = await getDoc(ref);
   if (!snapshot.exists()) throw new Error('Pedido no encontrado');
 
   const pedidoActual = snapshot.data();
   const estadosPendientes = ['pendiente', 'pendiente_pago'];
+  const esPendiente = estadosPendientes.includes(pedidoActual.estado);
 
   // Pedido sin confirmar: aplicar directamente sin flujo de aprobación
-  if (estadosPendientes.includes(pedidoActual.estado) && tipo === 'agregar_productos' && productosNuevos?.length > 0) {
-    const productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
-    const subtotalNuevos = productosNuevos.reduce((sum, p) => sum + p.precio_unitario * p.cantidad, 0);
-    await updateDoc(ref, {
-      productos: [...pedidoActual.productos, ...productosNormalizados],
-      total: pedidoActual.total + subtotalNuevos,
-    });
-    trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
-    return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
+  if (esPendiente) {
+    if (tipo === 'agregar_productos' && productosNuevos?.length > 0) {
+      const productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
+      const subtotalNuevos = productosNuevos.reduce((sum, p) => sum + p.precio_unitario * p.cantidad, 0);
+      await updateDoc(ref, {
+        productos: [...pedidoActual.productos, ...productosNormalizados],
+        total: pedidoActual.total + subtotalNuevos,
+      });
+      trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
+      return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
+    }
+
+    if (tipo === 'cambiar_entrega' && datosEntrega) {
+      await updateDoc(ref, {
+        tipo_entrega: datosEntrega.tipo_entrega,
+        direccion: datosEntrega.direccion ?? null,
+        costo_envio: datosEntrega.costo_envio,
+        total: datosEntrega.total_nuevo,
+      });
+      trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
+      return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
+    }
   }
 
   // Pedido ya confirmado: solicitar aprobación del chef
@@ -192,6 +206,7 @@ async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modi
       descripcion: descripcionCambio,
       productos_nuevos: productosNormalizados,
       total_nuevo: totalNuevo,
+      datos_entrega: tipo === 'cambiar_entrega' ? datosEntrega : null,
       estado: 'pendiente_chef',
       solicitadoAt: serverTimestamp(),
     },

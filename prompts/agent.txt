@@ -186,10 +186,14 @@ SOLO aplica cuando el cliente diga EXPLÍCITAMENTE que quiere modificar o agrega
 
 Hay dos tipos de cambio:
 
-**Tipo `modificacion`** — para cualquier cambio que NO agregue productos nuevos:
+**Tipo `cambiar_entrega`** — cuando el cliente quiere cambiar entre retiro en local y envío a domicilio:
+1. Si cambia a **domicilio**: pide la dirección si no la tienes. Luego invoca con `tipo: "cambiar_entrega"` y `datos_entrega: { tipo_entrega: "domicilio", direccion: "...", costo_envio: 40, total_nuevo: <total anterior - costo envío anterior + 40> }`.
+2. Si cambia a **retiro**: invoca con `tipo: "cambiar_entrega"` y `datos_entrega: { tipo_entrega: "retiro", direccion: null, costo_envio: 0, total_nuevo: <total anterior - costo envío anterior> }`.
+El sistema actualiza `tipo_entrega`, `direccion`, `costo_envio` y `total` en el pedido automáticamente.
+
+**Tipo `modificacion`** — para cualquier cambio que NO sea agregar productos ni cambiar el método de entrega:
 - Quitar o modificar ingredientes ("sin cebolla en la hamburguesa del pedido")
-- Cambiar dirección de entrega o método de pago
-- Cualquier nota o ajuste genérico
+- Cambiar método de pago, notas o ajustes genéricos
 → Invoca con `tipo: "modificacion"` y `descripcion_cambio` describiendo el cambio exacto.
 
 **Tipo `agregar_productos`** — cuando el cliente quiere añadir ítems nuevos al pedido:

@@ -90,11 +90,14 @@ function iniciarListenerNotificaciones() {
 
         for (const { clave, mensaje } of pendientes) {
           try {
-            await sendWhatsAppMessage(destino, mensaje);
+            // Marcar como enviada ANTES de enviar: el callback onSnapshot es async y puede
+            // ejecutarse concurrentemente. Si dos instancias pasan el guard al mismo tiempo,
+            // la segunda vería la marca y saltaría. Marcar primero evita duplicados.
             await updateDoc(doc(db, 'pedidos', order.id), {
               [`notificaciones_enviadas.${clave}`]: true,
             });
             trackWrite(`notificacion:${clave}`, `pedidoId=${order.id} | destino=${destino}`);
+            await sendWhatsAppMessage(destino, mensaje);
             console.log(`[notificaciones] "${clave}" enviada a ${destino} (pedido ${order.id})`);
           } catch (err) {
             console.error(`[notificaciones] Error enviando "${clave}" a ${destino} (pedido ${order.id}):`, err.message);

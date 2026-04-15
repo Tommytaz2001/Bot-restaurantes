@@ -74,6 +74,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
     }
   } else if (getLastOrderId(sessionId)) {
     activeOrder = await findActiveOrderByPhone(telefono);
+    if (!activeOrder && telefono) {
+      // El pedido rastreado ya no está activo (entregado/cancelado externamente) — resetear sesión
+      clearSession(sessionId);
+      log(`[agentService] Sesión limpiada — pedido ya no está activo (entregado o cancelado)`);
+    }
   }
 
   // Buscar dirección anterior para clientes frecuentes
@@ -101,9 +106,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
     if (toolCall.function.name === 'guardar_pedido') {
       let toolResult;
       let savedOrder = null;
+      let esNuevo = false;
 
       try {
         const orderArgs = JSON.parse(toolCall.function.arguments);
+        const prevOrderId = getLastOrderId(sessionId);
         savedOrder = await saveOrder({
           ...orderArgs,
           restauranteId,
@@ -111,15 +118,21 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           moneda: config.moneda,
           jid: remoteJid, // JID real para notificaciones WhatsApp
         });
+        esNuevo = !prevOrderId || prevOrderId !== savedOrder.id;
         setLastOrderId(sessionId, savedOrder.id);
-        log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono}`);
-        toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id });
+        log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono} esNuevo=${esNuevo}`);
+        toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id, esNuevo });
       } catch (err) {
         toolResult = JSON.stringify({ error: err.message });
       }
 
       addMessage(sessionId, assistantMessage);
       addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+
+      // Pedido ya existía — el cliente confirmó de nuevo. No enviar otra "¡Pedido recibido!".
+      if (!esNuevo) {
+        return { reply: null, order: savedOrder };
+      }
 
       const confirmHistory = getSession(sessionId);
       const confirmMessage = await chatCompletion({ systemPrompt, messages: confirmHistory, tools: false });
@@ -137,12 +150,13 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         toolResult = JSON.stringify({ error: 'No hay pedido activo en esta sesión.' });
       } else {
         try {
-          const { descripcion_cambio, tipo, productos_nuevos } = JSON.parse(toolCall.function.arguments);
+          const { descripcion_cambio, tipo, productos_nuevos, datos_entrega } = JSON.parse(toolCall.function.arguments);
           const resultado = await solicitarCambioPedido({
             pedidoId,
             descripcionCambio: descripcion_cambio,
             tipo: tipo ?? 'modificacion',
             productosNuevos: productos_nuevos ?? null,
+            datosEntrega: datos_entrega ?? null,
           });
           toolResult = JSON.stringify({
             exito: true,

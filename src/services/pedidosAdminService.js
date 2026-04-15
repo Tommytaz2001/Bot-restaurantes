@@ -85,6 +85,14 @@ async function aprobarCambio(id) {
     updateData.total = cambio.total_nuevo;
   }
 
+  if (cambio.tipo === 'cambiar_entrega' && cambio.datos_entrega) {
+    const { tipo_entrega, direccion, costo_envio, total_nuevo } = cambio.datos_entrega;
+    updateData.tipo_entrega = tipo_entrega;
+    updateData.direccion = direccion ?? null;
+    updateData.costo_envio = costo_envio;
+    updateData.total = total_nuevo;
+  }
+
   trackWrite('pedidosAdmin:aprobarCambio', `pedido=${id} tipo=${cambio.tipo}`);
   await updateDoc(doc(db, 'pedidos', id), updateData);
 }

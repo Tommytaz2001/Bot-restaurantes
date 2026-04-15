@@ -23,9 +23,15 @@ export interface CambioSolicitado {
   estado: 'pendiente_chef' | 'aprobado' | 'rechazado';
   solicitadoAt: any;
   respondidoAt?: any;
-  tipo?: 'modificacion' | 'agregar_productos';
+  tipo?: 'modificacion' | 'agregar_productos' | 'cambiar_entrega';
   productos_nuevos?: Producto[];
   total_nuevo?: number;
+  datos_entrega?: {
+    tipo_entrega: 'domicilio' | 'retiro';
+    direccion?: string | null;
+    costo_envio: number;
+    total_nuevo: number;
+  };
 }
 
 export interface Pedido {

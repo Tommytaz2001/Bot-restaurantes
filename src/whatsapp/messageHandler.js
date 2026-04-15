@@ -228,8 +228,10 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
         remoteJid,
         esRepartidor,
       });
-      await sendReply(result.reply);
-      log(`[WA_OUT] telefono=${telefono} chars=${result.reply.length}`);
+      if (result.reply) {
+        await sendReply(result.reply);
+        log(`[WA_OUT] telefono=${telefono} chars=${result.reply.length}`);
+      }
     } catch (err) {
       log(`[messageHandler] Error procesando mensaje de ${telefono}: ${err.message}`);
       await sendReply('Lo siento, tuve un problema. Por favor intenta de nuevo en un momento. 🙏');

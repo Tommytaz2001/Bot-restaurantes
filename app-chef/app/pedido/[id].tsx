@@ -130,6 +130,7 @@ export default function DetallePedidoScreen() {
   }
 
   const tieneCambio = pedido.cambio_solicitado?.estado === 'pendiente_chef';
+  const cambioAprobado = pedido.cambio_solicitado?.estado === 'aprobado';
   const esFinal = pedido.estado === 'entregado' || pedido.estado === 'cancelado';
 
   return (
@@ -259,6 +260,18 @@ export default function DetallePedidoScreen() {
                   </Text>
                 )}
               </>
+            ) : pedido.cambio_solicitado!.tipo === 'cambiar_entrega' && pedido.cambio_solicitado!.datos_entrega ? (
+              <>
+                <Text style={styles.cambioDesc}>Solicita cambiar entrega a:</Text>
+                <Text style={styles.cambioProductoItem}>
+                  {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'domicilio'
+                    ? `🛵 Domicilio${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
+                    : '🏪 Retiro en local'}
+                </Text>
+                <Text style={styles.cambioTotalNuevo}>
+                  Nuevo total: {pedido.moneda ?? 'C$'}{pedido.cambio_solicitado!.datos_entrega.total_nuevo}
+                </Text>
+              </>
             ) : (
               <Text style={styles.cambioDesc}>{pedido.cambio_solicitado!.descripcion}</Text>
             )}
@@ -285,6 +298,35 @@ export default function DetallePedidoScreen() {
                 loading={accionando}
               />
             </View>
+          </View>
+        )}
+
+        {/* Approved change info — persists so chef can see what was changed */}
+        {cambioAprobado && (
+          <View style={styles.cambioAprobadoSection}>
+            <View style={styles.cambioHeader}>
+              <Text style={styles.cambioAprobadoIcon}>✓</Text>
+              <Text style={styles.cambioAprobadoTitle}>
+                {pedido.cambio_solicitado!.tipo === 'agregar_productos' ? 'Extras aprobados' : 'Cambio aprobado'}
+              </Text>
+            </View>
+            {pedido.cambio_solicitado!.tipo === 'agregar_productos' && pedido.cambio_solicitado!.productos_nuevos?.length ? (
+              <View style={styles.cambioProductosList}>
+                {pedido.cambio_solicitado!.productos_nuevos.map((p, i) => (
+                  <Text key={i} style={styles.cambioAprobadoItem}>
+                    + {p.cantidad}× {p.nombre}{p.opcion ? ` (${p.opcion})` : ''}
+                  </Text>
+                ))}
+              </View>
+            ) : pedido.cambio_solicitado!.tipo === 'cambiar_entrega' && pedido.cambio_solicitado!.datos_entrega ? (
+              <Text style={styles.cambioAprobadoItem}>
+                {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'domicilio'
+                  ? `🛵 Domicilio${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
+                  : '🏪 Retiro en local'}
+              </Text>
+            ) : (
+              <Text style={styles.cambioAprobadoItem}>{pedido.cambio_solicitado!.descripcion}</Text>
+            )}
           </View>
         )}
 
@@ -704,5 +746,29 @@ const styles = StyleSheet.create({
   copyBtnTextCopiado: {
     color: '#22C55E',
     fontWeight: '600',
+  },
+  cambioAprobadoSection: {
+    backgroundColor: '#0D1F13',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+    gap: 10,
+  },
+  cambioAprobadoIcon: {
+    color: '#22C55E',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cambioAprobadoTitle: {
+    color: '#22C55E',
+    fontWeight: '700',
+    fontSize: 14,
+    flex: 1,
+  },
+  cambioAprobadoItem: {
+    color: '#6EE79A',
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

@@ -53,12 +53,12 @@ const SOLICITAR_CAMBIO_TOOL = {
       properties: {
         tipo: {
           type: 'string',
-          enum: ['modificacion', 'agregar_productos'],
-          description: '"agregar_productos" cuando el cliente quiere añadir nuevos ítems al pedido. "modificacion" para cualquier otro cambio (ingredientes, dirección, etc.).',
+          enum: ['modificacion', 'agregar_productos', 'cambiar_entrega'],
+          description: '"agregar_productos" cuando el cliente quiere añadir nuevos ítems. "cambiar_entrega" cuando el cliente quiere cambiar entre retiro y domicilio (o viceversa). "modificacion" para cualquier otro cambio (ingredientes, notas, etc.).',
         },
         descripcion_cambio: {
           type: 'string',
-          description: 'Descripción clara del cambio solicitado (ej: "Agregar 1 Cheeseburger adicional", "Sin cebolla en la hamburguesa").',
+          description: 'Descripción clara del cambio solicitado (ej: "Agregar 1 Cheeseburger adicional", "Sin cebolla en la hamburguesa", "Cambiar a domicilio — Calle X").',
         },
         productos_nuevos: {
           type: 'array',
@@ -73,6 +73,17 @@ const SOLICITAR_CAMBIO_TOOL = {
             },
             required: ['nombre', 'cantidad', 'precio_unitario'],
           },
+        },
+        datos_entrega: {
+          type: 'object',
+          description: 'Solo para tipo "cambiar_entrega". Datos del nuevo método de entrega.',
+          properties: {
+            tipo_entrega: { type: 'string', enum: ['domicilio', 'retiro'] },
+            direccion: { type: 'string', description: 'Dirección de entrega. Requerida si tipo_entrega es "domicilio". Null si es "retiro".' },
+            costo_envio: { type: 'number', description: '40 si es domicilio, 0 si es retiro.' },
+            total_nuevo: { type: 'number', description: 'Total recalculado incluyendo el nuevo costo de envío.' },
+          },
+          required: ['tipo_entrega', 'costo_envio', 'total_nuevo'],
         },
       },
       required: ['tipo', 'descripcion_cambio'],
