@@ -60,6 +60,43 @@ Este cliente tiene un pedido activo que aún NO ha sido entregado.
     .replace('{{CONTEXTO_DIRECCION}}', contextoDireccion);
 }
 
+/**
+ * Removes incomplete tool_call sequences from a message history before sending to OpenAI.
+ * Prevents "tool_calls without response" 400 errors caused by orphaned tool_call messages.
+ */
+function sanitizeMessages(messages) {
+  const result = [];
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i];
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      const requiredIds = new Set(msg.tool_calls.map(tc => tc.id));
+      const toolResponses = [];
+      let j = i + 1;
+      while (j < messages.length && messages[j].role === 'tool') {
+        if (requiredIds.has(messages[j].tool_call_id)) {
+          toolResponses.push(messages[j]);
+          requiredIds.delete(messages[j].tool_call_id);
+        }
+        j++;
+      }
+      if (requiredIds.size === 0) {
+        // All tool_calls have responses — include the full block
+        result.push(msg, ...toolResponses);
+      }
+      // Else: incomplete block (orphaned tool_calls) — skip it entirely
+      i = j;
+    } else if (msg.role === 'tool') {
+      // Orphaned tool response with no preceding tool_calls — skip
+      i++;
+    } else {
+      result.push(msg);
+      i++;
+    }
+  }
+  return result;
+}
+
 async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid, esRepartidor = false }) {
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
@@ -94,7 +131,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
   const assistantMessage = await chatCompletion({
     systemPrompt,
-    messages: [...history, { role: 'user', content: message }],
+    messages: sanitizeMessages([...history, { role: 'user', content: message }]),
     tools: true,
   });
 
@@ -128,13 +165,17 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       addMessage(sessionId, assistantMessage);
       addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+      // Respond to any extra tool_calls the model may have emitted (defensive)
+      for (const extraCall of assistantMessage.tool_calls.slice(1)) {
+        addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
+      }
 
       // Pedido ya existía — el cliente confirmó de nuevo. No enviar otra "¡Pedido recibido!".
       if (!esNuevo) {
         return { reply: null, order: savedOrder };
       }
 
-      const confirmHistory = getSession(sessionId);
+      const confirmHistory = sanitizeMessages(getSession(sessionId));
       const confirmMessage = await chatCompletion({ systemPrompt, messages: confirmHistory, tools: false });
       addMessage(sessionId, { role: 'assistant', content: confirmMessage.content });
 
@@ -170,8 +211,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       addMessage(sessionId, assistantMessage);
       addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+      for (const extraCall of assistantMessage.tool_calls.slice(1)) {
+        addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
+      }
 
-      const changeHistory = getSession(sessionId);
+      const changeHistory = sanitizeMessages(getSession(sessionId));
       const changeMessage = await chatCompletion({ systemPrompt, messages: changeHistory, tools: false });
       addMessage(sessionId, { role: 'assistant', content: changeMessage.content });
 
@@ -197,8 +241,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       addMessage(sessionId, assistantMessage);
       addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+      for (const extraCall of assistantMessage.tool_calls.slice(1)) {
+        addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
+      }
 
-      const cancelHistory = getSession(sessionId);
+      const cancelHistory = sanitizeMessages(getSession(sessionId));
       const cancelMessage = await chatCompletion({ systemPrompt, messages: cancelHistory, tools: false });
       // Session was cleared on success; we don't re-add messages to a dead session
 
@@ -226,8 +273,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       addMessage(sessionId, assistantMessage);
       addMessage(sessionId, { role: 'tool', tool_call_id: toolCall.id, content: toolResult });
+      for (const extraCall of assistantMessage.tool_calls.slice(1)) {
+        addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
+      }
 
-      const statusHistory = getSession(sessionId);
+      const statusHistory = sanitizeMessages(getSession(sessionId));
       const statusMessage = await chatCompletion({ systemPrompt, messages: statusHistory, tools: false });
       addMessage(sessionId, { role: 'assistant', content: statusMessage.content });
 

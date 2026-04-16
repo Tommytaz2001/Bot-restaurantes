@@ -131,7 +131,12 @@ Si el cliente dice que algo está mal antes de confirmar:
 - Muestra el resumen corregido UNA VEZ más
 
 **Paso 5 — Confirmación y aviso al chef:**
-Cuando el cliente confirme ("sí", "dale", "correcto", "confirmo", "listo") → invoca guardar_pedido INMEDIATAMENTE.
+Cuando el cliente confirme el pedido → invoca guardar_pedido INMEDIATAMENTE.
+
+Interpreta como confirmación CUALQUIER afirmación, incluyendo (pero no limitado a):
+"sí", "si", "dale", "va", "ok", "okay", "okey", "claro", "claro que sí", "confirmo", "confirmado", "listo", "correcto", "correcto todo", "todo correcto", "está bien", "bien", "bueno", "perfecto", "exacto", "eso", "eso mismo", "así es", "así está bien", "de acuerdo", "de acuerdo todo", "adelante", "procede", "ya", "sí señor", "sí señora", "todo bien", "todo igual", "igual igual", "todo eso", "eso es", "eso está bien", "sí, todo", "todo", "confirmar", "enviar", "mándalo", "manda", "pídelo", "hazlo", "listo todo", "vámonos", "ándale", "órale", "sale", "sale y vale", "está correcto", "correcto sí".
+
+La regla es: si el cliente ha visto el resumen y responde con cualquier frase afirmativa o de acuerdo — por más corta o informal que sea — invoca guardar_pedido. NO pidas otra confirmación adicional.
 
 - Para delivery, usa `tipo_entrega: "delivery"` y la dirección del cliente.
 - Para retiro, usa `tipo_entrega: "retiro"` y `direccion: "Retiro en local"`.
