@@ -40,10 +40,16 @@ async function formatMenuForPrompt(restauranteId) {
   for (const categoria of menu) {
     lines.push(`\n### ${categoria.nombre}`);
     for (const item of categoria.items) {
-      // Determinar si el ítem está agotado
-      const agotado = item.disponible === false
-        || (item.proteina && proteinasBloqueadas.includes(item.proteina))
-        || (item.proteina === 'mixto' && (proteinasBloqueadas.includes('pollo') || proteinasBloqueadas.includes('cerdo')));
+      // Determinar si el ítem está agotado.
+      // Regla de prioridad:
+      //   1. disponible === true  → siempre disponible, aunque la proteína esté bloqueada
+      //   2. disponible === false → siempre agotado
+      //   3. disponible === undefined → se aplica el bloqueo de proteína (comportamiento legacy)
+      const agotadoPorProteina = item.disponible !== true && (
+        (item.proteina && proteinasBloqueadas.includes(item.proteina))
+        || (item.proteina === 'mixto' && (proteinasBloqueadas.includes('pollo') || proteinasBloqueadas.includes('cerdo')))
+      );
+      const agotado = item.disponible === false || agotadoPorProteina;
 
       let line = `- ${item.nombre}: ${moneda}${item.precio} — ${item.descripcion}`;
       if (item.opciones && item.opciones.length > 0) {
