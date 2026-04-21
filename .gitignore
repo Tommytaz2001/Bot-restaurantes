@@ -4,3 +4,6 @@ node_modules/
 firebase-service-account.json
 .baileys-auth/
 data/
+mejoras_bot_pedidos.md
+.agent/
+.windsurf/

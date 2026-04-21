@@ -1,4 +1,4 @@
-const TTL_MS = 30 * 60 * 1000; // 30 minutos
+const TTL_MS = 60 * 60 * 1000; // 60 minutos
 const MAX_MESSAGES = 50;
 
 const _sessions = new Map(); // Map<sessionId, { messages: [], lastActivity: timestamp, lastOrderId?: string }>
