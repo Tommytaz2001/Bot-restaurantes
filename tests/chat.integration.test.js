@@ -32,8 +32,9 @@ describe('E2E: POST /chat y GET /orders/:id', () => {
     expect(res.status).toBe(404);
   }, 15000);
 
-  test('GET /orders/:id retorna 404 para id inexistente', async () => {
+  test('GET /orders/:id retorna 401 sin autenticación', async () => {
+    // La ruta /orders requiere Bearer token — sin él retorna 401, no 404
     const res = await request(app).get('/orders/id-que-no-existe-xyz');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   }, 10000);
 });

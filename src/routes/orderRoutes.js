@@ -48,10 +48,13 @@ const MENSAJES_NOTIFICACION = {
 };
 
 async function enviarNotificacion(order, mensaje) {
+  // Preferir JID completo (@s.whatsapp.net) cuando está disponible para garantizar
+  // entrega correcta a usuarios @lid. Fallback a telefono para pedidos anteriores.
+  const destino = order.jid || order.telefono;
   try {
-    await sendWhatsAppMessage(order.telefono, mensaje);
+    await sendWhatsAppMessage(destino, mensaje);
   } catch (err) {
-    await encolarNotificacion({ telefono: order.telefono, mensaje, pedidoId: order.id });
+    await encolarNotificacion({ telefono: destino, mensaje, pedidoId: order.id });
     throw new Error(`WhatsApp no disponible — notificación encolada: ${err.message}`);
   }
 }

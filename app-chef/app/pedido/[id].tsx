@@ -264,8 +264,8 @@ export default function DetallePedidoScreen() {
               <>
                 <Text style={styles.cambioDesc}>Solicita cambiar entrega a:</Text>
                 <Text style={styles.cambioProductoItem}>
-                  {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'domicilio'
-                    ? `🛵 Domicilio${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
+                  {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'delivery'
+                    ? `🛵 Delivery${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
                     : '🏪 Retiro en local'}
                 </Text>
                 <Text style={styles.cambioTotalNuevo}>
@@ -320,8 +320,8 @@ export default function DetallePedidoScreen() {
               </View>
             ) : pedido.cambio_solicitado!.tipo === 'cambiar_entrega' && pedido.cambio_solicitado!.datos_entrega ? (
               <Text style={styles.cambioAprobadoItem}>
-                {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'domicilio'
-                  ? `🛵 Domicilio${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
+                {pedido.cambio_solicitado!.datos_entrega.tipo_entrega === 'delivery'
+                  ? `🛵 Delivery${pedido.cambio_solicitado!.datos_entrega.direccion ? ` — ${pedido.cambio_solicitado!.datos_entrega.direccion}` : ''}`
                   : '🏪 Retiro en local'}
               </Text>
             ) : (

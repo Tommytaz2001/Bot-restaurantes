@@ -52,18 +52,25 @@ async function findActiveOrderByPhone(telefono) {
  */
 async function findLastDeliveryAddress(telefono) {
   if (!telefono) return null;
-  const q = query(
-    collection(db, 'pedidos'),
-    where('sessionId', '==', telefono),
-    where('estado', '==', 'entregado'),
-    where('tipo_entrega', '==', 'delivery'),
-    orderBy('createdAt', 'desc'),
-    limit(1),
-  );
-  const snapshot = await getDocs(q);
-  trackRead('findLastDeliveryAddress', `telefono=${telefono}`, snapshot.docs.length);
-  if (snapshot.empty) return null;
-  return snapshot.docs[0].data()?.direccion || null;
+  try {
+    const q = query(
+      collection(db, 'pedidos'),
+      where('sessionId', '==', telefono),
+      where('estado', '==', 'entregado'),
+      where('tipo_entrega', '==', 'delivery'),
+      orderBy('createdAt', 'desc'),
+      limit(1),
+    );
+    const snapshot = await getDocs(q);
+    trackRead('findLastDeliveryAddress', `telefono=${telefono}`, snapshot.docs.length);
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data()?.direccion || null;
+  } catch (err) {
+    // Esta query requiere un índice compuesto en Firestore (sessionId + estado + tipo_entrega + createdAt DESC).
+    // Si el índice no existe, Firestore lanza error. Fallback seguro: null (no sugerir dirección anterior).
+    console.warn('[orderService] findLastDeliveryAddress falló (posible índice faltante):', err.message);
+    return null;
+  }
 }
 
 async function saveOrder(orderData) {

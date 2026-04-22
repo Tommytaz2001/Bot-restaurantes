@@ -5,6 +5,7 @@
 const { collection, onSnapshot, updateDoc, doc, query, where } = require('firebase/firestore');
 const { db, trackWrite, trackRead } = require('./firebaseService');
 const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
+const { encolarNotificacion } = require('./notificacionQueue');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
@@ -89,18 +90,25 @@ function iniciarListenerNotificaciones() {
         if (pendientes.length === 0) continue;
 
         for (const { clave, mensaje } of pendientes) {
+          // Marcar como enviada ANTES de enviar: evita duplicados si el listener dispara dos veces.
+          // Si el envío falla, la notificación queda encolada para reintento al reiniciar.
           try {
-            // Marcar como enviada ANTES de enviar: el callback onSnapshot es async y puede
-            // ejecutarse concurrentemente. Si dos instancias pasan el guard al mismo tiempo,
-            // la segunda vería la marca y saltaría. Marcar primero evita duplicados.
             await updateDoc(doc(db, 'pedidos', order.id), {
               [`notificaciones_enviadas.${clave}`]: true,
             });
             trackWrite(`notificacion:${clave}`, `pedidoId=${order.id} | destino=${destino}`);
+          } catch (markErr) {
+            console.error(`[notificaciones] Error marcando "${clave}" para pedido ${order.id}:`, markErr.message);
+            continue;
+          }
+
+          try {
             await sendWhatsAppMessage(destino, mensaje);
             console.log(`[notificaciones] "${clave}" enviada a ${destino} (pedido ${order.id})`);
-          } catch (err) {
-            console.error(`[notificaciones] Error enviando "${clave}" a ${destino} (pedido ${order.id}):`, err.message);
+          } catch (sendErr) {
+            console.error(`[notificaciones] Error enviando "${clave}" a ${destino} (pedido ${order.id}):`, sendErr.message);
+            // Marcada como enviada pero no enviada — encolar para reintento al reiniciar
+            encolarNotificacion({ telefono: destino, mensaje, pedidoId: order.id }).catch(() => {});
           }
         }
       }

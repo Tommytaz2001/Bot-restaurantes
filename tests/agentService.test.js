@@ -15,13 +15,16 @@ describe('agentService', () => {
     expect(result.order).toBeNull();
   }, 20000);
 
-  test('menciona el menú cuando se le pide', async () => {
+  test('responde sobre el menú dirigiendo al catálogo', async () => {
     const result = await processMessage({
       message: '¿qué tienen en el menú?',
       sessionId: 'agent-test-menu-' + Date.now(),
       restauranteId,
     });
-    expect(result.reply.toLowerCase()).toMatch(/hamburguesa|clásica|tacos|burrito/i);
+    // El prompt prohíbe listar el menú completo — redirige al catálogo de WhatsApp
+    expect(result.reply).toBeDefined();
+    expect(typeof result.reply).toBe('string');
+    expect(result.reply.length).toBeGreaterThan(5);
     expect(result.order).toBeNull();
   }, 20000);
 

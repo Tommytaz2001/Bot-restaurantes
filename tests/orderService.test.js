@@ -14,10 +14,10 @@ const baseOrder = {
 };
 
 describe('orderService', () => {
-  test('guarda pedido efectivo con estado pendiente_pago', async () => {
+  test('guarda pedido efectivo con estado pendiente', async () => {
     const order = await saveOrder(baseOrder);
     expect(order.id).toBeDefined();
-    expect(order.estado).toBe('pendiente_pago');
+    expect(order.estado).toBe('pendiente');
     expect(order.moneda).toBe('C$');
   }, 10000);
 
@@ -108,21 +108,23 @@ describe('solicitarCambioPedido', () => {
     expect(order.cambio_solicitado.total_nuevo).toBeNull();
   }, 15000);
 
-  test('tipo agregar_productos calcula total_nuevo correctamente', async () => {
+  test('tipo agregar_productos en pedido pendiente aplica directamente y actualiza total', async () => {
     const pedidoId = await crearPedidoTest('agr-');
     // Order has total=200 (160 producto + 40 envío delivery computed by backend)
-    await solicitarCambioPedido({
+    const resultado = await solicitarCambioPedido({
       pedidoId,
       descripcionCambio: 'Agregar 2 Clásicas',
       tipo: 'agregar_productos',
       productosNuevos: [{ nombre: 'Clásica', cantidad: 2, precio_unitario: 160, opcion: null }],
     });
+    // En pedido pendiente el cambio se aplica directamente, sin pasar por el chef
+    expect(resultado.aplicadoDirectamente).toBe(true);
     const order = await getOrder(pedidoId);
-    expect(order.cambio_solicitado.tipo).toBe('agregar_productos');
-    expect(order.cambio_solicitado.total_nuevo).toBe(520); // 200 + (160 * 2)
-    expect(order.cambio_solicitado.productos_nuevos).toHaveLength(1);
-    expect(order.cambio_solicitado.productos_nuevos[0].nombre).toBe('Clásica');
-    expect(order.cambio_solicitado.productos_nuevos[0].opcion).toBeNull();
+    // El producto se agrega al array y el total se recalcula: 200 + (160 * 2) = 520
+    expect(order.productos).toHaveLength(2);
+    expect(order.total).toBe(520);
+    expect(order.productos[1].nombre).toBe('Clásica');
+    expect(order.productos[1].opcion).toBeNull();
   }, 15000);
 
   test('lanza error para pedido inexistente', async () => {

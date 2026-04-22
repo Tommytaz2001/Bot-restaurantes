@@ -27,7 +27,7 @@ describe('sessionStore', () => {
   test('clearExpiredSessions elimina sesiones con TTL vencido', () => {
     addMessage('vieja', { role: 'user', content: 'test' });
     // Use already-imported _sessions (same module reference, not a new require)
-    _sessions.get('vieja').lastActivity = Date.now() - (31 * 60 * 1000);
+    _sessions.get('vieja').lastActivity = Date.now() - (61 * 60 * 1000);
     clearExpiredSessions();
     expect(getSession('vieja')).toEqual([]);
   });
