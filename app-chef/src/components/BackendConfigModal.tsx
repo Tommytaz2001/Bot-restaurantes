@@ -1,183 +1,68 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Modal, View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator,
-} from 'react-native';
-import { getBackendUrl, setBackendUrl } from '../services/backendConfig';
+import React, { useState } from 'react';
+import { Settings, X, Save } from 'lucide-react';
+import { getBackendUrl, setBackendUrl } from '../services/api';
 
-interface Props {
-  visible: boolean;
+interface BackendConfigModalProps {
+  isOpen: boolean;
   onClose: () => void;
-  onSaved?: (url: string) => void;
 }
 
-export function BackendConfigModal({ visible, onClose, onSaved }: Props) {
-  const [urlInput, setUrlInput] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [testResult, setTestResult] = useState<'ok' | 'error' | null>(null);
-  const [testMsg, setTestMsg] = useState('');
+export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({ isOpen, onClose }) => {
+  const [url, setUrl] = useState(getBackendUrl());
 
-  useEffect(() => {
-    if (visible) {
-      getBackendUrl().then(setUrlInput);
-      setTestResult(null);
-      setTestMsg('');
-    }
-  }, [visible]);
+  if (!isOpen) return null;
 
-  const handleSave = async () => {
-    if (!urlInput.trim()) return;
-    setSaving(true);
-    setTestResult(null);
-    setTestMsg('');
-    const clean = urlInput.trim().replace(/\/$/, '');
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${clean}/whatsapp/status`, { signal: controller.signal }).finally(() => clearTimeout(timer));
-      const data = await res.json();
-      await setBackendUrl(clean);
-      setTestResult('ok');
-      setTestMsg(`Conectado · Bot ${data.botActivo ? 'activo' : 'pausado'}`);
-      onSaved?.(clean);
-      setTimeout(onClose, 1000);
-    } catch (err: any) {
-      setTestResult('error');
-      setTestMsg(`Sin respuesta: ${err?.message ?? 'timeout'}`);
-      console.error('[BackendConfig] Error al conectar:', err);
-    } finally {
-      setSaving(false);
-    }
+  const handleSave = () => {
+    setBackendUrl(url.trim());
+    onClose();
+    window.location.reload();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.overlay}>
-        <View style={styles.box}>
-          <Text style={styles.title}>Configuración</Text>
-          <Text style={styles.label}>URL DEL BACKEND</Text>
-          <TextInput
-            style={styles.input}
-            value={urlInput}
-            onChangeText={setUrlInput}
-            placeholder="http://192.168.1.16:3001"
-            placeholderTextColor="#444"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="glass-panel w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-slate-700 bg-slate-900 text-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2 text-orange-400">
+            <Settings className="w-5 h-5" />
+            <h3 className="font-bold text-base text-white">Configurar Servidor</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:bg-slate-800">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="my-4">
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            URL del Backend
+          </label>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="http://localhost:3001"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-orange-500"
           />
-          {testResult && (
-            <View style={[styles.feedback, testResult === 'ok' ? styles.feedbackOk : styles.feedbackErr]}>
-              <Text style={[styles.feedbackText, testResult === 'ok' ? styles.feedbackTextOk : styles.feedbackTextErr]}>
-                {testResult === 'ok' ? '✓ ' : '✗ '}{testMsg}
-              </Text>
-            </View>
-          )}
+          <p className="text-xs text-slate-500 mt-2">
+            Si abres esta app desde tu celular o tablet en la misma red WiFi, escribe la IP de tu PC (ej: <code className="text-orange-400">http://192.168.1.50:3001</code>).
+          </p>
+        </div>
 
-          <View style={styles.actions}>
-            <TouchableOpacity onPress={onClose} style={styles.cancelBtn} activeOpacity={0.7}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSave} style={styles.saveBtn} activeOpacity={0.7} disabled={saving}>
-              {saving
-                ? <ActivityIndicator size="small" color="#0C0C0C" />
-                : <Text style={styles.saveText}>Guardar</Text>}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
+        <div className="flex items-center gap-2.5 pt-2 border-t border-slate-800">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-semibold text-xs hover:bg-slate-800"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-1.5"
+          >
+            <Save className="w-4 h-4" />
+            Guardar y Recargar
+          </button>
+        </div>
+      </div>
+    </div>
   );
-}
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 24,
-    paddingTop: 120,
-  },
-  box: {
-    backgroundColor: '#161616',
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    gap: 12,
-  },
-  title: {
-    color: '#F0F0F0',
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  label: {
-    color: '#555',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: -4,
-  },
-  input: {
-    backgroundColor: '#0C0C0C',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#F0F0F0',
-    fontSize: 14,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#1A1A1A',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    alignItems: 'center',
-  },
-  cancelText: {
-    color: '#555',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  saveBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#F59E0B',
-    alignItems: 'center',
-  },
-  saveText: {
-    color: '#0C0C0C',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  feedback: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-  },
-  feedbackOk: {
-    backgroundColor: 'rgba(52,211,153,0.08)',
-    borderColor: 'rgba(52,211,153,0.3)',
-  },
-  feedbackErr: {
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    borderColor: 'rgba(239,68,68,0.3)',
-  },
-  feedbackText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  feedbackTextOk: { color: '#34D399' },
-  feedbackTextErr: { color: '#EF4444' },
-});
+};

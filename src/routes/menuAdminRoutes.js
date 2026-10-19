@@ -18,7 +18,7 @@ const router = Router();
 router.get('/categorias', async (req, res) => {
   try {
     const categorias = await getCategorias();
-    res.json({ categorias });
+    res.json(categorias);
   } catch (err) {
     console.error('[GET /menu-admin/categorias]', err.message);
     res.status(500).json({ error: err.message });
@@ -83,11 +83,10 @@ router.post('/categorias/:categoriaId/items', async (req, res) => {
   }
 });
 
-router.patch('/categorias/:categoriaId/items/:idx', async (req, res) => {
+router.patch(['/categorias/:categoriaId/items/:idx', '/categorias/:categoriaId/items/:idx/actualizar'], async (req, res) => {
   try {
-    const index = Number(req.params.idx);
-    if (isNaN(index)) return res.status(400).json({ error: 'idx debe ser un número' });
-    await updateItem(req.params.categoriaId, index, req.body);
+    const indexOrId = isNaN(Number(req.params.idx)) ? req.params.idx : Number(req.params.idx);
+    await updateItem(req.params.categoriaId, indexOrId, req.body);
     res.json({ ok: true });
   } catch (err) {
     console.error('[PATCH /menu-admin/categorias/:id/items/:idx]', err.message);
@@ -97,9 +96,8 @@ router.patch('/categorias/:categoriaId/items/:idx', async (req, res) => {
 
 router.delete('/categorias/:categoriaId/items/:idx', async (req, res) => {
   try {
-    const index = Number(req.params.idx);
-    if (isNaN(index)) return res.status(400).json({ error: 'idx debe ser un número' });
-    await deleteItem(req.params.categoriaId, index);
+    const indexOrId = isNaN(Number(req.params.idx)) ? req.params.idx : Number(req.params.idx);
+    await deleteItem(req.params.categoriaId, indexOrId);
     res.json({ ok: true });
   } catch (err) {
     console.error('[DELETE /menu-admin/categorias/:id/items/:idx]', err.message);
@@ -107,11 +105,10 @@ router.delete('/categorias/:categoriaId/items/:idx', async (req, res) => {
   }
 });
 
-router.patch('/categorias/:categoriaId/items/:idx/toggle', async (req, res) => {
+router.patch(['/categorias/:categoriaId/items/:idx/toggle', '/categorias/:categoriaId/items/:idx/toggle-disponible'], async (req, res) => {
   try {
-    const index = Number(req.params.idx);
-    if (isNaN(index)) return res.status(400).json({ error: 'idx debe ser un número' });
-    await toggleDisponible(req.params.categoriaId, index);
+    const indexOrId = isNaN(Number(req.params.idx)) ? req.params.idx : Number(req.params.idx);
+    await toggleDisponible(req.params.categoriaId, indexOrId);
     res.json({ ok: true });
   } catch (err) {
     console.error('[PATCH /menu-admin/categorias/:id/items/:idx/toggle]', err.message);

@@ -1,9 +1,7 @@
 const express = require('express');
 const { getOrder } = require('../orders/orderService');
-const { db, trackWrite, trackRead, getWriteStats, getReadStats } = require('../services/firebaseService');
-const { doc, updateDoc } = require('firebase/firestore');
+const { query } = require('../db/connection');
 const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
-const { encolarNotificacion } = require('../services/notificacionQueue');
 
 const router = express.Router();
 
@@ -20,24 +18,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Endpoint de debug para ver estadísticas de Firebase
-router.get('/debug/stats', (req, res) => {
-  const writeStats = getWriteStats();
-  const readStats = getReadStats();
-  console.log(`\n╔════════════════════════════════════════════════════╗`);
-  console.log(`║         📊 FIREBASE USAGE STATISTICS 📊             ║`);
-  console.log(`╠════════════════════════════════════════════════════╣`);
-  console.log(`║ WRITES:                                            ║`);
-  console.log(`║   Total: ${writeStats.total}`);
-  console.log(`║   Sources: ${JSON.stringify(writeStats.bySource)}`);
-  console.log(`║ READS:                                             ║`);
-  console.log(`║   Total: ${readStats.total}`);
-  console.log(`║   Sources: ${JSON.stringify(readStats.bySource)}`);
-  console.log(`║ Uptime: ${writeStats.uptimeMin} minutes                      ║`);
-  console.log(`╚════════════════════════════════════════════════════╝\n`);
-  return res.json({ writes: writeStats, reads: readStats });
-});
-
 const MENSAJES_NOTIFICACION = {
   confirmado:  '✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔',
   rechazado:   '❌ Lo sentimos, tu pedido no pudo ser procesado en este momento. Por favor contáctanos si necesitas ayuda.',
@@ -48,15 +28,8 @@ const MENSAJES_NOTIFICACION = {
 };
 
 async function enviarNotificacion(order, mensaje) {
-  // Preferir JID completo (@s.whatsapp.net) cuando está disponible para garantizar
-  // entrega correcta a usuarios @lid. Fallback a telefono para pedidos anteriores.
   const destino = order.jid || order.telefono;
-  try {
-    await sendWhatsAppMessage(destino, mensaje);
-  } catch (err) {
-    await encolarNotificacion({ telefono: destino, mensaje, pedidoId: order.id });
-    throw new Error(`WhatsApp no disponible — notificación encolada: ${err.message}`);
-  }
+  await sendWhatsAppMessage(destino, mensaje);
 }
 
 router.post('/:id/notificar', async (req, res) => {
@@ -67,23 +40,20 @@ router.post('/:id/notificar', async (req, res) => {
     const order = await getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
 
-    // Personalizar mensaje de confirmado con ETA si se proporcionó
     let mensaje = MENSAJES_NOTIFICACION[tipo];
     if (tipo === 'confirmado' && tiempoEstimadoMin) {
       const mins = Number(tiempoEstimadoMin);
       mensaje = `✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔\n\n🕐 Tiempo estimado: *${mins} minutos*.`;
-      await updateDoc(doc(db, 'pedidos', order.id), { tiempo_estimado_min: mins });
-      trackWrite('orderRoutes:eta', `pedidoId=${order.id} | minutos=${mins}`);
+      await query('UPDATE pedidos SET tiempo_estimado_min = $1 WHERE id = $2', [mins, order.id]);
     }
 
-    // Marcar como enviada ANTES de enviar para que el listener de Firestore no duplique
-    await updateDoc(doc(db, 'pedidos', order.id), {
-      [`notificaciones_enviadas.${tipo}`]: true,
-    });
-    trackWrite(`orderRoutes:notif:${tipo}`, `pedidoId=${order.id}`);
+    const notifObj = { ...order.notificaciones_enviadas, [tipo]: true };
+    await query('UPDATE pedidos SET notificaciones_enviadas = $1 WHERE id = $2', [
+      JSON.stringify(notifObj),
+      order.id,
+    ]);
 
     await enviarNotificacion(order, mensaje);
-
     console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.telefono}`);
     return res.json({ ok: true });
   } catch (err) {

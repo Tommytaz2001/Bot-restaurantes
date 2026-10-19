@@ -9,15 +9,43 @@ services:
       - "${PORT:-3001}:${PORT:-3001}"
     env_file:
       - .env
+    environment:
+      - DB_HOST=postgres
+      - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}
     volumes:
       - ${BACKEND_VOLUME:-backend_data}:/app/data
+      - uploads_data:/app/uploads
     depends_on:
-      - evolution-api
+      postgres:
+        condition: service_healthy
+      evolution-api:
+        condition: service_started
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "5"
+    networks:
+      - bot-network
+
+  # ── Base de datos PostgreSQL ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: bot-postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER:-botuser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-botpassword}
+      - POSTGRES_DB=${DB_NAME:-botrestaurantes}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-botuser} -d ${DB_NAME:-botrestaurantes}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - bot-network
 
@@ -47,8 +75,11 @@ services:
 
 volumes:
   backend_data:
+  postgres_data:
+  uploads_data:
   evolution_instances:
 
 networks:
   bot-network:
     driver: bridge
+

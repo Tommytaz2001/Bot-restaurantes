@@ -27,7 +27,7 @@ function _markProcessed(id) {
 }
 
 // ── Descargar imagen via Evolution API ────────────────────────────────────────
-async function downloadMediaEvolution(key) {
+async function downloadMediaEvolution(messagePayload) {
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE;
@@ -43,12 +43,20 @@ async function downloadMediaEvolution(key) {
       'Content-Type': 'application/json',
       apikey: apiKey,
     },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({
+      message: messagePayload,
+      convertToMp4: false,
+    }),
   });
 
-  if (!res.ok) throw new Error(`Media download failed: ${res.status}`);
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    throw new Error(`Media download failed: ${res.status} ${errorText}`);
+  }
 
-  const { base64, mimetype } = await res.json();
+  const result = await res.json();
+  const base64 = result.base64 || result.data?.base64;
+  const mimetype = result.mimetype || result.data?.mimetype || 'image/jpeg';
   return { buffer: Buffer.from(base64, 'base64'), mimeType: mimetype };
 }
 
@@ -113,7 +121,7 @@ async function _processMessage(data) {
       const pedidoPendiente = await findPedidoPendientePago(telefono);
       if (pedidoPendiente) {
         log(`[Webhook] Imagen de ${telefono} → comprobante para pedido ${pedidoPendiente.id}`);
-        const { buffer, mimeType } = await downloadMediaEvolution(key);
+        const { buffer, mimeType } = await downloadMediaEvolution(data);
         await attachComprobante(pedidoPendiente.id, buffer, mimeType);
         await sendWhatsAppMessage(replyTo,
           '✅ *Comprobante recibido.* El chef verificará tu pago y confirmará el pedido en breve. 🙏',

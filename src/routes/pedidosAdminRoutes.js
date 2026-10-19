@@ -41,6 +41,19 @@ router.get('/historial/stream', requireAuthQuery, (req, res) => {
   createHistorialStream(res);
 });
 
+// Simulación de pedidos para pruebas
+router.post('/simular-pedidos', requireAuth, async (req, res) => {
+  try {
+    const { simularLotePedidos } = require('../services/simulacionService');
+    const cantidad = Number(req.body?.cantidad) || 10;
+    const creados = await simularLotePedidos(cantidad);
+    res.json({ ok: true, creados: creados.length, pedidos: creados });
+  } catch (err) {
+    console.error('[POST /pedidos-admin/simular-pedidos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Rutas dinámicas /:id ──────────────────────────────────────────────────────
 
 // SSE: stream de un pedido individual

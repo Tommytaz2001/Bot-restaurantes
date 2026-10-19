@@ -1,172 +1,206 @@
-const { db, trackWrite, trackRead } = require('./firebaseService');
-const {
-  doc, getDoc, collection, getDocs, updateDoc, query, where, orderBy, limit, startAfter,
-  serverTimestamp,
-} = require('firebase/firestore');
-const { serializeDoc } = require('../utils/firestoreUtils');
+const { query } = require('../db/connection');
+const { getOrder } = require('../orders/orderService');
+const { orderEvents } = require('./orderEvents');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? 'urbano';
-const PAGE_SIZE = 20;
-
-// ─── Helpers de fecha ────────────────────────────────────────────────────────
-
-function getDateRange(filtro) {
-  const now = new Date();
-  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-  switch (filtro) {
-    case 'hoy':
-      return { desde: startOfDay(now) };
-    case 'ayer': {
-      const ayer = new Date(now);
-      ayer.setDate(ayer.getDate() - 1);
-      return { desde: startOfDay(ayer), hasta: startOfDay(now) };
-    }
-    case '7dias': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      return { desde: startOfDay(d) };
-    }
-    case '30dias': {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 30);
-      return { desde: startOfDay(d) };
-    }
-    default:
-      return {};
-  }
-}
-
-// ─── Writes ───────────────────────────────────────────────────────────────────
 
 async function actualizarEstado(id, data) {
-  trackWrite('pedidosAdmin:actualizarEstado', `pedido=${id}`);
-  await updateDoc(doc(db, 'pedidos', id), data);
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
+  for (const [key, value] of Object.entries(data)) {
+    fields.push(`${key} = $${idx}`);
+    values.push(value);
+    idx++;
+  }
+  fields.push('updated_at = NOW()');
+  values.push(id);
+
+  const sql = `UPDATE pedidos SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`;
+  await query(sql, values);
+
+  const updated = await getOrder(id);
+  if (updated) {
+    orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
+  }
+  return updated;
 }
 
 async function confirmarPedidoConETA(id, tiempoEstimadoMin) {
   const update = { estado: 'confirmado' };
   if (tiempoEstimadoMin) update.tiempo_estimado_min = tiempoEstimadoMin;
-  await actualizarEstado(id, update);
+  return actualizarEstado(id, update);
 }
 
 async function marcarEnCamino(id) {
-  await actualizarEstado(id, { estado: 'en_camino' });
+  return actualizarEstado(id, { estado: 'en_camino' });
 }
 
 async function marcarEntregado(id) {
-  await actualizarEstado(id, { estado: 'entregado', entregadoAt: serverTimestamp() });
+  return actualizarEstado(id, { estado: 'entregado' });
 }
 
 async function rechazarPedido(id) {
-  await actualizarEstado(id, { estado: 'cancelado', canceladoAt: serverTimestamp() });
+  return actualizarEstado(id, { estado: 'cancelado' });
 }
 
 async function aprobarCambio(id) {
-  trackRead('pedidosAdmin:aprobarCambio', `pedido=${id}`);
-  const snap = await getDoc(doc(db, 'pedidos', id));
-  if (!snap.exists()) throw new Error(`Pedido no encontrado: ${id}`);
+  const snap = await query('SELECT * FROM pedidos WHERE id = $1', [id]);
+  if (snap.rows.length === 0) throw new Error(`Pedido no encontrado: ${id}`);
 
-  const pedido = snap.data();
-  const cambio = pedido.cambio_solicitado;
+  const row = snap.rows[0];
+  const cambio = row.cambio_solicitado;
   if (!cambio) throw new Error(`Pedido ${id} no tiene cambio_solicitado`);
 
-  const updateData = {
-    'cambio_solicitado.estado': 'aprobado',
-    'cambio_solicitado.respondidoAt': serverTimestamp(),
-  };
+  cambio.estado = 'aprobado';
+  cambio.respondidoAt = new Date().toISOString();
 
-  if (
-    cambio.tipo === 'agregar_productos' &&
-    cambio.productos_nuevos?.length &&
-    cambio.total_nuevo != null
-  ) {
-    updateData.productos = [...pedido.productos, ...cambio.productos_nuevos];
-    updateData.total = cambio.total_nuevo;
+  let totalNuevo = parseFloat(row.total);
+  if (cambio.tipo === 'agregar_productos' && cambio.productos_nuevos?.length > 0) {
+    for (const p of cambio.productos_nuevos) {
+      const subtotal = p.precio_unitario * p.cantidad;
+      await query(
+        `INSERT INTO pedido_items (pedido_id, nombre, cantidad, precio_unitario, opcion, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, p.nombre, p.cantidad, p.precio_unitario, p.opcion || null, subtotal]
+      );
+    }
+    if (cambio.total_nuevo != null) {
+      totalNuevo = parseFloat(cambio.total_nuevo);
+    }
   }
 
   if (cambio.tipo === 'cambiar_entrega' && cambio.datos_entrega) {
     const { tipo_entrega, direccion, costo_envio, total_nuevo } = cambio.datos_entrega;
-    updateData.tipo_entrega = tipo_entrega;
-    updateData.direccion = direccion ?? null;
-    updateData.costo_envio = costo_envio;
-    updateData.total = total_nuevo;
+    await query(
+      `UPDATE pedidos 
+       SET tipo_entrega = $1, direccion = $2, costo_envio = $3, total = $4, cambio_solicitado = $5, updated_at = NOW()
+       WHERE id = $6`,
+      [tipo_entrega, direccion || null, costo_envio, total_nuevo, JSON.stringify(cambio), id]
+    );
+  } else {
+    await query(
+      `UPDATE pedidos 
+       SET total = $1, cambio_solicitado = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [totalNuevo, JSON.stringify(cambio), id]
+    );
   }
 
-  trackWrite('pedidosAdmin:aprobarCambio', `pedido=${id} tipo=${cambio.tipo}`);
-  await updateDoc(doc(db, 'pedidos', id), updateData);
+  const updated = await getOrder(id);
+  orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
+  return updated;
 }
 
 async function rechazarCambio(id) {
-  await actualizarEstado(id, {
-    'cambio_solicitado.estado': 'rechazado',
-    'cambio_solicitado.respondidoAt': serverTimestamp(),
-  });
+  const snap = await query('SELECT * FROM pedidos WHERE id = $1', [id]);
+  if (snap.rows.length === 0) throw new Error(`Pedido no encontrado: ${id}`);
+
+  const cambio = snap.rows[0].cambio_solicitado;
+  if (!cambio) throw new Error(`Pedido ${id} no tiene cambio_solicitado`);
+
+  cambio.estado = 'rechazado';
+  cambio.respondidoAt = new Date().toISOString();
+
+  await query(
+    `UPDATE pedidos SET cambio_solicitado = $1, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(cambio), id]
+  );
+
+  const updated = await getOrder(id);
+  orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
+  return updated;
 }
 
-// ─── Historial paginado ───────────────────────────────────────────────────────
-
-/**
- * @param {object} options
- * @param {string} options.filtro - 'todos' | 'hoy' | 'ayer' | '7dias' | '30dias'
- * @param {string|null} [options.afterTs] - ISO string del createdAt del último doc de la página anterior
- * @returns {{ pedidos: object[], afterTs: string|null, hasMore: boolean }}
- */
-async function fetchHistorial({ filtro = 'todos', afterTs = null }) {
-  const t0 = Date.now();
-  const { desde, hasta } = getDateRange(filtro);
-
-  const constraints = [
-    where('restauranteId', '==', RESTAURANTE_ID),
-    where('estado', 'in', ['entregado', 'cancelado']),
-  ];
-
-  if (desde) constraints.push(where('createdAt', '>=', desde));
-  if (hasta) constraints.push(where('createdAt', '<', hasta));
-
-  constraints.push(orderBy('createdAt', 'desc'));
-  constraints.push(limit(PAGE_SIZE + 1));
-
-  if (afterTs) constraints.push(startAfter(new Date(afterTs)));
-
-  let snapshot;
-  try {
-    snapshot = await getDocs(query(collection(db, 'pedidos'), ...constraints));
-    trackRead('pedidosAdmin:fetchHistorial', `filtro=${filtro}`, snapshot.docs.length);
-  } catch (indexErr) {
-    console.warn(`[fetchHistorial] Index missing, using fallback: ${indexErr?.message}`);
-    const fallback = [
-      where('restauranteId', '==', RESTAURANTE_ID),
-      where('estado', 'in', ['entregado', 'cancelado']),
-    ];
-    snapshot = await getDocs(query(collection(db, 'pedidos'), ...fallback));
-    trackRead('pedidosAdmin:fetchHistorial:fallback', `filtro=${filtro}`, snapshot.docs.length);
-
-    let pedidos = snapshot.docs.map((d) => serializeDoc({ id: d.id, ...d.data() }));
-    if (desde) {
-      const desdeMs = desde.getTime();
-      pedidos = pedidos.filter((p) => (p.createdAt ? new Date(p.createdAt).getTime() : 0) >= desdeMs);
-    }
-    if (hasta) {
-      const hastaMs = hasta.getTime();
-      pedidos = pedidos.filter((p) => (p.createdAt ? new Date(p.createdAt).getTime() : 0) < hastaMs);
-    }
-    pedidos.sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0));
-    console.log(`[fetchHistorial] fallback done in ${Date.now() - t0}ms`);
-    return { pedidos: pedidos.slice(0, PAGE_SIZE), afterTs: null, hasMore: false };
+async function fetchHistorial({ filtro = 'todos' }) {
+  let dateCondition = '';
+  if (filtro === 'hoy') {
+    dateCondition = "AND created_at >= CURRENT_DATE";
+  } else if (filtro === 'ayer') {
+    dateCondition = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
+  } else if (filtro === '7dias') {
+    dateCondition = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+  } else if (filtro === '30dias') {
+    dateCondition = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
   }
 
-  const hasMore = snapshot.docs.length > PAGE_SIZE;
-  const docs = hasMore ? snapshot.docs.slice(0, PAGE_SIZE) : snapshot.docs;
-  const pedidos = docs.map((d) => serializeDoc({ id: d.id, ...d.data() }));
-  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
-  const nextAfterTs = lastDoc?.data().createdAt?.toDate().toISOString() ?? null;
+  const sql = `
+    SELECT * FROM pedidos 
+    WHERE restaurante_id = $1 AND estado IN ('entregado', 'cancelado') ${dateCondition}
+    ORDER BY created_at DESC LIMIT 50
+  `;
+  const res = await query(sql, [RESTAURANTE_ID]);
+  const pedidos = [];
+  for (const row of res.rows) {
+    const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [row.id]);
+    const { mapRowToOrder } = require('../orders/orderService');
+    // Simple inline mapping if helper is internal
+    pedidos.push({
+      id: row.id,
+      cliente: row.cliente,
+      telefono: row.telefono,
+      jid: row.jid,
+      tipo_entrega: row.tipo_entrega,
+      direccion: row.direccion,
+      costo_envio: parseFloat(row.costo_envio || 0),
+      total: parseFloat(row.total || 0),
+      metodo_pago: row.metodo_pago,
+      estado: row.estado,
+      comprobante_url: row.comprobante_url,
+      createdAt: row.created_at,
+      productos: itemsRes.rows.map((i) => ({
+        nombre: i.nombre,
+        cantidad: parseInt(i.cantidad, 10),
+        precio_unitario: parseFloat(i.precio_unitario),
+        opcion: i.opcion,
+      })),
+    });
+  }
 
-  console.log(`[fetchHistorial] done in ${Date.now() - t0}ms — ${docs.length} docs, hasMore=${hasMore}`);
-  return { pedidos, afterTs: nextAfterTs, hasMore };
+  return { pedidos, hasMore: false };
+}
+
+async function getPedidosActivos(restauranteId = RESTAURANTE_ID) {
+  const sql = `
+    SELECT * FROM pedidos 
+    WHERE restaurante_id = $1 AND estado IN ('pendiente', 'pendiente_pago', 'confirmado', 'en_camino')
+    ORDER BY created_at DESC
+  `;
+  const res = await query(sql, [restauranteId]);
+  const pedidos = [];
+  for (const row of res.rows) {
+    const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [row.id]);
+    pedidos.push({
+      id: row.id,
+      restauranteId: row.restaurante_id,
+      cliente: row.cliente,
+      telefono: row.telefono,
+      jid: row.jid,
+      tipo_entrega: row.tipo_entrega,
+      direccion: row.direccion,
+      costo_envio: parseFloat(row.costo_envio || 0),
+      total: parseFloat(row.total || 0),
+      metodo_pago: row.metodo_pago,
+      estado: row.estado,
+      comprobante_url: row.comprobante_url,
+      tiempo_estimado_min: row.tiempo_estimado_min,
+      sessionId: row.session_id,
+      cambio_solicitado: row.cambio_solicitado,
+      createdAt: row.created_at,
+      productos: itemsRes.rows.map((i) => ({
+        nombre: i.nombre,
+        cantidad: parseInt(i.cantidad, 10),
+        precio_unitario: parseFloat(i.precio_unitario),
+        opcion: i.opcion,
+      })),
+    });
+  }
+  return pedidos;
 }
 
 module.exports = {
+  actualizarEstado,
   confirmarPedidoConETA,
   marcarEnCamino,
   marcarEntregado,
@@ -174,4 +208,5 @@ module.exports = {
   aprobarCambio,
   rechazarCambio,
   fetchHistorial,
+  getPedidosActivos,
 };

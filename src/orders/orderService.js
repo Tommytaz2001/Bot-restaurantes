@@ -1,256 +1,319 @@
-const { db, trackWrite, trackRead } = require('../services/firebaseService');
-const { uploadComprobante } = require('../services/storageService');
-const { enviarPushAlChef } = require('../services/pushService');
-const { validateOrder } = require('./orderValidator');
-const {
-  collection, doc, setDoc, getDoc, updateDoc, query, where, getDocs, orderBy, limit, serverTimestamp,
-} = require('firebase/firestore');
+const fs = require('fs');
+const path = require('path');
 const { randomUUID } = require('crypto');
+const { query, pool } = require('../db/connection');
+const { validateOrder } = require('./orderValidator');
+const { orderEvents } = require('../services/orderEvents');
 
 const COSTO_ENVIO = 40;
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
 
-// transferencia → pendiente_pago (espera comprobante)
-// efectivo     → pendiente     (paga al recibir, no necesita comprobante)
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
 function buildEstado(metodoPago) {
   return metodoPago === 'transferencia' ? 'pendiente_pago' : 'pendiente';
 }
 
-async function findExistingOrder(sessionId) {
-  const q = query(
-    collection(db, 'pedidos'),
-    where('sessionId', '==', sessionId),
-    where('estado', 'in', ['pendiente', 'pendiente_pago']),
-  );
-  const snapshot = await getDocs(q);
-  trackRead('findExistingOrder', `sessionId=${sessionId}`, snapshot.docs.length);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { id: d.id, ...d.data() };
+function mapRowToOrder(row, items = []) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    restauranteId: row.restaurante_id,
+    cliente: row.cliente,
+    telefono: row.telefono,
+    jid: row.jid,
+    tipo_entrega: row.tipo_entrega,
+    direccion: row.direccion,
+    costo_envio: parseFloat(row.costo_envio || 0),
+    total: parseFloat(row.total || 0),
+    metodo_pago: row.metodo_pago,
+    estado: row.estado,
+    comprobante_url: row.comprobante_url,
+    tiempo_estimado_min: row.tiempo_estimado_min,
+    sessionId: row.session_id,
+    cambio_solicitado: row.cambio_solicitado,
+    notificaciones_enviadas: row.notificaciones_enviadas || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    productos: items.map((i) => ({
+      nombre: i.nombre,
+      cantidad: parseInt(i.cantidad, 10),
+      precio_unitario: parseFloat(i.precio_unitario),
+      opcion: i.opcion,
+      subtotal: parseFloat(i.subtotal || 0),
+    })),
+  };
 }
 
-/**
- * Busca cualquier pedido activo (pendiente → en_camino) asociado a un teléfono.
- * Sirve para rehidratar el contexto del agente cuando la sesión en memoria expiró.
- */
+async function findExistingOrder(sessionId) {
+  if (!sessionId) return null;
+  const res = await query(
+    `SELECT * FROM pedidos 
+     WHERE session_id = $1 AND estado IN ('pendiente', 'pendiente_pago')
+     ORDER BY created_at DESC LIMIT 1`,
+    [sessionId]
+  );
+  if (res.rows.length === 0) return null;
+  const itemsRes = await query(
+    `SELECT * FROM pedido_items WHERE pedido_id = $1`,
+    [res.rows[0].id]
+  );
+  return mapRowToOrder(res.rows[0], itemsRes.rows);
+}
+
 async function findActiveOrderByPhone(telefono) {
   if (!telefono) return null;
-  const q = query(
-    collection(db, 'pedidos'),
-    where('sessionId', '==', telefono),
-    where('estado', 'in', ['pendiente', 'pendiente_pago', 'confirmado', 'en_camino']),
+  const res = await query(
+    `SELECT * FROM pedidos 
+     WHERE (session_id = $1 OR telefono = $1)
+       AND estado IN ('pendiente', 'pendiente_pago', 'confirmado', 'en_camino')
+     ORDER BY created_at DESC LIMIT 1`,
+    [telefono]
   );
-  const snapshot = await getDocs(q);
-  trackRead('findActiveOrderByPhone', `telefono=${telefono}`, snapshot.docs.length);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { id: d.id, ...d.data() };
+  if (res.rows.length === 0) return null;
+  const itemsRes = await query(
+    `SELECT * FROM pedido_items WHERE pedido_id = $1`,
+    [res.rows[0].id]
+  );
+  return mapRowToOrder(res.rows[0], itemsRes.rows);
 }
 
-/**
- * Busca la dirección de la última entrega completada para un teléfono.
- * Permite ofrecer la dirección anterior a clientes frecuentes.
- */
 async function findLastDeliveryAddress(telefono) {
   if (!telefono) return null;
   try {
-    const q = query(
-      collection(db, 'pedidos'),
-      where('sessionId', '==', telefono),
-      where('estado', '==', 'entregado'),
-      where('tipo_entrega', '==', 'delivery'),
-      orderBy('createdAt', 'desc'),
-      limit(1),
+    const res = await query(
+      `SELECT direccion FROM pedidos 
+       WHERE (session_id = $1 OR telefono = $1)
+         AND estado = 'entregado'
+         AND tipo_entrega = 'delivery'
+       ORDER BY created_at DESC LIMIT 1`,
+      [telefono]
     );
-    const snapshot = await getDocs(q);
-    trackRead('findLastDeliveryAddress', `telefono=${telefono}`, snapshot.docs.length);
-    if (snapshot.empty) return null;
-    return snapshot.docs[0].data()?.direccion || null;
+    if (res.rows.length === 0) return null;
+    return res.rows[0].direccion || null;
   } catch (err) {
-    // Esta query requiere un índice compuesto en Firestore (sessionId + estado + tipo_entrega + createdAt DESC).
-    // Si el índice no existe, Firestore lanza error. Fallback seguro: null (no sugerir dirección anterior).
-    console.warn('[orderService] findLastDeliveryAddress falló (posible índice faltante):', err.message);
+    console.warn('[orderService] findLastDeliveryAddress error:', err.message);
     return null;
   }
 }
 
 async function saveOrder(orderData) {
-  // Check for duplicate active order in same session
   const existing = await findExistingOrder(orderData.sessionId);
   if (existing) return existing;
 
-  // Validate schema
   validateOrder(orderData);
 
   const costoEnvio = orderData.tipo_entrega === 'delivery' ? COSTO_ENVIO : 0;
   const subtotal = orderData.productos.reduce(
     (sum, p) => sum + p.precio_unitario * p.cantidad,
-    0,
+    0
   );
-
+  const total = subtotal + costoEnvio;
   const id = randomUUID();
-  const pedido = {
-    ...orderData,
-    estado: buildEstado(orderData.metodo_pago),
-    comprobante_url: null,
-    createdAt: serverTimestamp(),
-    costo_envio: costoEnvio,         // overwrite — never trust LLM value
-    total: subtotal + costoEnvio,    // overwrite — backend is source of truth
-    productos: orderData.productos.map((p) => ({
-      ...p,
-      opcion: p.opcion ?? null,
-    })),
-  };
+  const estado = buildEstado(orderData.metodo_pago);
+  const restauranteId = orderData.restauranteId || 'urbano';
 
-  await setDoc(doc(db, 'pedidos', id), pedido);
-  trackWrite('saveOrder', `id=${id} | cliente=${orderData.cliente} | total=${subtotal + costoEnvio}`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // Push notification al chef (no-blocking)
-  const tipoEntrega = orderData.tipo_entrega === 'delivery' ? 'Delivery' : 'Retiro';
-  enviarPushAlChef(
-    orderData.restauranteId,
-    '🍔 Nuevo pedido',
-    `${orderData.cliente ?? 'Cliente'} — ${subtotal + costoEnvio} · ${tipoEntrega}`,
-  ).catch(() => {});
+    const insertPedidoSql = `
+      INSERT INTO pedidos (
+        id, restaurante_id, cliente, telefono, jid, tipo_entrega,
+        direccion, costo_envio, total, metodo_pago, estado, session_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING *
+    `;
+    const pedidoRes = await client.query(insertPedidoSql, [
+      id,
+      restauranteId,
+      orderData.cliente,
+      orderData.telefono || null,
+      orderData.jid || null,
+      orderData.tipo_entrega,
+      orderData.direccion,
+      costoEnvio,
+      total,
+      orderData.metodo_pago,
+      estado,
+      orderData.sessionId,
+    ]);
 
-  return { id, ...pedido };
+    const items = [];
+    for (const p of orderData.productos) {
+      const itemSubtotal = p.precio_unitario * p.cantidad;
+      const itemRes = await client.query(
+        `INSERT INTO pedido_items (pedido_id, nombre, cantidad, precio_unitario, opcion, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [id, p.nombre, p.cantidad, p.precio_unitario, p.opcion || null, itemSubtotal]
+      );
+      items.push(itemRes.rows[0]);
+    }
+
+    await client.query('COMMIT');
+
+    const nuevoPedido = mapRowToOrder(pedidoRes.rows[0], items);
+
+    // Emite evento en tiempo real para todos los clientes SSE (app del chef)
+    orderEvents.emit('order:created', { restauranteId, pedido: nuevoPedido });
+    console.log(`[orderService] Pedido guardado en PostgreSQL id=${id} total=${total} estado=${estado}`);
+
+    return nuevoPedido;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function getOrder(id) {
-  const snapshot = await getDoc(doc(db, 'pedidos', id));
-  trackRead('getOrder', `id=${id}`, snapshot.exists() ? 1 : 0);
-  if (!snapshot.exists()) return null;
-  return { id: snapshot.id, ...snapshot.data() };
+  const res = await query('SELECT * FROM pedidos WHERE id = $1', [id]);
+  if (res.rows.length === 0) return null;
+  const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [id]);
+  return mapRowToOrder(res.rows[0], itemsRes.rows);
 }
 
-/**
- * Busca el pedido activo en estado pendiente_pago para un sessionId dado.
- * Retorna el pedido o null si no existe.
- */
 async function findPedidoPendientePago(sessionId) {
-  const q = query(
-    collection(db, 'pedidos'),
-    where('sessionId', '==', sessionId),
-    where('estado', '==', 'pendiente_pago'),
+  if (!sessionId) return null;
+  const res = await query(
+    `SELECT * FROM pedidos 
+     WHERE session_id = $1 AND estado = 'pendiente_pago'
+     ORDER BY created_at DESC LIMIT 1`,
+    [sessionId]
   );
-  const snapshot = await getDocs(q);
-  trackRead('findPedidoPendientePago', `sessionId=${sessionId}`, snapshot.docs.length);
-  if (snapshot.empty) return null;
-  const d = snapshot.docs[0];
-  return { id: d.id, ...d.data() };
+  if (res.rows.length === 0) return null;
+  const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [res.rows[0].id]);
+  return mapRowToOrder(res.rows[0], itemsRes.rows);
 }
 
-/**
- * Sube el comprobante de pago a Firebase Storage y actualiza el pedido:
- * - Guarda comprobante_url
- * - Cambia estado de pendiente_pago → pendiente (listo para que el chef confirme)
- */
-async function attachComprobante(pedidoId, imageBuffer, mimeType) {
-  const url = await uploadComprobante(pedidoId, imageBuffer, mimeType);
-  await updateDoc(doc(db, 'pedidos', pedidoId), {
-    comprobante_url: url,
-    estado: 'pendiente',
-    comprobanteAt: serverTimestamp(),
-  });
-  trackWrite('attachComprobante', `pedidoId=${pedidoId} | mimeType=${mimeType}`);
-  return url;
+async function attachComprobante(pedidoId, imageBuffer, mimeType = 'image/jpeg') {
+  const ext = mimeType.includes('png') ? '.png' : '.jpg';
+  const fileName = `comprobante_${pedidoId}_${Date.now()}${ext}`;
+  const filePath = path.join(UPLOADS_DIR, fileName);
+
+  await fs.promises.writeFile(filePath, imageBuffer);
+  const comprobanteUrl = `/uploads/${fileName}`;
+
+  const res = await query(
+    `UPDATE pedidos 
+     SET comprobante_url = $1, estado = 'pendiente', updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [comprobanteUrl, pedidoId]
+  );
+
+  if (res.rows.length > 0) {
+    const updated = await getOrder(pedidoId);
+    orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
+    console.log(`[orderService] Comprobante adjuntado para pedido ${pedidoId}: ${comprobanteUrl}`);
+  }
+
+  return comprobanteUrl;
 }
 
-/**
- * Registra una solicitud de cambio sobre un pedido activo.
- * Si el pedido aún no fue confirmado por el chef, aplica el cambio directamente.
- * Si ya fue confirmado, crea cambio_solicitado para que el chef apruebe o rechace.
- */
 async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modificacion', productosNuevos = null, datosEntrega = null }) {
-  const ref = doc(db, 'pedidos', pedidoId);
-  const snapshot = await getDoc(ref);
-  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
+  const pedido = await getOrder(pedidoId);
+  if (!pedido) throw new Error('Pedido no encontrado');
 
-  const pedidoActual = snapshot.data();
-  const estadosPendientes = ['pendiente', 'pendiente_pago'];
-  const esPendiente = estadosPendientes.includes(pedidoActual.estado);
+  const esPendiente = ['pendiente', 'pendiente_pago'].includes(pedido.estado);
 
-  // Pedido sin confirmar: aplicar directamente sin flujo de aprobación
   if (esPendiente) {
     if (tipo === 'agregar_productos' && productosNuevos?.length > 0) {
-      const productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
-      const subtotalNuevos = productosNuevos.reduce((sum, p) => sum + p.precio_unitario * p.cantidad, 0);
-      await updateDoc(ref, {
-        productos: [...pedidoActual.productos, ...productosNormalizados],
-        total: pedidoActual.total + subtotalNuevos,
-      });
-      trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
+      let subtotalExtra = 0;
+      for (const p of productosNuevos) {
+        const itemSubtotal = p.precio_unitario * p.cantidad;
+        subtotalExtra += itemSubtotal;
+        await query(
+          `INSERT INTO pedido_items (pedido_id, nombre, cantidad, precio_unitario, opcion, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [pedidoId, p.nombre, p.cantidad, p.precio_unitario, p.opcion || null, itemSubtotal]
+        );
+      }
+      await query(
+        `UPDATE pedidos SET total = total + $1, updated_at = NOW() WHERE id = $2`,
+        [subtotalExtra, pedidoId]
+      );
+      const updated = await getOrder(pedidoId);
+      orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
       return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
     }
 
     if (tipo === 'cambiar_entrega' && datosEntrega) {
-      await updateDoc(ref, {
-        tipo_entrega: datosEntrega.tipo_entrega,
-        direccion: datosEntrega.direccion ?? null,
-        costo_envio: datosEntrega.costo_envio,
-        total: datosEntrega.total_nuevo,
-      });
-      trackWrite('solicitarCambio:directo', `pedidoId=${pedidoId} | tipo=${tipo}`);
+      await query(
+        `UPDATE pedidos 
+         SET tipo_entrega = $1, direccion = $2, costo_envio = $3, total = $4, updated_at = NOW()
+         WHERE id = $5`,
+        [
+          datosEntrega.tipo_entrega,
+          datosEntrega.direccion || null,
+          datosEntrega.costo_envio,
+          datosEntrega.total_nuevo,
+          pedidoId,
+        ]
+      );
+      const updated = await getOrder(pedidoId);
+      orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
       return { pedidoId, descripcionCambio, aplicadoDirectamente: true };
     }
   }
 
   // Pedido ya confirmado: solicitar aprobación del chef
   let totalNuevo = null;
-  let productosNormalizados = null;
-
   if (tipo === 'agregar_productos' && productosNuevos?.length > 0) {
-    const subtotalNuevos = productosNuevos.reduce(
-      (sum, p) => sum + p.precio_unitario * p.cantidad,
-      0,
-    );
-    totalNuevo = pedidoActual.total + subtotalNuevos;
-    productosNormalizados = productosNuevos.map((p) => ({ ...p, opcion: p.opcion ?? null }));
+    const subtotalExtra = productosNuevos.reduce((sum, p) => sum + p.precio_unitario * p.cantidad, 0);
+    totalNuevo = pedido.total + subtotalExtra;
   }
 
-  await updateDoc(ref, {
-    cambio_solicitado: {
-      tipo,
-      descripcion: descripcionCambio,
-      productos_nuevos: productosNormalizados,
-      total_nuevo: totalNuevo,
-      datos_entrega: tipo === 'cambiar_entrega' ? datosEntrega : null,
-      estado: 'pendiente_chef',
-      solicitadoAt: serverTimestamp(),
-    },
-  });
-  trackWrite('solicitarCambio', `pedidoId=${pedidoId} | tipo=${tipo}`);
+  const cambioSolicitado = {
+    tipo,
+    descripcion: descripcionCambio,
+    productos_nuevos: productosNuevos,
+    total_nuevo: totalNuevo,
+    datos_entrega: tipo === 'cambiar_entrega' ? datosEntrega : null,
+    estado: 'pendiente_chef',
+    solicitadoAt: new Date().toISOString(),
+  };
 
+  await query(
+    `UPDATE pedidos SET cambio_solicitado = $1, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(cambioSolicitado), pedidoId]
+  );
+
+  const updated = await getOrder(pedidoId);
+  orderEvents.emit('order:updated', { restauranteId: updated.restauranteId, pedido: updated });
   return { pedidoId, descripcionCambio };
 }
 
-/**
- * Cancela un pedido si aún está en estado pendiente.
- * Solo se puede cancelar antes de que el chef lo confirme.
- */
 async function cancelarPedido({ pedidoId }) {
-  const ref = doc(db, 'pedidos', pedidoId);
-  const snapshot = await getDoc(ref);
-  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
+  const pedido = await getOrder(pedidoId);
+  if (!pedido) throw new Error('Pedido no encontrado');
 
-  const { estado } = snapshot.data();
   const cancelable = ['pendiente', 'pendiente_pago'];
-  if (!cancelable.includes(estado)) {
-    throw new Error(`El pedido ya no puede cancelarse (estado: ${estado})`);
+  if (!cancelable.includes(pedido.estado)) {
+    throw new Error(`El pedido ya no puede cancelarse (estado: ${pedido.estado})`);
   }
 
-  await updateDoc(ref, { estado: 'cancelado', canceladoAt: serverTimestamp() });
-  trackWrite('cancelarPedido', `pedidoId=${pedidoId}`);
+  await query(
+    `UPDATE pedidos SET estado = 'cancelado', updated_at = NOW() WHERE id = $1`,
+    [pedidoId]
+  );
+
+  const updated = await getOrder(pedidoId);
+  orderEvents.emit('order:cancelled', { restauranteId: updated.restauranteId, pedido: updated });
   return { pedidoId, cancelado: true };
 }
 
-/**
- * Consulta el estado actual de un pedido.
- */
 async function consultarEstadoPedido({ pedidoId }) {
-  const snapshot = await getDoc(doc(db, 'pedidos', pedidoId));
-  if (!snapshot.exists()) throw new Error('Pedido no encontrado');
-  const { estado, cliente, productos } = snapshot.data();
-  return { pedidoId, estado, cliente, productos };
+  const pedido = await getOrder(pedidoId);
+  if (!pedido) throw new Error('Pedido no encontrado');
+  return {
+    pedidoId: pedido.id,
+    estado: pedido.estado,
+    cliente: pedido.cliente,
+    productos: pedido.productos,
+  };
 }
 
 const ESTADOS_LEGIBLES = {
@@ -266,4 +329,15 @@ function estadoLegible(estado) {
   return ESTADOS_LEGIBLES[estado] ?? estado;
 }
 
-module.exports = { saveOrder, getOrder, findPedidoPendientePago, attachComprobante, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress };
+module.exports = {
+  saveOrder,
+  getOrder,
+  findPedidoPendientePago,
+  attachComprobante,
+  solicitarCambioPedido,
+  cancelarPedido,
+  consultarEstadoPedido,
+  estadoLegible,
+  findActiveOrderByPhone,
+  findLastDeliveryAddress,
+};

@@ -150,6 +150,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         const prevOrderId = getLastOrderId(sessionId);
         savedOrder = await saveOrder({
           ...orderArgs,
+          telefono: orderArgs.telefono || telefono || null,
           restauranteId,
           sessionId,
           moneda: config.moneda,
@@ -175,11 +176,32 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         return { reply: null, order: savedOrder };
       }
 
-      const confirmHistory = sanitizeMessages(getSession(sessionId));
-      const confirmMessage = await chatCompletion({ systemPrompt, messages: confirmHistory, tools: false });
-      addMessage(sessionId, { role: 'assistant', content: confirmMessage.content });
+      let confirmReply = null;
+      try {
+        const confirmHistory = sanitizeMessages(getSession(sessionId));
+        const confirmMessage = await chatCompletion({ systemPrompt, messages: confirmHistory, tools: false });
+        confirmReply = confirmMessage.content;
+      } catch (err) {
+        log(`[agentService] Fallback en confirmación de pedido: ${err.message}`);
+        const orderArgs = JSON.parse(toolCall.function.arguments);
+        const nombre = orderArgs.cliente || 'amigo';
+        if (orderArgs.tipo_entrega === 'delivery') {
+          if (orderArgs.metodo_pago === 'transferencia') {
+            confirmReply = `✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸.\n\n¡Gracias, ${nombre}! 🍔`;
+          } else {
+            confirmReply = `✅ *¡Pedido recibido!* Tu orden fue enviada al chef. En cuanto sea confirmada te avisamos. ¡Gracias por ordenar con nosotros, ${nombre}! 🍔`;
+          }
+        } else {
+          if (orderArgs.metodo_pago === 'transferencia') {
+            confirmReply = `✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸.\n\n¡Gracias, ${nombre}! 🍔`;
+          } else {
+            confirmReply = `✅ *¡Pedido recibido!* Tu orden fue enviada al chef. Te avisaremos por aquí cuando esté listo para que pases a retirarlo. ¡Gracias, ${nombre}! 🍔`;
+          }
+        }
+      }
 
-      return { reply: confirmMessage.content, order: savedOrder };
+      addMessage(sessionId, { role: 'assistant', content: confirmReply });
+      return { reply: confirmReply, order: savedOrder };
     }
 
     // --- solicitar_cambio_pedido ---
@@ -215,11 +237,18 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
       }
 
-      const changeHistory = sanitizeMessages(getSession(sessionId));
-      const changeMessage = await chatCompletion({ systemPrompt, messages: changeHistory, tools: false });
-      addMessage(sessionId, { role: 'assistant', content: changeMessage.content });
+      let changeReply = null;
+      try {
+        const changeHistory = sanitizeMessages(getSession(sessionId));
+        const changeMessage = await chatCompletion({ systemPrompt, messages: changeHistory, tools: false });
+        changeReply = changeMessage.content;
+      } catch (err) {
+        log(`[agentService] Fallback en cambio de pedido: ${err.message}`);
+        changeReply = '📨 Tu solicitud de cambio fue enviada al chef. Te notificaremos cuando responda.';
+      }
 
-      return { reply: changeMessage.content, order: null };
+      addMessage(sessionId, { role: 'assistant', content: changeReply });
+      return { reply: changeReply, order: null };
     }
 
     // --- cancelar_pedido ---

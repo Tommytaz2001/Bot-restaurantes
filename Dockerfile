@@ -21,8 +21,11 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copiar código fuente
 COPY . .
 
-# Usuario sin privilegios para mayor seguridad
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# Crear usuario appuser y directorio uploads con permisos
+RUN groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin appuser \
+    && mkdir -p uploads data \
+    && chown -R appuser:appgroup /app
+
 USER appuser
 
 EXPOSE 3001

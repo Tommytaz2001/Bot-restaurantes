@@ -11,3 +11,6 @@ PROMPT_ADICIONAL_3_OBSERVACIONES.md
 MEJORAS_BOT_URBANO_COMPLETO.md
 mejoras-bot.md
 implementacion_venom.md
+uploads/*
+!uploads/.gitkeep
+!uploads/comprobante_demo.png
