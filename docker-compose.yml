@@ -13,7 +13,9 @@ services:
       - DB_HOST=postgres
       - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}
     volumes:
-      - ${BACKEND_VOLUME:-backend_data}:/app/data
+      # Datos internos del backend (cache, archivos temporales)
+      - backend_data:/app/data
+      # Comprobantes de pago subidos por clientes (imágenes)
       - uploads_data:/app/uploads
     depends_on:
       postgres:
@@ -40,7 +42,10 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-botpassword}
       - POSTGRES_DB=${DB_NAME:-botrestaurantes}
     volumes:
+      # Datos persistentes de PostgreSQL (tablas, índices, WAL)
       - postgres_data:/var/lib/postgresql/data
+      # Script de inicialización automática del esquema al crear la BD por primera vez
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-botuser} -d ${DB_NAME:-botrestaurantes}"]
       interval: 5s
@@ -69,17 +74,47 @@ services:
       - CACHE_REDIS_ENABLED=false
       - DEL_INSTANCE=false
     volumes:
+      # Sesiones y claves de instancias de WhatsApp (QR, autenticación Baileys)
       - evolution_instances:/evolution/instances
     networks:
       - bot-network
 
+# ── Volúmenes con bind mount para persistencia en despliegue ─────────────────
+# Cada volumen mapea a una carpeta local dentro de ./volumes/
+# Puedes sobrescribir las rutas con variables de entorno en el .env
 volumes:
-  backend_data:
+  # Datos de PostgreSQL — tablas, índices y WAL
   postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_DATA_PATH:-./volumes/postgres}
+
+  # Datos internos del backend
+  backend_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKEND_DATA_PATH:-./volumes/backend}
+
+  # Imágenes de comprobantes de pago subidas por clientes
   uploads_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${UPLOADS_DATA_PATH:-./volumes/uploads}
+
+  # Sesiones de instancias de Evolution API (WhatsApp)
   evolution_instances:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${EVOLUTION_DATA_PATH:-./volumes/evolution}
 
 networks:
   bot-network:
     driver: bridge
-

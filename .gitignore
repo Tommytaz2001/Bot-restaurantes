@@ -14,3 +14,6 @@ implementacion_venom.md
 uploads/*
 !uploads/.gitkeep
 !uploads/comprobante_demo.png
+
+# Volúmenes de datos de Docker (bind mounts) — nunca subir al repositorio
+volumes/
