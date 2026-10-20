@@ -2,7 +2,7 @@
 
 **Última actualización:** 20 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `92e67bc feat: configure Docker bind mount volumes for all services`
+**Último commit:** `8c18991 feat: improve Evolution API resilience, volume bind mounts, and update Docker configurations`
 
 ---
 
