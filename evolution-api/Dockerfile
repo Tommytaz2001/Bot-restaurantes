@@ -1,4 +1,4 @@
-FROM atendai/evolution-api:v1.8.7
+FROM evoapicloud/evolution-api:v1.8.7
 
 # ── Patch: soporte para WhatsApp LID format ─────────────────────────────────
 # WhatsApp ahora usa LID (Linked ID) en lugar de números de teléfono para

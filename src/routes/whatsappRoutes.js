@@ -38,11 +38,17 @@ router.get('/write-stats', (req, res) => {
   res.json({ database: 'postgresql', status: 'connected' });
 });
 
+const { setupEvolution } = require('../services/evolutionSetup');
+
 // POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API
 router.post('/webhook', handleWebhook);
 
 // GET /whatsapp/connection-state — Consulta únicamente el estado de conexión sin regenerar QR
 router.get('/connection-state', async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
@@ -51,9 +57,10 @@ router.get('/connection-state', async (req, res) => {
     const stateRes = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
       headers: { apikey: apiKey },
     });
-    const stateData = await stateRes.json();
-    const isConnected = stateData?.instance?.state === 'open';
-    return res.json({ connected: isConnected, state: stateData?.instance?.state || 'unknown', instance });
+    const stateData = await stateRes.json().catch(() => ({}));
+    const state = stateData?.instance?.state || stateData?.state || 'unknown';
+    const isConnected = state === 'open';
+    return res.json({ connected: isConnected, state, instance });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -61,34 +68,78 @@ router.get('/connection-state', async (req, res) => {
 
 // GET /whatsapp/get-qr — Obtiene un nuevo código QR explícitamente (se llama al cargar o al renovar)
 router.get('/get-qr', async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
 
+  if (!apiUrl || !apiKey) {
+    console.error('[WhatsApp] EVOLUTION_API_URL o EVOLUTION_API_KEY no están configuradas en .env');
+    return res.status(500).json({ error: 'Variables de Evolution API no configuradas en el servidor' });
+  }
+
   try {
-    const qrRes = await fetch(`${apiUrl}/instance/connect/${instance}`, {
+    let qrRes = await fetch(`${apiUrl}/instance/connect/${instance}`, {
       headers: { apikey: apiKey },
     });
-    const qrData = await qrRes.json();
-    return res.json({ base64: qrData?.base64 || null, pairingCode: qrData?.pairingCode || null });
+    let qrData = await qrRes.json().catch(() => ({}));
+
+    // Auto-recuperación: si la instancia no existe en Evolution API (404), la inicializamos
+    const isNotFound = qrRes.status === 404 || qrData?.error === 'Not Found' ||
+      (qrData?.message && String(qrData.message).toLowerCase().includes('not found'));
+
+    if (isNotFound) {
+      console.warn(`[WhatsApp] Instancia "${instance}" no encontrada en Evolution API (${qrRes.status}). Iniciando auto-configuración...`);
+      await setupEvolution();
+      qrRes = await fetch(`${apiUrl}/instance/connect/${instance}`, {
+        headers: { apikey: apiKey },
+      });
+      qrData = await qrRes.json().catch(() => ({}));
+    }
+
+    const rawBase64 = qrData?.base64 || qrData?.qrcode?.base64 || qrData?.data?.base64 || null;
+    let base64 = rawBase64;
+    if (base64 && !base64.startsWith('data:image')) {
+      base64 = `data:image/png;base64,${base64}`;
+    }
+
+    if (!base64) {
+      console.warn(`[WhatsApp] /instance/connect respondió sin QR (HTTP ${qrRes.status}):`, JSON.stringify(qrData));
+    } else {
+      console.log(`[WhatsApp] Código QR obtenido exitosamente para instancia "${instance}"`);
+    }
+
+    return res.json({
+      base64: base64 || null,
+      pairingCode: qrData?.pairingCode || qrData?.qrcode?.pairingCode || null,
+      status: qrRes.status,
+      message: !base64 ? (qrData?.message || qrData?.error || 'Esperando generación del código QR por Evolution API...') : null
+    });
   } catch (err) {
+    console.error(`[WhatsApp] Error conectando con Evolution API (${apiUrl}):`, err.message);
     return res.status(500).json({ error: err.message });
   }
 });
 
 // POST /whatsapp/restart-instance — Reinicia la instancia si la sesión quedó trabada
 router.post('/restart-instance', async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
 
   try {
+    console.log(`[WhatsApp] Reiniciando instancia "${instance}"...`);
     await fetch(`${apiUrl}/instance/restart/${instance}`, {
       method: 'PUT',
       headers: { apikey: apiKey },
     }).catch(() => {});
     return res.json({ ok: true });
   } catch (err) {
+    console.error(`[WhatsApp] Error al reiniciar instancia:`, err.message);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -276,7 +327,10 @@ router.get('/qr', (req, res) => {
     </div>
     <div class="timer-label" id="timerLabel">Código QR válido por <span id="secsLeft">35</span>s</div>
 
-    <button class="btn-renew" id="btnRenew" onclick="loadNewQR()">🔄 Renovar código QR</button>
+    <div style="display:flex; justify-content:center; gap:8px; margin-bottom:1rem;">
+      <button class="btn-renew" id="btnRenew" onclick="loadNewQR()">🔄 Renovar código QR</button>
+      <button class="btn-renew" id="btnRestart" style="background:#334155;" onclick="restartInstance()">⚡ Reiniciar sesión</button>
+    </div>
 
     <div class="steps" id="stepsGuide">
       <ol>
@@ -300,9 +354,11 @@ router.get('/qr', (req, res) => {
     const timerWrap = document.getElementById('timerWrap');
     const timerLabel = document.getElementById('timerLabel');
     const btnRenew = document.getElementById('btnRenew');
+    const btnRestart = document.getElementById('btnRestart');
     const secsLeft = document.getElementById('secsLeft');
 
     let isConnected = false;
+    let isLoadingQR = false;
     const QR_LIFETIME = 35;
     let secondsRemaining = QR_LIFETIME;
     let qrTimerInterval = null;
@@ -330,28 +386,46 @@ router.get('/qr', (req, res) => {
       }, 1000);
     }
 
+    async function restartInstance() {
+      if (qrTimerInterval) clearInterval(qrTimerInterval);
+      qrWrapper.innerHTML = '<div class="spinner"></div><p style="color:#94a3b8; font-size:0.85rem; margin-top:10px;">Reiniciando instancia en Evolution API...</p>';
+      try {
+        await fetch('/whatsapp/restart-instance', { method: 'POST', cache: 'no-store' });
+        setTimeout(() => { isLoadingQR = false; loadNewQR(); }, 4000);
+      } catch (e) {
+        setTimeout(() => { isLoadingQR = false; loadNewQR(); }, 2000);
+      }
+    }
+
     async function loadNewQR() {
-      if (isConnected) return;
+      if (isConnected || isLoadingQR) return;
+      isLoadingQR = true;
       qrWrapper.innerHTML = '<div class="spinner"></div>';
       try {
-        const res = await fetch('/whatsapp/get-qr');
+        const res = await fetch('/whatsapp/get-qr', { cache: 'no-store' });
         const data = await res.json();
         if (data.base64) {
           qrWrapper.innerHTML = '<img src="' + data.base64 + '" alt="QR WhatsApp" />';
           startCountdown();
         } else {
-          qrWrapper.innerHTML = '<p style="color:#f87171; font-size:0.85rem;">⏳ Generando nuevo código...</p>';
-          setTimeout(loadNewQR, 3000);
+          const detail = data.message ? '<br><small style="color:#94a3b8; font-size:0.75rem; display:block; margin-top:6px;">' + (typeof data.message === 'string' ? data.message : JSON.stringify(data.message)) + '</small>' : '';
+          qrWrapper.innerHTML = '<p style="color:#f87171; font-size:0.85rem;">⏳ Generando nuevo código...' + detail + '</p>';
+          setTimeout(() => {
+            isLoadingQR = false;
+            loadNewQR();
+          }, 3500);
+          return;
         }
       } catch (e) {
-        qrWrapper.innerHTML = '<p style="color:#f87171; font-size:0.85rem;">Error al obtener QR</p>';
+        qrWrapper.innerHTML = '<p style="color:#f87171; font-size:0.85rem;">Error al obtener QR<br><small style="color:#94a3b8; font-size:0.75rem;">' + e.message + '</small></p>';
       }
+      isLoadingQR = false;
     }
 
     // Polling ligero ONLY de connection-state (NO regenera QR)
     async function checkConnectionOnly() {
       try {
-        const res = await fetch('/whatsapp/connection-state');
+        const res = await fetch('/whatsapp/connection-state', { cache: 'no-store' });
         const data = await res.json();
 
         if (data.connected) {
@@ -366,6 +440,7 @@ router.get('/qr', (req, res) => {
             timerWrap.style.display = 'none';
             timerLabel.style.display = 'none';
             btnRenew.style.display = 'none';
+            if (btnRestart) btnRestart.style.display = 'none';
             stepsGuide.innerHTML = '<div style="text-align:center; padding: 0.5rem 0;">' +
               '<p style="color:#4ade80; font-size:1.1rem; font-weight:600; margin-bottom:0.5rem;">Tu número está enlazado y listo</p>' +
               '<p style="color:#94a3b8; font-size:0.85rem;">Escribe "Hola" desde cualquier chat para iniciar una orden.</p>' +

@@ -3,6 +3,7 @@
   "appName": "Urbano Chef",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "cleartext": true
   }
 }

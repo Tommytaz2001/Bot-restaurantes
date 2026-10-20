@@ -60,6 +60,7 @@ services:
     build: ./evolution-api
     container_name: evolution-api
     restart: unless-stopped
+    user: "root"
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -80,8 +81,8 @@ services:
       - bot-network
 
 # ── Volúmenes con bind mount para persistencia en despliegue ─────────────────
-# Cada volumen mapea a una carpeta local dentro de ./volumes/
-# Puedes sobrescribir las rutas con variables de entorno en el .env
+# Cada servicio añade su subcarpeta fija automáticamente a partir de volumen_ruta
+# Por defecto usa la ruta relativa ./volumes
 volumes:
   # Datos de PostgreSQL — tablas, índices y WAL
   postgres_data:
@@ -89,7 +90,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${POSTGRES_DATA_PATH:-./volumes/postgres}
+      device: ${volumen_ruta:-./volumes}/postgres
 
   # Datos internos del backend
   backend_data:
@@ -97,7 +98,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${BACKEND_DATA_PATH:-./volumes/backend}
+      device: ${volumen_ruta:-./volumes}/backend
 
   # Imágenes de comprobantes de pago subidas por clientes
   uploads_data:
@@ -105,7 +106,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${UPLOADS_DATA_PATH:-./volumes/uploads}
+      device: ${volumen_ruta:-./volumes}/uploads
 
   # Sesiones de instancias de Evolution API (WhatsApp)
   evolution_instances:
@@ -113,7 +114,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${EVOLUTION_DATA_PATH:-./volumes/evolution}
+      device: ${volumen_ruta:-./volumes}/evolution
 
 networks:
   bot-network:

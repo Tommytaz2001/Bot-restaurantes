@@ -1,8 +1,8 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 19 de Octubre de 2026  
+**Última actualización:** 20 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `2dc3f2b feat: complete Evolution API migration, PostgreSQL persistence, and modern Chef KDS app with web notifications`
+**Último commit:** `92e67bc feat: configure Docker bind mount volumes for all services`
 
 ---
 
@@ -37,7 +37,9 @@ El sistema superó su fase de MVP inicial (que utilizaba Firestore y OpenAI) y c
   - Webhook receptor en `POST /whatsapp/webhook` con deduplicación de IDs (`src/whatsapp/metaWebhook.js`).
   - Descarga y almacenamiento local de fotos de comprobante de pago (`/uploads/`) para pedidos en `pendiente_pago`.
   - Interfaz web interactiva para emparejamiento con código QR (`/whatsapp/qr`).
-  - Dockerfile con parche para contactos con formato `@lid`.
+  - Dockerfile con imagen base `evoapicloud/evolution-api:v1.8.7` y parche para contactos con formato `@lid`.
+  - Configuración unificada de persistencia por bind mounts mediante `volumen_ruta` y permisos `user: root` en `docker-compose.yml`.
+  - Rutas `/whatsapp/qr`, `/whatsapp/get-qr` y `/whatsapp/connection-state` optimizadas con auto-creación de instancias, anti-caché HTTP (evita 304) y botón de reinicio de sesión.
 - [x] **Gestión KDS en Tiempo Real:**
   - Canales SSE (`/pedidos-admin/activos/stream`, `/pedidos-admin/historial/stream`, `/pedidos-admin/:id/stream`).
   - Transiciones de estado de comanda (Confirmar con tiempo estimado ETA, En camino, Entregado, Rechazar comanda, Aprobar/Rechazar cambio).
