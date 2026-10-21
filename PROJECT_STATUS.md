@@ -2,6 +2,7 @@
 
 **Última actualización:** 21 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
+**Último commit:** `72147b5 feat: improve Gemini resilience, streamline options prompt, add menu CRUD and APK build automation`
 
 ---
 
