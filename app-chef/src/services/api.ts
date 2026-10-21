@@ -253,6 +253,81 @@ export async function toggleDisponibilidad(categoriaId: string, indexOrId: strin
   if (!res.ok) throw new Error('Error cambiando disponibilidad');
 }
 
+export async function createCategoria(nombre: string, orden = 0): Promise<{ id: string }> {
+  const res = await authFetch('/menu-admin/categorias', {
+    method: 'POST',
+    body: JSON.stringify({ nombre, orden }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error creando categoría');
+  }
+  return res.json();
+}
+
+export async function deleteCategoria(categoriaId: string): Promise<void> {
+  const res = await authFetch(`/menu-admin/categorias/${categoriaId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error eliminando categoría');
+  }
+}
+
+export async function createProducto(
+  categoriaId: string,
+  producto: {
+    nombre: string;
+    precio: number;
+    descripcion?: string;
+    proteina?: string | null;
+    opciones?: string[];
+    disponible?: boolean;
+  }
+): Promise<void> {
+  const res = await authFetch(`/menu-admin/categorias/${categoriaId}/items`, {
+    method: 'POST',
+    body: JSON.stringify(producto),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error agregando platillo');
+  }
+}
+
+export async function updateProducto(
+  categoriaId: string,
+  itemId: string,
+  producto: {
+    nombre: string;
+    precio: number;
+    descripcion?: string;
+    proteina?: string | null;
+    opciones?: string[];
+    disponible?: boolean;
+  }
+): Promise<void> {
+  const res = await authFetch(`/menu-admin/categorias/${categoriaId}/items/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(producto),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error actualizando platillo');
+  }
+}
+
+export async function deleteProducto(categoriaId: string, itemId: string): Promise<void> {
+  const res = await authFetch(`/menu-admin/categorias/${categoriaId}/items/${itemId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Error eliminando platillo');
+  }
+}
+
 export async function fetchProteinasBloqueadas(): Promise<string[]> {
   const res = await authFetch('/restaurante/proteinas');
   if (!res.ok) throw new Error('Error consultando proteínas bloqueadas');

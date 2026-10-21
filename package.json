@@ -11,6 +11,7 @@
     "dev": "nodemon index.js",
     "test": "jest --runInBand --forceExit --passWithNoTests",
     "test:unit": "jest --testPathPattern='tests/(sessionStore|orderValidator|orderService|menuService|agentService)' --runInBand --forceExit --passWithNoTests",
+    "build:apk": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1",
     "lint": "echo 'No linter configured yet'"
   },
   "jest": {

@@ -1,8 +1,7 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 20 de Octubre de 2026  
+**Última actualización:** 21 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `8c18991 feat: improve Evolution API resilience, volume bind mounts, and update Docker configurations`
 
 ---
 
@@ -15,13 +14,15 @@ Permite a los clientes interactuar en lenguaje natural por WhatsApp con el bot c
 
 ## 2. Estado Actual del Desarrollo
 
-El sistema superó su fase de MVP inicial (que utilizaba Firestore y OpenAI) y completó la migración mayor a:
-1. **Google Gemini (`gemini-2.5-flash`)** para el procesamiento conversacional y function calling.
-2. **PostgreSQL 16** como base de datos relacional transaccional (reemplazando Firestore para menú, pedidos, configuración y usuarios).
-3. **Evolution API v1.8.7 en Docker** como gateway desacoplado para WhatsApp con soporte para identificadores `@lid`.
-4. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con Server-Sent Events (SSE) y alertas sonoras de pedidos en tiempo real.
-5. Se generó el ejecutable APK nativo de Android en la raíz (`UrbanoChef.apk`).
-6. Se resolvió el bug de creación de instancias en Evolution API v1.8.7 (error `Token already exists` por omisión de `token` e `integration: 'WHATSAPP-BAILEYS'`).
+El sistema superó su fase de MVP inicial y ha incorporado:
+1. **Resiliencia y Reintentos en Gemini (`src/services/aiService.js`):** `https.Agent` con Keep-Alive para prevenir caídas `socket hang up`, timeout ampliado a 25s, reintentos automáticos (2 intentos con backoff) ante fallos de red/sobrecarga y fallback automático hacia modelo secundario (`gemini-2.5-flash`) y OpenAI.
+2. **Optimización de Respuestas de Menú (`prompts/agent.txt`):** Instrucción estricta para omitir descripciones e ingredientes al presentar opciones de platillos (solo nombres y precios), reservando detalles de preparación solo si el cliente los solicita explícitamente.
+3. **Gestión Completa de Menú en App Cocina (`app-chef/src/pages/MenuPage.tsx` y `api.ts`):** Nuevos modales táctiles para creación y edición de platillos (nombre, precio, proteína, descripción, opciones), creación de categorías y eliminación de ítems/categorías sincronizados con PostgreSQL.
+4. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`. Binario compilado y actualizado en la raíz (`UrbanoChef.apk`) y carpeta de descargas (`uploads/UrbanoChef.apk`).
+5. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling.
+6. **PostgreSQL 16** como base de datos relacional transaccional.
+7. **Evolution API v1.8.7 en Docker** como gateway desacoplado para WhatsApp.
+8. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.
 
 ---
 

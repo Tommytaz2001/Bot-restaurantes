@@ -1,11 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Check, X, Search, RefreshCw, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { 
+  BookOpen, 
+  Check, 
+  X, 
+  Search, 
+  RefreshCw, 
+  AlertCircle, 
+  AlertTriangle, 
+  Plus, 
+  Trash2, 
+  Edit3, 
+  FolderPlus,
+  DollarSign,
+  Layers
+} from 'lucide-react';
 import { 
   fetchCategorias, 
   toggleDisponibilidad, 
   fetchProteinasBloqueadas, 
   saveProteinasBloqueadas, 
-  MenuCategoriaAdmin 
+  createCategoria,
+  deleteCategoria,
+  createProducto,
+  updateProducto,
+  deleteProducto,
+  MenuCategoriaAdmin,
+  MenuItemAdmin
 } from '../services/api';
 
 const LISTA_PROTEINAS = [
@@ -41,6 +61,29 @@ export const MenuPage: React.FC = () => {
   const [updating, setUpdating] = useState<string | null>(null);
   const [updatingProteina, setUpdatingProteina] = useState<string | null>(null);
 
+  // Estados de Modales
+  const [showModalPlatillo, setShowModalPlatillo] = useState(false);
+  const [showModalCategoria, setShowModalCategoria] = useState(false);
+  const [savingItem, setSavingItem] = useState(false);
+  const [savingCat, setSavingCat] = useState(false);
+
+  // Formulario Platillo
+  const [editandoItem, setEditandoItem] = useState<{ categoriaId: string; item?: MenuItemAdmin } | null>(null);
+  const [formPlatillo, setFormPlatillo] = useState({
+    categoriaId: '',
+    nombre: '',
+    precio: '',
+    descripcion: '',
+    proteina: '',
+    opciones: '',
+  });
+
+  // Formulario Categoría
+  const [formCategoria, setFormCategoria] = useState({
+    nombre: '',
+    orden: 0,
+  });
+
   const loadMenu = async () => {
     setLoading(true);
     setError(null);
@@ -67,7 +110,6 @@ export const MenuPage: React.FC = () => {
     setUpdating(itemId);
     try {
       await toggleDisponibilidad(catId, itemId);
-      // Actualizar estado local inmediatamente
       setCategorias((prev) =>
         prev.map((cat) => {
           if (cat.id !== catId) return cat;
@@ -96,7 +138,6 @@ export const MenuPage: React.FC = () => {
     setUpdatingProteina(proteinaId);
     setProteinasBloqueadasState(nextBlocked);
 
-    // Actualizar inmediatamente el cálculo visual de cada producto
     setCategorias((prev) =>
       prev.map((cat) => ({
         ...cat,
@@ -111,7 +152,6 @@ export const MenuPage: React.FC = () => {
       await saveProteinasBloqueadas(nextBlocked);
     } catch (e: any) {
       console.error('[MenuPage] Error guardando proteínas:', e);
-      // Revertir
       setProteinasBloqueadasState(proteinasBloqueadas);
       setCategorias((prev) =>
         prev.map((cat) => ({
@@ -125,6 +165,149 @@ export const MenuPage: React.FC = () => {
       alert('Error al guardar el estado de la proteína. Por favor reintenta.');
     } finally {
       setUpdatingProteina(null);
+    }
+  };
+
+  // Abrir Modal para Nuevo Platillo
+  const handleOpenNuevoPlatillo = (defaultCategoriaId?: string) => {
+    const targetCat = defaultCategoriaId || (categorias.length > 0 ? categorias[0].id : '');
+    setEditandoItem(null);
+    setFormPlatillo({
+      categoriaId: targetCat,
+      nombre: '',
+      precio: '',
+      descripcion: '',
+      proteina: '',
+      opciones: '',
+    });
+    setShowModalPlatillo(true);
+  };
+
+  // Abrir Modal para Editar Platillo
+  const handleOpenEditarPlatillo = (catId: string, item: MenuItemAdmin) => {
+    setEditandoItem({ categoriaId: catId, item });
+    setFormPlatillo({
+      categoriaId: catId,
+      nombre: item.nombre,
+      precio: item.precio.toString(),
+      descripcion: item.descripcion || '',
+      proteina: item.proteina || '',
+      opciones: Array.isArray(item.opciones) ? item.opciones.join(', ') : '',
+    });
+    setShowModalPlatillo(true);
+  };
+
+  // Guardar Platillo (Crear o Editar)
+  const handleSavePlatillo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formPlatillo.nombre.trim()) {
+      alert('Por favor ingresa el nombre del platillo.');
+      return;
+    }
+    const precioNum = parseFloat(formPlatillo.precio);
+    if (isNaN(precioNum) || precioNum < 0) {
+      alert('Por favor ingresa un precio válido.');
+      return;
+    }
+    if (!formPlatillo.categoriaId) {
+      alert('Por favor selecciona una categoría.');
+      return;
+    }
+
+    const opcionesArray = formPlatillo.opciones
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    setSavingItem(true);
+    try {
+      if (editandoItem && editandoItem.item) {
+        // Actualizar existente
+        await updateProducto(editandoItem.categoriaId, editandoItem.item.id, {
+          nombre: formPlatillo.nombre.trim(),
+          precio: precioNum,
+          descripcion: formPlatillo.descripcion.trim(),
+          proteina: formPlatillo.proteina ? (formPlatillo.proteina as any) : null,
+          opciones: opcionesArray,
+          disponible: editandoItem.item.disponible,
+        });
+      } else {
+        // Crear nuevo
+        await createProducto(formPlatillo.categoriaId, {
+          nombre: formPlatillo.nombre.trim(),
+          precio: precioNum,
+          descripcion: formPlatillo.descripcion.trim(),
+          proteina: formPlatillo.proteina ? (formPlatillo.proteina as any) : null,
+          opciones: opcionesArray,
+          disponible: true,
+        });
+      }
+
+      setShowModalPlatillo(false);
+      await loadMenu();
+    } catch (err: any) {
+      console.error('[MenuPage] Error guardando platillo:', err);
+      alert(err.message || 'Error guardando platillo');
+    } finally {
+      setSavingItem(false);
+    }
+  };
+
+  // Eliminar Platillo
+  const handleDeletePlatillo = async (catId: string, itemId: string, nombre: string) => {
+    if (!confirm(`¿Estás seguro de eliminar "${nombre}" del menú?`)) return;
+    try {
+      await deleteProducto(catId, itemId);
+      setCategorias((prev) =>
+        prev.map((cat) => {
+          if (cat.id !== catId) return cat;
+          return {
+            ...cat,
+            items: cat.items.filter((it) => it.id !== itemId),
+          };
+        })
+      );
+    } catch (err: any) {
+      console.error('[MenuPage] Error eliminando platillo:', err);
+      alert(err.message || 'Error eliminando platillo');
+    }
+  };
+
+  // Guardar Categoría
+  const handleSaveCategoria = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formCategoria.nombre.trim()) {
+      alert('Por favor ingresa el nombre de la categoría.');
+      return;
+    }
+
+    setSavingCat(true);
+    try {
+      await createCategoria(formCategoria.nombre.trim(), formCategoria.orden || categorias.length);
+      setShowModalCategoria(false);
+      setFormCategoria({ nombre: '', orden: 0 });
+      await loadMenu();
+    } catch (err: any) {
+      console.error('[MenuPage] Error creando categoría:', err);
+      alert(err.message || 'Error creando categoría');
+    } finally {
+      setSavingCat(false);
+    }
+  };
+
+  // Eliminar Categoría
+  const handleDeleteCategoria = async (catId: string, nombre: string, itemCount: number) => {
+    const warning = itemCount > 0 
+      ? `La categoría "${nombre}" contiene ${itemCount} platillos que también serán eliminados. ¿Deseas continuar?`
+      : `¿Eliminar la categoría "${nombre}"?`;
+    if (!confirm(warning)) return;
+
+    try {
+      await deleteCategoria(catId);
+      setCategorias((prev) => prev.filter((cat) => cat.id !== catId));
+    } catch (err: any) {
+      console.error('[MenuPage] Error eliminando categoría:', err);
+      alert(err.message || 'Error eliminando categoría');
     }
   };
 
@@ -143,28 +326,46 @@ export const MenuPage: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="brand-font font-bold text-2xl text-white flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-orange-400" />
-            Gestión de Menú y Disponibilidad
+            Gestión de Menú y Productos
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Pausa platillos individualmente o agota proteínas completas en 1 toque. El bot de WhatsApp avisará automáticamente a los clientes.
+            Agrega nuevos platillos, crea categorías, pausa productos o agota proteínas en tiempo real para WhatsApp y Cocina.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative sm:w-64">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:w-56 min-w-[180px]">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar platillo o ingrediente..."
-              className="w-full pl-9 pr-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+              placeholder="Buscar platillo..."
+              className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
             />
           </div>
+
+          <button
+            onClick={() => setShowModalCategoria(true)}
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700/60 shadow-sm"
+            title="Crear nueva categoría"
+          >
+            <FolderPlus className="w-3.5 h-3.5 text-orange-400" />
+            <span>+ Categoría</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenNuevoPlatillo()}
+            className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-orange-500/20"
+            title="Agregar nuevo platillo al menú"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Nuevo Platillo</span>
+          </button>
 
           <button
             onClick={loadMenu}
@@ -278,9 +479,16 @@ export const MenuPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Listado de Categorías y Platillos */}
           {categorias.length === 0 ? (
             <div className="glass-panel rounded-3xl p-10 text-center my-6 max-w-sm mx-auto text-slate-400 text-sm">
-              No hay platillos en el menú.
+              <p className="mb-4">No hay categorías ni platillos en el menú.</p>
+              <button
+                onClick={() => setShowModalCategoria(true)}
+                className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-all"
+              >
+                + Crear primera categoría
+              </button>
             </div>
           ) : (
             <div className="space-y-8">
@@ -295,129 +503,372 @@ export const MenuPage: React.FC = () => {
                   );
                 });
 
-                if (items.length === 0) return null;
-
                 return (
                   <div key={cat.id} className="space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <h3 className="brand-font font-bold text-lg text-white">
-                        {cat.nombre}
-                      </h3>
-                      <span className="text-xs text-slate-500">{items.length} productos</span>
+                      <div className="flex items-center gap-2">
+                        <h3 className="brand-font font-bold text-lg text-white">
+                          {cat.nombre}
+                        </h3>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60 font-medium">
+                          {items.length} productos
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenNuevoPlatillo(cat.id)}
+                          className="px-2.5 py-1 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 border border-orange-500/30 text-xs font-semibold flex items-center gap-1 transition-all"
+                          title={`Agregar platillo a ${cat.nombre}`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Agregar</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteCategoria(cat.id, cat.nombre, cat.items?.length || 0)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-all"
+                          title="Eliminar categoría"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {items.map((it) => {
-                        const isBlockedByProtein = !!it.bloqueadoPorProteina;
-                        const isDirectlyAvailable = it.disponible !== false;
-                        const isAvailable = isDirectlyAvailable && !isBlockedByProtein;
-                        const isBusy = updating === it.id;
-                        const protTag = it.proteina ? PROTEINA_TAGS[it.proteina] : null;
-
-                        return (
-                          <div
-                            key={it.id}
-                            className={`glass-panel rounded-2xl p-4 border transition-all flex flex-col justify-between ${
-                              isBlockedByProtein
-                                ? 'border-amber-500/40 bg-amber-950/15 opacity-85'
-                                : isAvailable
-                                ? 'border-slate-800 bg-slate-900/60'
-                                : 'border-rose-900/40 bg-rose-950/20 opacity-70'
-                            }`}
+                    {items.length === 0 ? (
+                      <div className="p-6 rounded-2xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                        {search.trim() ? 'No hay platillos que coincidan con la búsqueda.' : 'Esta categoría no tiene platillos aún.'}
+                        {!search.trim() && (
+                          <button
+                            onClick={() => handleOpenNuevoPlatillo(cat.id)}
+                            className="block mx-auto mt-2 text-orange-400 hover:underline font-medium"
                           >
-                            <div>
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1">
-                                  <div className="flex items-baseline justify-between gap-2">
-                                    <h4 className="font-bold text-sm text-white">{it.nombre}</h4>
-                                    <span className="font-bold text-sm text-orange-400 shrink-0">
-                                      C${it.precio}
-                                    </span>
-                                  </div>
+                            + Agregar primer platillo
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {items.map((it) => {
+                          const isBlockedByProtein = !!it.bloqueadoPorProteina;
+                          const isDirectlyAvailable = it.disponible !== false;
+                          const isAvailable = isDirectlyAvailable && !isBlockedByProtein;
+                          const isBusy = updating === it.id;
+                          const protTag = it.proteina ? PROTEINA_TAGS[it.proteina] : null;
 
-                                  {/* Badge de proteína si existe */}
-                                  {protTag && (
-                                    <div className="mt-1 flex items-center gap-1">
-                                      <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[11px] font-medium text-slate-300 border border-slate-700/60 flex items-center gap-1">
-                                        <span>{protTag.emoji}</span>
-                                        <span>{protTag.label}</span>
+                          return (
+                            <div
+                              key={it.id}
+                              className={`glass-panel rounded-2xl p-4 border transition-all flex flex-col justify-between ${
+                                isBlockedByProtein
+                                  ? 'border-amber-500/40 bg-amber-950/15 opacity-85'
+                                  : isAvailable
+                                  ? 'border-slate-800 bg-slate-900/60'
+                                  : 'border-rose-900/40 bg-rose-950/20 opacity-70'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1">
+                                    <div className="flex items-baseline justify-between gap-2">
+                                      <h4 className="font-bold text-sm text-white">{it.nombre}</h4>
+                                      <span className="font-bold text-sm text-orange-400 shrink-0">
+                                        C${it.precio}
                                       </span>
                                     </div>
-                                  )}
 
-                                  {it.descripcion && (
-                                    <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                                      {it.descripcion}
-                                    </p>
-                                  )}
+                                    {/* Badge de proteína */}
+                                    {protTag && (
+                                      <div className="mt-1 flex items-center gap-1">
+                                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[11px] font-medium text-slate-300 border border-slate-700/60 flex items-center gap-1">
+                                          <span>{protTag.emoji}</span>
+                                          <span>{protTag.label}</span>
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {it.descripcion && (
+                                      <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                                        {it.descripcion}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                                {isBlockedByProtein ? (
+                                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5 truncate">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span className="truncate">Agotado ({protTag?.label || it.proteina})</span>
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`text-xs font-bold flex items-center gap-1.5 shrink-0 ${
+                                      isAvailable ? 'text-emerald-400' : 'text-rose-400'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`w-2 h-2 rounded-full ${
+                                        isAvailable ? 'bg-emerald-400' : 'bg-rose-400'
+                                      }`}
+                                    ></span>
+                                    {isAvailable ? 'Disponible' : 'Agotado'}
+                                  </span>
+                                )}
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleOpenEditarPlatillo(cat.id, it)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                                    title="Editar platillo"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeletePlatillo(cat.id, it.id, it.nombre)}
+                                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-all"
+                                    title="Eliminar platillo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleToggle(cat.id, it.id)}
+                                    disabled={isBusy || isBlockedByProtein}
+                                    title={
+                                      isBlockedByProtein
+                                        ? `Pausado por proteína ${protTag?.label || it.proteina}`
+                                        : isAvailable
+                                        ? 'Pausar platillo'
+                                        : 'Activar platillo'
+                                    }
+                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                                      isBlockedByProtein
+                                        ? 'bg-slate-800/60 border border-slate-700/60 text-slate-500 cursor-not-allowed'
+                                        : isAvailable
+                                        ? 'bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/40 text-rose-300'
+                                        : 'bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300'
+                                    }`}
+                                  >
+                                    {isBlockedByProtein ? (
+                                      <span>Bloqueado</span>
+                                    ) : isAvailable ? (
+                                      <>
+                                        <X className="w-3 h-3" />
+                                        <span>Pausar</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check className="w-3 h-3" />
+                                        <span>Activar</span>
+                                      </>
+                                    )}
+                                  </button>
                                 </div>
                               </div>
                             </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                              {isBlockedByProtein ? (
-                                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                  <span>Proteína agotada ({protTag?.label || it.proteina})</span>
-                                </span>
-                              ) : (
-                                <span
-                                  className={`text-xs font-bold flex items-center gap-1.5 ${
-                                    isAvailable ? 'text-emerald-400' : 'text-rose-400'
-                                  }`}
-                                >
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      isAvailable ? 'bg-emerald-400' : 'bg-rose-400'
-                                    }`}
-                                  ></span>
-                                  {isAvailable ? 'Disponible' : 'Agotado'}
-                                </span>
-                              )}
-
-                              <button
-                                onClick={() => handleToggle(cat.id, it.id)}
-                                disabled={isBusy || isBlockedByProtein}
-                                title={
-                                  isBlockedByProtein
-                                    ? `Este platillo está pausado porque la proteína ${protTag?.label || it.proteina} está agotada arriba`
-                                    : isAvailable
-                                    ? 'Pausar platillo'
-                                    : 'Activar platillo'
-                                }
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                  isBlockedByProtein
-                                    ? 'bg-slate-800/60 border border-slate-700/60 text-slate-500 cursor-not-allowed'
-                                    : isAvailable
-                                    ? 'bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/40 text-rose-300'
-                                    : 'bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300'
-                                }`}
-                              >
-                                {isBlockedByProtein ? (
-                                  <span>Bloqueado</span>
-                                ) : isAvailable ? (
-                                  <>
-                                    <X className="w-3.5 h-3.5" />
-                                    <span>Pausar</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>Activar</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
         </>
+      )}
+
+      {/* Modal: Crear / Editar Platillo */}
+      {showModalPlatillo && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-panel rounded-3xl max-w-md w-full p-6 border border-slate-800 bg-slate-950 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <h3 className="brand-font font-bold text-lg text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-orange-400" />
+                {editandoItem ? 'Editar Platillo' : 'Nuevo Platillo'}
+              </h3>
+              <button
+                onClick={() => setShowModalPlatillo(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlatillo} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Categoría *
+                </label>
+                <select
+                  value={formPlatillo.categoriaId}
+                  onChange={(e) => setFormPlatillo({ ...formPlatillo, categoriaId: e.target.value })}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-orange-500"
+                >
+                  <option value="" disabled>Selecciona una categoría</option>
+                  {categorias.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nombre del Platillo *
+                </label>
+                <input
+                  type="text"
+                  value={formPlatillo.nombre}
+                  onChange={(e) => setFormPlatillo({ ...formPlatillo, nombre: e.target.value })}
+                  placeholder="Ej: Tacos de Res, Hamburguesa Doble"
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Precio (C$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formPlatillo.precio}
+                    onChange={(e) => setFormPlatillo({ ...formPlatillo, precio: e.target.value })}
+                    placeholder="Ej: 190"
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Proteína (Opcional)
+                  </label>
+                  <select
+                    value={formPlatillo.proteina}
+                    onChange={(e) => setFormPlatillo({ ...formPlatillo, proteina: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="">Ninguna</option>
+                    <option value="res">🥩 Res</option>
+                    <option value="pollo">🍗 Pollo</option>
+                    <option value="cerdo">🐷 Cerdo / Pastor</option>
+                    <option value="birria">🌮 Birria</option>
+                    <option value="mixto">🍲 Mixto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Descripción / Ingredientes (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={formPlatillo.descripcion}
+                  onChange={(e) => setFormPlatillo({ ...formPlatillo, descripcion: e.target.value })}
+                  placeholder="Detalles de ingredientes o porción..."
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-orange-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Opciones / Variantes (Opcional, separadas por coma)
+                </label>
+                <input
+                  type="text"
+                  value={formPlatillo.opciones}
+                  onChange={(e) => setFormPlatillo({ ...formPlatillo, opciones: e.target.value })}
+                  placeholder="Ej: Con queso, Sin picante, Salsa extra"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowModalPlatillo(false)}
+                  disabled={savingItem}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingItem}
+                  className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                >
+                  {savingItem ? 'Guardando...' : editandoItem ? 'Guardar Cambios' : 'Crear Platillo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Crear Nueva Categoría */}
+      {showModalCategoria && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-panel rounded-3xl max-w-sm w-full p-6 border border-slate-800 bg-slate-950 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <h3 className="brand-font font-bold text-lg text-white flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-orange-400" />
+                Nueva Categoría
+              </h3>
+              <button
+                onClick={() => setShowModalCategoria(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategoria} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nombre de la Categoría *
+                </label>
+                <input
+                  type="text"
+                  value={formCategoria.nombre}
+                  onChange={(e) => setFormCategoria({ ...formCategoria, nombre: e.target.value })}
+                  placeholder="Ej: Bebidas, Postres, Especiales"
+                  required
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowModalCategoria(false)}
+                  disabled={savingCat}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCat}
+                  className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                >
+                  {savingCat ? 'Creando...' : 'Crear Categoría'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

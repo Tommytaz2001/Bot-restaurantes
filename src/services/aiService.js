@@ -3,12 +3,21 @@ const OpenAI = require('openai');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const FALLBACK_GEMINI_MODEL = process.env.GEMINI_FALLBACK_MODEL || (DEFAULT_GEMINI_MODEL === 'gemini-3.5-flash-lite' ? 'gemini-2.5-flash' : 'gemini-3.5-flash-lite');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 const isGemini = !!GEMINI_API_KEY;
 
-console.log(`[AI Engine] Motor activo: ${isGemini ? 'Google Gemini (' + DEFAULT_GEMINI_MODEL + ')' : 'OpenAI'}`);
+// HTTPS Agent con Keep-Alive para evitar socket hang up / ECONNRESET
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 15000,
+  maxSockets: 30,
+  maxFreeSockets: 10,
+  timeout: 30000,
+});
+
+console.log(`[AI Engine] Motor activo: ${isGemini ? 'Google Gemini (' + DEFAULT_GEMINI_MODEL + ', fallback: ' + FALLBACK_GEMINI_MODEL + ')' : 'OpenAI'}`);
 
 // ── Declaración de Herramientas para Gemini ───────────────────────────────────
 const GEMINI_TOOLS = [
@@ -97,9 +106,10 @@ const GEMINI_TOOLS = [
   },
 ];
 
-function executeGeminiRequest(model, payload) {
+function executeGeminiRequest(model, payload, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(payload);
+    let isSettled = false;
 
     const req = https.request(
       {
@@ -110,12 +120,15 @@ function executeGeminiRequest(model, payload) {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(data),
         },
-        timeout: 12000,
+        timeout: timeoutMs,
+        agent: httpsAgent,
       },
       (res) => {
         let body = '';
         res.on('data', (chunk) => (body += chunk));
         res.on('end', () => {
+          if (isSettled) return;
+          isSettled = true;
           try {
             const parsed = JSON.parse(body);
             if (res.statusCode >= 400 || parsed.error) {
@@ -132,16 +145,44 @@ function executeGeminiRequest(model, payload) {
       }
     );
 
-    req.on('error', (err) => reject(err));
+    req.on('error', (err) => {
+      if (isSettled) return;
+      isSettled = true;
+      err.isSocketError = (err.code === 'ECONNRESET' || err.message?.includes('socket hang up') || err.message?.includes('ECONNRESET'));
+      reject(err);
+    });
+
     req.on('timeout', () => {
+      if (isSettled) return;
+      isSettled = true;
       req.destroy();
-      const err = new Error('Timeout de 12s al conectar con Google Gemini');
+      const err = new Error(`Timeout de ${Math.round(timeoutMs / 1000)}s al conectar con Google Gemini`);
       err.isTimeout = true;
       reject(err);
     });
+
     req.write(data);
     req.end();
   });
+}
+
+async function executeGeminiRequestWithRetry(model, payload, maxRetries = 2) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await executeGeminiRequest(model, payload, 25000);
+    } catch (err) {
+      lastErr = err;
+      const isRetryable = err.isTimeout || err.isSocketError || err.isOverloaded || err.code === 'ECONNRESET' || (err.message && err.message.includes('socket hang up'));
+      if (isRetryable && attempt < maxRetries) {
+        console.warn(`[Gemini] Intento ${attempt}/${maxRetries} falló (${err.message}). Reintentando en 800ms...`);
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastErr;
 }
 
 // ── Invocación HTTPS con auto-fallback de modelo ────────────────────────────
@@ -162,12 +203,12 @@ async function callGeminiGenerateContent({ systemPrompt, contents, useTools = tr
   }
 
   try {
-    return await executeGeminiRequest(DEFAULT_GEMINI_MODEL, payload);
+    return await executeGeminiRequestWithRetry(DEFAULT_GEMINI_MODEL, payload, 2);
   } catch (err) {
-    // Si el modelo principal está saturado o da timeout, reintentar con flash-lite
-    if ((err.isOverloaded || err.isTimeout) && DEFAULT_GEMINI_MODEL !== FALLBACK_GEMINI_MODEL) {
-      console.warn(`[Gemini] ${DEFAULT_GEMINI_MODEL} sobrecargado/timeout. Usando fallback ${FALLBACK_GEMINI_MODEL}...`);
-      return await executeGeminiRequest(FALLBACK_GEMINI_MODEL, payload);
+    // Si el modelo principal está saturado o da timeout/socket error, reintentar con fallback
+    if ((err.isOverloaded || err.isTimeout || err.isSocketError) && DEFAULT_GEMINI_MODEL !== FALLBACK_GEMINI_MODEL) {
+      console.warn(`[Gemini] ${DEFAULT_GEMINI_MODEL} falló tras reintentos (${err.message}). Usando fallback ${FALLBACK_GEMINI_MODEL}...`);
+      return await executeGeminiRequestWithRetry(FALLBACK_GEMINI_MODEL, payload, 2);
     }
     throw err;
   }
@@ -256,48 +297,56 @@ function getOpenAIClient() {
 // ── Interfaz Principal chatCompletion ────────────────────────────────────────
 async function chatCompletion({ systemPrompt, messages, tools = true }) {
   if (isGemini) {
-    const contents = formatMessagesForGemini(messages);
-    const geminiRes = await callGeminiGenerateContent({
-      systemPrompt,
-      contents,
-      useTools: tools,
-    });
+    try {
+      const contents = formatMessagesForGemini(messages);
+      const geminiRes = await callGeminiGenerateContent({
+        systemPrompt,
+        contents,
+        useTools: tools,
+      });
 
-    const candidate = geminiRes.candidates?.[0];
-    if (!candidate) {
-      throw new Error('Gemini no retornó candidatos de respuesta');
-    }
-
-    const parts = candidate.content?.parts || [];
-    let textContent = null;
-    let toolCalls = [];
-
-    for (const part of parts) {
-      if (part.text) {
-        textContent = (textContent ? textContent + '\n' : '') + part.text;
+      const candidate = geminiRes.candidates?.[0];
+      if (!candidate) {
+        throw new Error('Gemini no retornó candidatos de respuesta');
       }
-      if (part.functionCall) {
-        toolCalls.push({
-          id: part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          type: 'function',
-          function: {
-            name: part.functionCall.name,
-            arguments: JSON.stringify(part.functionCall.args || {}),
-          },
-          thoughtSignature: part.thoughtSignature || null,
-        });
+
+      const parts = candidate.content?.parts || [];
+      let textContent = null;
+      let toolCalls = [];
+
+      for (const part of parts) {
+        if (part.text) {
+          textContent = (textContent ? textContent + '\n' : '') + part.text;
+        }
+        if (part.functionCall) {
+          toolCalls.push({
+            id: part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            type: 'function',
+            function: {
+              name: part.functionCall.name,
+              arguments: JSON.stringify(part.functionCall.args || {}),
+            },
+            thoughtSignature: part.thoughtSignature || null,
+          });
+        }
+      }
+
+      return {
+        role: 'assistant',
+        content: textContent,
+        tool_calls: toolCalls.length > 0 ? toolCalls : null,
+        rawParts: parts,
+      };
+    } catch (err) {
+      if (OPENAI_API_KEY) {
+        console.warn(`[AI Engine] Gemini no respondió (${err.message}). Activando fallback a OpenAI...`);
+      } else {
+        throw err;
       }
     }
-
-    return {
-      role: 'assistant',
-      content: textContent,
-      tool_calls: toolCalls.length > 0 ? toolCalls : null,
-      rawParts: parts,
-    };
   }
 
-  // Fallback a OpenAI si no hay Gemini API key
+  // Fallback a OpenAI si no hay Gemini API key o si Gemini falló y hay OPENAI_API_KEY
   const client = getOpenAIClient();
   if (!client) {
     throw new Error('No hay API key configurada ni para Google Gemini ni para OpenAI');
