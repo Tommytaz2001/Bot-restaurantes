@@ -51,7 +51,7 @@ router.get('/connection-state', async (req, res) => {
 
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
 
   try {
     const stateRes = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
@@ -74,7 +74,7 @@ router.get('/get-qr', async (req, res) => {
 
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
 
   if (!apiUrl || !apiKey) {
     console.error('[WhatsApp] EVOLUTION_API_URL o EVOLUTION_API_KEY no están configuradas en .env');
@@ -93,11 +93,16 @@ router.get('/get-qr', async (req, res) => {
 
     if (isNotFound) {
       console.warn(`[WhatsApp] Instancia "${instance}" no encontrada en Evolution API (${qrRes.status}). Iniciando auto-configuración...`);
-      await setupEvolution();
-      qrRes = await fetch(`${apiUrl}/instance/connect/${instance}`, {
-        headers: { apikey: apiKey },
-      });
-      qrData = await qrRes.json().catch(() => ({}));
+      const setupResult = await setupEvolution(instance);
+      if (setupResult?.qr) {
+        qrData = { base64: setupResult.qr };
+        qrRes = { status: 200 };
+      } else {
+        qrRes = await fetch(`${apiUrl}/instance/connect/${instance}`, {
+          headers: { apikey: apiKey },
+        });
+        qrData = await qrRes.json().catch(() => ({}));
+      }
     }
 
     const rawBase64 = qrData?.base64 || qrData?.qrcode?.base64 || qrData?.data?.base64 || null;
@@ -129,14 +134,18 @@ router.post('/restart-instance', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
 
   try {
     console.log(`[WhatsApp] Reiniciando instancia "${instance}"...`);
-    await fetch(`${apiUrl}/instance/restart/${instance}`, {
+    const rRes = await fetch(`${apiUrl}/instance/restart/${instance}`, {
       method: 'PUT',
       headers: { apikey: apiKey },
-    }).catch(() => {});
+    }).catch(() => null);
+
+    if (!rRes || rRes.status === 404) {
+      await setupEvolution(instance);
+    }
     return res.json({ ok: true });
   } catch (err) {
     console.error(`[WhatsApp] Error al reiniciar instancia:`, err.message);
@@ -146,7 +155,7 @@ router.post('/restart-instance', async (req, res) => {
 
 // GET /whatsapp/qr — página interactiva moderna con QR estable y contador
 router.get('/qr', (req, res) => {
-  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes-api';
+  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
 
   res.send(`<!DOCTYPE html>
 <html lang="es">

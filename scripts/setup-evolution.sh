@@ -27,12 +27,12 @@ echo "Instance:  $INSTANCE"
 echo "Webhook:   $BOT_URL"
 echo ""
 
-# 1. Crear instancia (v1 no necesita campo integration)
+# 1. Crear instancia
 echo "[1/3] Creando instancia '$INSTANCE'..."
 curl -s -X POST "$API_URL/instance/create" \
   -H "Content-Type: application/json" \
   -H "apikey: $API_KEY" \
-  -d "{\"instanceName\": \"$INSTANCE\", \"qrcode\": true}" | head -c 500
+  -d "{\"instanceName\": \"$INSTANCE\", \"token\": \"tok_$INSTANCE\", \"qrcode\": true, \"integration\": \"WHATSAPP-BAILEYS\"}" | head -c 500
 echo ""
 echo ""
 

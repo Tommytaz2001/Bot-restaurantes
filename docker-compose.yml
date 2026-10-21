@@ -70,6 +70,7 @@ services:
       - SERVER_URL=http://evolution-api:8080
       - AUTHENTICATION_TYPE=apikey
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
       - QRCODE_LIMIT=30
       - DATABASE_ENABLED=false
       - CACHE_REDIS_ENABLED=false

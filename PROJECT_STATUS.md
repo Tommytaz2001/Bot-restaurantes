@@ -21,6 +21,7 @@ El sistema superó su fase de MVP inicial (que utilizaba Firestore y OpenAI) y c
 3. **Evolution API v1.8.7 en Docker** como gateway desacoplado para WhatsApp con soporte para identificadores `@lid`.
 4. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con Server-Sent Events (SSE) y alertas sonoras de pedidos en tiempo real.
 5. Se generó el ejecutable APK nativo de Android en la raíz (`UrbanoChef.apk`).
+6. Se resolvió el bug de creación de instancias en Evolution API v1.8.7 (error `Token already exists` por omisión de `token` e `integration: 'WHATSAPP-BAILEYS'`).
 
 ---
 
@@ -40,6 +41,7 @@ El sistema superó su fase de MVP inicial (que utilizaba Firestore y OpenAI) y c
   - Dockerfile con imagen base `evoapicloud/evolution-api:v1.8.7` y parche para contactos con formato `@lid`.
   - Configuración unificada de persistencia por bind mounts mediante `volumen_ruta` y permisos `user: root` en `docker-compose.yml`.
   - Rutas `/whatsapp/qr`, `/whatsapp/get-qr` y `/whatsapp/connection-state` optimizadas con auto-creación de instancias, anti-caché HTTP (evita 304) y botón de reinicio de sesión.
+  - Resolución del bug de Evolution API v1.8.7: auto-generación de `token` dedicado e `integration: 'WHATSAPP-BAILEYS'` en `createInstance` para evitar el falso positivo `Token already exists` (`undefined === undefined`). Mutex `setupPromise` para prevenir condiciones de carrera concurrentes desde el frontend.
 - [x] **Gestión KDS en Tiempo Real:**
   - Canales SSE (`/pedidos-admin/activos/stream`, `/pedidos-admin/historial/stream`, `/pedidos-admin/:id/stream`).
   - Transiciones de estado de comanda (Confirmar con tiempo estimado ETA, En camino, Entregado, Rechazar comanda, Aprobar/Rechazar cambio).
@@ -78,6 +80,7 @@ El sistema superó su fase de MVP inicial (que utilizaba Firestore y OpenAI) y c
 | :--- | :--- | :--- | :--- |
 | `tests/orderValidator.test.js` | Unitaria | **PASS** (14/14) | Valida exhaustivamente esquemas, métodos de pago, totales y tipos de entrega. |
 | `tests/sessionStore.test.js` | Unitaria | **PASS** | Valida gestión de sesiones en memoria y TTL de mensajes. |
+| `Lifecycle Evolution API (Docker)` | Integración | **PASS** | Valida flujo completo: creación con token e integración (HTTP 201), fetchInstances, connect (QR base64), connectionState y webhook set. |
 | `tests/agentService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
 | `tests/menuService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
 | `tests/chat.integration.test.js`| Integración | **FAIL** | Falla con código 503 por conexión rechazada a Postgres. |
