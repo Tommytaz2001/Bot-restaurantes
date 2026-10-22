@@ -2,7 +2,7 @@
 
 **Última actualización:** 22 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `e4f7165 docs: update PROJECT_STATUS.md with commit hash` 
+**Último commit:** `d38eb4f feat: set BAC account, isolate en-camino orders, suppress delivered notifications, and add delivery copy button` 
 
 ---
 
