@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { History, Search, Calendar, CheckCircle2, XCircle, Bike, Store, CreditCard, Banknote, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History, Search, Calendar, CheckCircle2, XCircle, Bike, Store, CreditCard, Banknote, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { fetchHistorial, Pedido } from '../services/api';
 
 const ITEMS_PER_PAGE = 9;
@@ -10,6 +10,7 @@ export const HistorialPage: React.FC = () => {
   const [filtro, setFiltro] = useState<'hoy' | 'ayer' | '7dias' | 'todos'>('hoy');
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const loadData = async (f: string) => {
     setLoading(true);
@@ -166,8 +167,40 @@ export const HistorialPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-500 font-mono text-right">
-                    ID: #{p.id.slice(-6).toUpperCase()}
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                    {p.tipo_entrega === 'delivery' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const costoEnvio = p.costo_envio ?? 40;
+                          const subtotal = p.total - costoEnvio;
+                          const lineas = [
+                            '🛵 *Pedido para delivery*',
+                            `👤 *Cliente:* ${p.cliente || 'Cliente'}`,
+                            `📞 *Teléfono:* ${p.telefono || 'No especificado'}`,
+                            `📍 *Dirección:* ${p.direccion || 'No especificada'}`,
+                            '─────────────────────',
+                            ...p.productos.map(item => `• ${item.cantidad}× ${item.nombre}${item.opcion ? ` (${item.opcion})` : ''}`),
+                            '─────────────────────',
+                            `💰 *Subtotal:* C$${subtotal > 0 ? subtotal : p.total}`,
+                            `🛵 *Envío:* C$${costoEnvio}`,
+                            `💰 *Total:* C$${p.total}`,
+                            `💳 *Pago:* ${p.metodo_pago === 'efectivo' ? 'Efectivo' : 'Transferencia'}`,
+                          ];
+                          if (navigator.clipboard?.writeText) {
+                            navigator.clipboard.writeText(lineas.join('\n'));
+                            setCopiedId(p.id);
+                            setTimeout(() => setCopiedId(null), 2000);
+                          }
+                        }}
+                        className="flex items-center gap-1 text-slate-400 hover:text-orange-400 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedId === p.id ? '¡Copiado!' : 'Copiar delivery'}</span>
+                      </button>
+                    ) : <span />}
+                    <span>ID: #{p.id.slice(-6).toUpperCase()}</span>
                   </div>
                 </div>
               );

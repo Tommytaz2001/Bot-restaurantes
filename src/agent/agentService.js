@@ -27,14 +27,33 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, 
   if (activeOrder) {
     const productos = (activeOrder.productos || [])
       .map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
-    contextoPedidoActivo = `\n## ⚠️ PEDIDO ACTIVO — LEE ESTO ANTES DE RESPONDER
-Este cliente tiene un pedido activo que aún NO ha sido entregado.
+
+    if (activeOrder.estado === 'en_camino') {
+      contextoPedidoActivo = `\n## 🛵 PEDIDO EN CAMINO / DESPACHADO
+Este cliente tiene un pedido que YA VA EN CAMINO hacia su dirección (o listo para retiro):
+- Productos despachados: ${productos}
+- Total: ${activeOrder.total} ${activeOrder.moneda || 'C$'}
+- Tipo entrega: ${activeOrder.tipo_entrega}${activeOrder.direccion ? `\n- Dirección: ${activeOrder.direccion}` : ''}
+
+**REGLAS OBLIGATORIAS para pedidos en camino:**
+1. Este pedido YA SALIÓ del restaurante y NO SE PUEDE MODIFICAR NI CANCELAR, ni se le pueden agregar productos.
+2. Si el cliente responde con agradecimientos o cortesía ("gracias", "muchas gracias", "dale", "ok", "bueno", "excelente", etc.):
+   - Responde de forma breve y amable (ej: "¡Con gusto! Que lo disfrutes mucho 🍔"). NO inicies un pedido nuevo por simples cortesías.
+3. Si el cliente pide MODIFICACIONES, CAMBIOS o AGREGAR PRODUCTOS (ej: "quiero agregar...", "cámbiame...", "mándame también...", "quiero una hamburguesa"):
+   - A partir de este momento, cualquier cambio o adición se toma como un **PEDIDO NUEVO**.
+   - Infórmale amablemente que su pedido anterior ya va en camino y procede a tomar esto inmediatamente como un nuevo pedido con el menú y precios correspondientes.
+   - NUNCA uses solicitar_cambio_pedido ni cancelar_pedido para este cliente porque ese pedido ya está en camino. Al confirmar, guarda el nuevo pedido con guardar_pedido normalmente.
+4. Si el cliente pregunta por el estado de su pedido ("¿dónde viene?", "¿cuánto falta?"):
+   - Confírmale que ya va en camino hacia su dirección.`;
+    } else {
+      contextoPedidoActivo = `\n## ⚠️ PEDIDO ACTIVO EN COCINA — LEE ESTO ANTES DE RESPONDER
+Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
 - Estado: ${estadoLegible(activeOrder.estado)}
 - Productos: ${productos}
 - Total: ${activeOrder.total} ${activeOrder.moneda || 'C$'}
 - Tipo entrega: ${activeOrder.tipo_entrega}${activeOrder.direccion ? `\n- Dirección: ${activeOrder.direccion}` : ''}
 
-**REGLAS OBLIGATORIAS cuando hay pedido activo:**
+**REGLAS OBLIGATORIAS cuando hay pedido activo en cocina:**
 1. NUNCA inicies un nuevo pedido automáticamente — ni siquiera si el cliente saluda o pide algo nuevo.
 2. Si el cliente saluda ("hola", "buenas", etc.), responde con saludo + mención del pedido activo.
 3. Si el cliente pide productos nuevos o quiere agregar algo, PREGUNTA PRIMERO: "¿Quieres agregar esto a tu pedido actual, o es un pedido nuevo aparte?"
@@ -42,6 +61,7 @@ Este cliente tiene un pedido activo que aún NO ha sido entregado.
    - Si es un pedido nuevo → solo entonces toma un nuevo pedido normalmente.
 4. Ofrece las opciones disponibles: consultar estado, solicitar cambio, agregar productos, o cancelar.
 5. Estas reglas tienen PRIORIDAD sobre las reglas de saludo y flujo de pedido de las secciones anteriores.`;
+    }
   }
 
   let contextoDireccion = '';

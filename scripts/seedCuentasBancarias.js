@@ -11,12 +11,6 @@ const cuentasBancarias = [
     numero: '371618588',
     titular: 'Fidel Ernesto Rivera Bello',
   },
-  {
-    banco: 'Láfise',
-    moneda: 'Córdobas',
-    numero: '134066612',
-    titular: 'Fidel Ernesto Rivera Bello',
-  },
 ];
 
 async function seed() {

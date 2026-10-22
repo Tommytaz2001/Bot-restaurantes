@@ -132,4 +132,13 @@ describe('solicitarCambioPedido', () => {
       solicitarCambioPedido({ pedidoId: 'no-existe-xyz', descripcionCambio: 'test', tipo: 'modificacion' })
     ).rejects.toThrow('Pedido no encontrado');
   }, 10000);
+
+  test('lanza error al intentar solicitar cambio en pedido en_camino', async () => {
+    const pedidoId = await crearPedidoTest('encamino-');
+    const { query } = require('../src/db/connection');
+    await query("UPDATE pedidos SET estado = 'en_camino' WHERE id = $1", [pedidoId]);
+    await expect(
+      solicitarCambioPedido({ pedidoId, descripcionCambio: 'cambio tarde', tipo: 'modificacion' })
+    ).rejects.toThrow('no puede modificarse');
+  }, 15000);
 });

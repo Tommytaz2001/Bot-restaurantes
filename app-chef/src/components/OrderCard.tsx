@@ -10,7 +10,9 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   ChevronRight,
-  Phone
+  Phone,
+  Copy,
+  Check
 } from 'lucide-react';
 import { Pedido } from '../services/api';
 
@@ -35,6 +37,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 }) => {
   const [elapsedMinutes, setElapsedMinutes] = useState<number>(0);
   const [checkedItems, setCheckedItems] = useState<Record<number, boolean>>({});
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const calcElapsed = () => {
@@ -51,6 +54,44 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   const toggleCheck = (idx: number) => {
     setCheckedItems((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const handleCopyDelivery = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const costoEnvio = pedido.costo_envio ?? 40;
+    const subtotal = pedido.total - costoEnvio;
+    const moneda = 'C$';
+
+    const lineas = [
+      '🛵 *Pedido para delivery*',
+      `👤 *Cliente:* ${pedido.cliente || 'Cliente'}`,
+      `📞 *Teléfono:* ${pedido.telefono || 'No especificado'}`,
+      `📍 *Dirección:* ${pedido.direccion || 'No especificada'}`,
+      '─────────────────────',
+      ...pedido.productos.map(
+        (p) => `• ${p.cantidad}× ${p.nombre}${p.opcion ? ` (${p.opcion})` : ''}`
+      ),
+      '─────────────────────',
+      `💰 *Subtotal:* ${moneda}${subtotal > 0 ? subtotal : pedido.total}`,
+      `🛵 *Envío:* ${moneda}${costoEnvio}`,
+      `💰 *Total:* ${moneda}${pedido.total}`,
+      `💳 *Pago:* ${pedido.metodo_pago === 'efectivo' ? 'Efectivo' : 'Transferencia'}`,
+    ];
+
+    const texto = lineas.join('\n');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(texto).then(() => {
+        setCopied(true);
+        if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            navigator.vibrate(50);
+          } catch (_) {}
+        }
+        setTimeout(() => setCopied(false), 2000);
+      }).catch((err) => {
+        console.error('Error al copiar al portapapeles:', err);
+      });
+    }
   };
 
   const isDelivery = pedido.tipo_entrega === 'delivery';
@@ -119,6 +160,30 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
               <span className="line-clamp-2 leading-relaxed">{pedido.direccion}</span>
             </div>
+          )}
+
+          {isDelivery && (
+            <button
+              type="button"
+              onClick={handleCopyDelivery}
+              className={`w-full mt-2 py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 active:scale-95 ${
+                copied
+                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-sm'
+                  : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700/80 text-slate-300 hover:text-white'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>¡Datos copiados para delivery! ✓</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Copiar para delivery</span>
+                </>
+              )}
+            </button>
           )}
 
           {/* Método de Pago y Comprobante */}

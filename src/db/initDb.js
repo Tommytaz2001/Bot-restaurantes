@@ -15,10 +15,9 @@ const DEFAULT_HORARIO = {
   domingo: { abre: true, apertura: '17:00', cierre: '23:00' },
 };
 
-const DEFAULT_CUENTAS = `*Cuentas bancarias de Urbano:*
-• BAC Córdobas: 365-123456-7
-• Banpro Córdobas: 1002-987654-3
-A nombre de: Urbano Fast Food`;
+const DEFAULT_CUENTAS = `*Cuenta bancaria de Urbano:*
+• BAC Córdobas: 371618588
+(Solamente aceptamos transferencias a BAC)`;
 
 const INITIAL_MENU = [
   {
@@ -138,6 +137,13 @@ async function initDb() {
         ]
       );
       console.log(`[Database] Restaurante default "${RESTAURANTE_ID}" creado.`);
+    } else {
+      await query(
+        `UPDATE restaurantes
+         SET cuentas_bancarias = $1
+         WHERE id = $2 AND (cuentas_bancarias LIKE '%365-123456%' OR cuentas_bancarias LIKE '%Banpro%' OR cuentas_bancarias LIKE '%Láfise%')`,
+        [DEFAULT_CUENTAS, RESTAURANTE_ID]
+      );
     }
 
     // 2. Verificar o crear Usuario Chef inicial

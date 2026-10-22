@@ -217,6 +217,10 @@ async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modi
   const pedido = await getOrder(pedidoId);
   if (!pedido) throw new Error('Pedido no encontrado');
 
+  if (['en_camino', 'entregado', 'cancelado'].includes(pedido.estado)) {
+    throw new Error(`El pedido ya está ${pedido.estado} y no puede modificarse. Debe realizarse como un nuevo pedido.`);
+  }
+
   const esPendiente = ['pendiente', 'pendiente_pago'].includes(pedido.estado);
 
   if (esPendiente) {

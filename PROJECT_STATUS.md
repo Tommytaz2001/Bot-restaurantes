@@ -1,8 +1,8 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 21 de Octubre de 2026  
+**Última actualización:** 22 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `72147b5 feat: improve Gemini resilience, streamline options prompt, add menu CRUD and APK build automation`
+**Último commit:** `e4f7165 docs: update PROJECT_STATUS.md with commit hash` 
 
 ---
 
@@ -16,14 +16,14 @@ Permite a los clientes interactuar en lenguaje natural por WhatsApp con el bot c
 ## 2. Estado Actual del Desarrollo
 
 El sistema superó su fase de MVP inicial y ha incorporado:
-1. **Resiliencia y Reintentos en Gemini (`src/services/aiService.js`):** `https.Agent` con Keep-Alive para prevenir caídas `socket hang up`, timeout ampliado a 25s, reintentos automáticos (2 intentos con backoff) ante fallos de red/sobrecarga y fallback automático hacia modelo secundario (`gemini-2.5-flash`) y OpenAI.
-2. **Optimización de Respuestas de Menú (`prompts/agent.txt`):** Instrucción estricta para omitir descripciones e ingredientes al presentar opciones de platillos (solo nombres y precios), reservando detalles de preparación solo si el cliente los solicita explícitamente.
-3. **Gestión Completa de Menú en App Cocina (`app-chef/src/pages/MenuPage.tsx` y `api.ts`):** Nuevos modales táctiles para creación y edición de platillos (nombre, precio, proteína, descripción, opciones), creación de categorías y eliminación de ítems/categorías sincronizados con PostgreSQL.
-4. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`. Binario compilado y actualizado en la raíz (`UrbanoChef.apk`) y carpeta de descargas (`uploads/UrbanoChef.apk`).
-5. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling.
-6. **PostgreSQL 16** como base de datos relacional transaccional.
-7. **Evolution API v1.8.7 en Docker** como gateway desacoplado para WhatsApp.
-8. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.
+1. **Unificación de Cuentas Bancarias a BAC Córdobas (`src/db/initDb.js`, `scripts/seedCuentasBancarias.js`):** Cuenta única autorizada BAC Córdobas: `371618588`, eliminando bancos anteriores (Banpro, Láfise) y actualizando tanto el seeder como el prompt del agente.
+2. **Ciclo de Vida de Pedido en Camino (`src/agent/agentService.js`, `prompts/agent.txt`, `src/orders/orderService.js`):** Cuando un pedido pasa a `en_camino`, las respuestas de cortesía del cliente son atendidas amablemente, pero cualquier modificación o adición posterior se bifurca automáticamente como un nuevo pedido (`guardar_pedido`), protegiendo el pedido despachado contra alteraciones indebidas.
+3. **Silenciamiento de Notificación en Estado Entregado (`src/services/notificacionService.js`, `src/routes/orderRoutes.js`):** Al presionar "Marcar Entregado" en la app de cocina, la orden se mueve silenciosamente al historial/completados sin enviar mensaje de WhatsApp al cliente.
+4. **Instrucción de Confirmación con "OK" (`prompts/agent.txt`):** Se sustituyó el genérico "¿Confirmamos?" por "¿Está todo correcto? Envía un "ok" para confirmar que todo esté bien. ✅", reduciendo ambigüedades en la respuesta del usuario.
+5. **Botón "Copiar para delivery" en KDS (`app-chef/src/components/OrderCard.tsx`, `HistorialPage.tsx`):** Permite al cocinero/administrador copiar con un solo toque el formato completo con datos de cliente, teléfono, dirección, desglose de pedido y total al portapapeles para enviarlo directamente al repartidor.
+6. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`.
+7. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling con fallback defensivo a OpenAI.
+8. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.tor** con SSE y alertas sonoras.
 
 ---
 
@@ -81,7 +81,8 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | Prueba / Archivo | Tipo | Resultado | Observaciones |
 | :--- | :--- | :--- | :--- |
 | `tests/orderValidator.test.js` | Unitaria | **PASS** (14/14) | Valida exhaustivamente esquemas, métodos de pago, totales y tipos de entrega. |
-| `tests/sessionStore.test.js` | Unitaria | **PASS** | Valida gestión de sesiones en memoria y TTL de mensajes. |
+| `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
+| `Compilación Vite app-chef` | Build / Frontend | **PASS** (1947 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Lifecycle Evolution API (Docker)` | Integración | **PASS** | Valida flujo completo: creación con token e integración (HTTP 201), fetchInstances, connect (QR base64), connectionState y webhook set. |
 | `tests/agentService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
 | `tests/menuService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |

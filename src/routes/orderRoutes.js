@@ -22,7 +22,7 @@ const MENSAJES_NOTIFICACION = {
   confirmado:  '✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔',
   rechazado:   '❌ Lo sentimos, tu pedido no pudo ser procesado en este momento. Por favor contáctanos si necesitas ayuda.',
   en_camino:   '🛵 ¡Tu pedido está en camino! Pronto llegará a tu dirección. 😊',
-  entregado:   '✅ ¡Tu pedido fue entregado! Gracias por tu preferencia. ¡Hasta pronto! 🍔',
+  // entregado: omitido para no enviar mensaje al marcar entregado
   cambio_aprobado:  '✅ Tu solicitud de cambio fue aprobada. Seguimos preparando tu pedido. 🍔',
   cambio_rechazado: '❌ Tu solicitud de cambio no pudo ser aplicada. Tu pedido original sigue en proceso.',
 };

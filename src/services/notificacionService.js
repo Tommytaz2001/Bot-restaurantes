@@ -1,12 +1,13 @@
 const { query } = require('../db/connection');
 const { sendWhatsAppMessage } = require('../whatsapp/metaSender');
 const { orderEvents } = require('./orderEvents');
+const { addMessage } = require('../agent/sessionStore');
 
 const MENSAJES = {
   confirmado:       '✅ ¡Tu pedido fue confirmado! Ya estamos preparando tu pedido. 🍔',
   cancelado:        '❌ Lo sentimos, tu pedido no pudo ser procesado en este momento. Por favor contáctanos si necesitas ayuda.',
   en_camino:        '🛵 ¡Tu pedido está en camino! Pronto llegará a tu dirección. 😊',
-  entregado:        '✅ ¡Tu pedido fue entregado! Gracias por tu preferencia. ¡Hasta pronto! 🍔',
+  // entregado: omitido deliberadamente para no enviar mensaje a WhatsApp al marcar completado
   cambio_aprobado:  '✅ Tu solicitud de cambio fue aprobada. Seguimos preparando tu pedido. 🍔',
   cambio_rechazado: '❌ Tu solicitud de cambio no pudo ser aplicada. Tu pedido original sigue en proceso.',
 };
@@ -63,6 +64,14 @@ function iniciarListenerNotificaciones() {
 
         await sendWhatsAppMessage(destino, mensaje);
         console.log(`[Notificaciones] Mensaje "${clave}" enviado a WhatsApp (${destino})`);
+
+        // Registrar mensaje saliente en la sesión para mantener contexto
+        if (telefono) {
+          addMessage(telefono, { role: 'assistant', content: mensaje });
+        }
+        if (jid && jid !== telefono) {
+          addMessage(jid, { role: 'assistant', content: mensaje });
+        }
       }
     } catch (err) {
       console.error('[Notificaciones] Error procesando notificación:', err.message);
