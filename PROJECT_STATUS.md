@@ -2,7 +2,7 @@
 
 **Última actualización:** 23 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `97ef875 docs: update PROJECT_STATUS.md with commit hash` 
+**Último commit:** `25560eb feat: add deploy notifications, resolve WhatsApp LID JIDs, and patch Baileys retry handshake` 
 
 ---
 
