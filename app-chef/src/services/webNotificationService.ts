@@ -66,6 +66,35 @@ export const webNotifications = {
     }
   },
 
+  notifySystem(title: string, body: string) {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([200, 100, 200]);
+      } catch (_) {}
+    }
+
+    if (this.isSupported() && Notification.permission === 'granted') {
+      try {
+        const notif = new Notification(title, {
+          body,
+          icon: '/favicon.ico',
+          badge: '/favicon.ico',
+          tag: 'system-restart',
+        });
+        notif.onclick = () => {
+          if (typeof window !== 'undefined') window.focus();
+          notif.close();
+        };
+      } catch (e) {
+        console.warn('[WebNotifications] Error lanzando notificación de sistema:', e);
+      }
+    }
+
+    if (typeof document !== 'undefined' && document.hidden) {
+      this.startTitleFlash(`⚡ ${title}`);
+    }
+  },
+
   startTitleFlash(alertText: string) {
     if (titleInterval) clearInterval(titleInterval);
     let toggle = false;

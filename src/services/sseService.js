@@ -4,6 +4,7 @@ const { orderEvents } = require('./orderEvents');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID ?? 'urbano';
 const KEEPALIVE_MS = 25_000;
+const BOOT_TIME = new Date();
 
 function initSseHeaders(res) {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -33,16 +34,26 @@ function createPedidosActivosStream(res, restauranteId = RESTAURANTE_ID) {
 
   sendSnapshot();
 
-  // 2. Suscribirse a eventos locales de pedidos
+  // Notificar al KDS si el servidor se redesplegó recientemente (< 2 min)
+  if (Date.now() - BOOT_TIME.getTime() < 120_000) {
+    res.write(`event: server_restarted\ndata: ${JSON.stringify({ bootTime: BOOT_TIME.toISOString(), message: '⚡ Servidor actualizado y en línea' })}\n\n`);
+  }
+
+  // 2. Suscribirse a eventos locales de pedidos y del sistema
   const handleUpdate = (data) => {
     if (!data.restauranteId || data.restauranteId === restauranteId) {
       sendSnapshot();
     }
   };
 
+  const handleServerRestart = (info) => {
+    res.write(`event: server_restarted\ndata: ${JSON.stringify(info)}\n\n`);
+  };
+
   orderEvents.on('order:created', handleUpdate);
   orderEvents.on('order:updated', handleUpdate);
   orderEvents.on('order:cancelled', handleUpdate);
+  orderEvents.on('server:restarted', handleServerRestart);
 
   // 3. Heartbeat keepalive
   const keepalive = setInterval(() => {
@@ -55,6 +66,7 @@ function createPedidosActivosStream(res, restauranteId = RESTAURANTE_ID) {
     orderEvents.off('order:created', handleUpdate);
     orderEvents.off('order:updated', handleUpdate);
     orderEvents.off('order:cancelled', handleUpdate);
+    orderEvents.off('server:restarted', handleServerRestart);
   });
 }
 

@@ -1,8 +1,8 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 22 de Octubre de 2026  
+**Última actualización:** 23 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `d38eb4f feat: set BAC account, isolate en-camino orders, suppress delivered notifications, and add delivery copy button` 
+**Último commit:** `97ef875 docs: update PROJECT_STATUS.md with commit hash` 
 
 ---
 
@@ -16,14 +16,16 @@ Permite a los clientes interactuar en lenguaje natural por WhatsApp con el bot c
 ## 2. Estado Actual del Desarrollo
 
 El sistema superó su fase de MVP inicial y ha incorporado:
-1. **Unificación de Cuentas Bancarias a BAC Córdobas (`src/db/initDb.js`, `scripts/seedCuentasBancarias.js`):** Cuenta única autorizada BAC Córdobas: `371618588`, eliminando bancos anteriores (Banpro, Láfise) y actualizando tanto el seeder como el prompt del agente.
-2. **Ciclo de Vida de Pedido en Camino (`src/agent/agentService.js`, `prompts/agent.txt`, `src/orders/orderService.js`):** Cuando un pedido pasa a `en_camino`, las respuestas de cortesía del cliente son atendidas amablemente, pero cualquier modificación o adición posterior se bifurca automáticamente como un nuevo pedido (`guardar_pedido`), protegiendo el pedido despachado contra alteraciones indebidas.
-3. **Silenciamiento de Notificación en Estado Entregado (`src/services/notificacionService.js`, `src/routes/orderRoutes.js`):** Al presionar "Marcar Entregado" en la app de cocina, la orden se mueve silenciosamente al historial/completados sin enviar mensaje de WhatsApp al cliente.
-4. **Instrucción de Confirmación con "OK" (`prompts/agent.txt`):** Se sustituyó el genérico "¿Confirmamos?" por "¿Está todo correcto? Envía un "ok" para confirmar que todo esté bien. ✅", reduciendo ambigüedades en la respuesta del usuario.
-5. **Botón "Copiar para delivery" en KDS (`app-chef/src/components/OrderCard.tsx`, `HistorialPage.tsx`):** Permite al cocinero/administrador copiar con un solo toque el formato completo con datos de cliente, teléfono, dirección, desglose de pedido y total al portapapeles para enviarlo directamente al repartidor.
-6. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`.
-7. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling con fallback defensivo a OpenAI.
-8. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.tor** con SSE y alertas sonoras.
+1. **Notificación de Redespliegue y Reinicio de Servidor (`src/services/deployNotificationService.js`, `index.js`, `src/services/sseService.js`, `app-chef/src/services/sse.ts`, `app-chef/src/services/webNotificationService.ts`):** Envío automático de notificación por WhatsApp a uno o múltiples teléfonos de administradores/amigos (`NOTIFICAR_DESPLIEGUE_TELEFONO=...`) una vez que el backend y WhatsApp quedan en línea tras un deploy. Paralelamente, emite un evento SSE `server_restarted` que muestra una alerta visual y en el navegador en la app KDS.
+2. **Resolución y Mitigación de Identificadores WhatsApp `@lid` y Handshake de Conexión (`src/whatsapp/lidResolver.js`, `src/whatsapp/metaWebhook.js`, `src/whatsapp/metaSender.js`, `evolution-api/Dockerfile`, `docker-compose.yml`):** Corrección de los errores `SessionError: No sessions` y `Error: not-acceptable` generados por Baileys al recibir e intentar responder a JIDs con formato `@lid` (identificadores de 15 dígitos de cuentas privadas). Se retiró la variable estática `CONFIG_SESSION_PHONE_VERSION` permitiendo a Baileys consultar dinámicamente la versión oficial de WhatsApp Web (`fetchLatestWaWebVersion`, v2.3000.1051562754), logrando que el código QR sea estable y enlace sin errores. Se agregaron parches directos a Baileys (`messages-send.js` y `messages-recv.js`) para evitar el TypeError al decodificar JIDs nulos durante el handshake de reintentos de sesión Signal con contactos `@lid`, y se aseguró la persistencia del webhook de eventos `MESSAGES_UPSERT`.
+3. **Unificación de Cuentas Bancarias a BAC Córdobas (`src/db/initDb.js`, `scripts/seedCuentasBancarias.js`):** Cuenta única autorizada BAC Córdobas: `371618588`, eliminando bancos anteriores (Banpro, Láfise) y actualizando tanto el seeder como el prompt del agente.
+4. **Ciclo de Vida de Pedido en Camino (`src/agent/agentService.js`, `prompts/agent.txt`, `src/orders/orderService.js`):** Cuando un pedido pasa a `en_camino`, las respuestas de cortesía del cliente son atendidas amablemente, pero cualquier modificación o adición posterior se bifurca automáticamente como un nuevo pedido (`guardar_pedido`), protegiendo el pedido despachado contra alteraciones indebidas.
+5. **Silenciamiento de Notificación en Estado Entregado (`src/services/notificacionService.js`, `src/routes/orderRoutes.js`):** Al presionar "Marcar Entregado" en la app de cocina, la orden se mueve silenciosamente al historial/completados sin enviar mensaje de WhatsApp al cliente.
+6. **Instrucción de Confirmación con "OK" (`prompts/agent.txt`):** Se sustituyó el genérico "¿Confirmamos?" por "¿Está todo correcto? Envía un "ok" para confirmar que todo esté bien. ✅", reduciendo ambigüedades en la respuesta del usuario.
+7. **Botón "Copiar para delivery" en KDS (`app-chef/src/components/OrderCard.tsx`, `HistorialPage.tsx`):** Permite al cocinero/administrador copiar con un solo toque el formato completo con datos de cliente, teléfono, dirección, desglose de pedido y total al portapapeles para enviarlo directamente al repartidor.
+8. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`. Binario `UrbanoChef.apk` compilado y actualizado exitosamente con la versión más reciente del KDS.
+9. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling con fallback defensivo a OpenAI.
+10. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.
 
 ---
 
@@ -71,8 +73,8 @@ El sistema superó su fase de MVP inicial y ha incorporado:
    - **Workaround verificado:** Invocar Jest directamente apuntando al archivo: `npx jest tests/<archivo>.test.js`.
 2. **Dependencia de PostgreSQL en Suite de Pruebas:**
    - Pruebas como `agentService.test.js`, `menuService.test.js` y `chat.integration.test.js` intentan conectarse a la base de datos real en lugar de mockear el cliente `pg`. Si PostgreSQL no está corriendo o las credenciales no coinciden con `botuser:botpassword`, la prueba arroja `error: la autentificación password falló para el usuario "botuser"`.
-3. **Estado del Árbol Git (Cambios de compilación no commiteados):**
-   - Hay cambios sin commitear en `app-chef/package.json`, `app-chef/package-lock.json` y `app-chef/capacitor.config.json`, además del binario untracked `UrbanoChef.apk`.
+3. **Estado del Árbol Git:**
+   - Binario `UrbanoChef.apk` y script `scripts/build-apk.ps1` actualizados en el árbol de trabajo tras la última compilación.
 
 ---
 
@@ -82,7 +84,10 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | :--- | :--- | :--- | :--- |
 | `tests/orderValidator.test.js` | Unitaria | **PASS** (14/14) | Valida exhaustivamente esquemas, métodos de pago, totales y tipos de entrega. |
 | `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
+| `tests/lidResolver.test.js`  | Unitaria | **PASS** (5/5) | Valida resolución y caché bidireccional de @lid a número telefónico y fallbacks a Evolution API. |
+| `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1947 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
+| `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite, cap sync y gradle assembleDebug exitoso (14s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/. |
 | `Lifecycle Evolution API (Docker)` | Integración | **PASS** | Valida flujo completo: creación con token e integración (HTTP 201), fetchInstances, connect (QR base64), connectionState y webhook set. |
 | `tests/agentService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
 | `tests/menuService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |

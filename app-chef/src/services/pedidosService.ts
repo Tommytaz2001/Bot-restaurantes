@@ -81,6 +81,9 @@ export function suscribirPedidosActivos(
       console.log(`[suscribirPedidosActivos] snapshot received: ${pedidos.length} docs`);
       callback(sortByCreatedAtDesc(pedidos));
     });
+    es.addEventListener('server_restarted', (e: any) => {
+      console.log('[suscribirPedidosActivos] Server restarted event received:', e.data);
+    });
     es.addEventListener('error', (e: any) => {
       console.warn('[SSE activos] error:', e);
     });

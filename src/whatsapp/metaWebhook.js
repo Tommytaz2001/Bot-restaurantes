@@ -7,6 +7,7 @@
 
 const { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario } = require('./messageHandler');
 const { sendWhatsAppMessage } = require('./metaSender');
+const { cacheLidMapping, resolveLid } = require('./lidResolver');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 const { log } = require('../utils/logger');
 const { estaActivo } = require('../services/botStateService');
@@ -71,6 +72,17 @@ async function handleWebhook(req, res) {
 
   log(`[Webhook] Evento recibido: "${body.event}"`);
 
+  // Si llega evento de conexión abierta, disparar notificación de despliegue si estaba pendiente
+  if (event === 'connection.update') {
+    const state = body.data?.state || body.data?.connection || '';
+    if (state === 'open') {
+      log('[Webhook] Conexión WhatsApp abierta ("open"). Verificando aviso de despliegue...');
+      const { notificarDespliegue } = require('../services/deployNotificationService');
+      notificarDespliegue().catch(() => {});
+    }
+    return;
+  }
+
   // Solo procesar eventos de mensajes (v1: messages.upsert, posible variante en mayúsculas)
   if (event !== 'messages.upsert') return;
 
@@ -90,7 +102,13 @@ async function _processMessage(data) {
   const messageType = data.messageType;
 
   // Ignorar mensajes propios y grupos
-  if (key.fromMe || key.remoteJid?.endsWith('@g.us')) return;
+  if (key.fromMe) {
+    log(`[Webhook] Mensaje ignorado porque proviene del propio bot (fromMe=true). Para interactuar con el bot, envía un mensaje desde otra cuenta de WhatsApp.`);
+    return;
+  }
+  if (key.remoteJid?.endsWith('@g.us')) {
+    return;
+  }
 
   // Kill switch — bot pausado desde la app (cubre texto, imágenes y cualquier media)
   if (!estaActivo()) {
@@ -99,13 +117,33 @@ async function _processMessage(data) {
   }
 
   // Extraer número de teléfono y remoteJid completo
-  const remoteJid = key.remoteJid || '';
-  const telefono = remoteJid.split('@')[0];
+  let remoteJid = key.remoteJid || '';
+  let telefono = remoteJid.split('@')[0];
 
   if (!telefono) return;
 
-  // Para enviar respuestas usamos el remoteJid completo (@lid o @s.whatsapp.net)
-  // Evolution API necesita el JID completo para LIDs
+  // Si remoteJid viene con @lid, verificar si Evolution API adjuntó número alternativo en el payload
+  const altCandidate = key.remoteJidAlt || key.participantAlt || data.senderPn || data.cleanedSenderPn;
+  if (remoteJid.endsWith('@lid') && altCandidate) {
+    const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0] : '';
+    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 14 && !rawAlt.endsWith('@lid')) {
+      cacheLidMapping(remoteJid, rawAlt);
+      telefono = rawAlt;
+      remoteJid = `${rawAlt}@s.whatsapp.net`;
+      log(`[Webhook] @lid resuelto desde payload alternativo (${altCandidate}) → ${rawAlt}`);
+    }
+  }
+
+  // Si sigue siendo @lid o un identificador numérico de 15 dígitos sin resolver, intentar resolver vía API
+  if (remoteJid.endsWith('@lid') || /^\d{14,16}$/.test(telefono)) {
+    const resolved = await resolveLid(remoteJid);
+    if (resolved) {
+      log(`[Webhook] @lid ${remoteJid} resuelto vía Evolution API → ${resolved}`);
+      telefono = resolved;
+      remoteJid = `${resolved}@s.whatsapp.net`;
+    }
+  }
+
   const replyTo = remoteJid;
 
   const messageId = key.id;

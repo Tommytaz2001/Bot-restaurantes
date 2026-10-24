@@ -8,4 +8,8 @@ FROM evoapicloud/evolution-api:v1.8.7
 # Este parche agrega @lid a la lista de excepciones del chequeo de existencia,
 # igual que @g.us (grupos) y @broadcast ya están exentos.
 RUN sed -i "s/!isWA.jid.includes('@broadcast')/!isWA.jid.includes('@broadcast') \&\& !isWA.jid.includes('@lid')/g" \
-    /evolution/dist/src/api/services/channels/whatsapp.baileys.service.js
+    /evolution/dist/src/api/services/channels/whatsapp.baileys.service.js && \
+    sed -i "s/const { user, server } = (0, WABinary_1.jidDecode)(jid);/const decoded = (0, WABinary_1.jidDecode)(jid || '') || {}; const user = decoded.user; const server = decoded.server; if (!user) return;/g" \
+    /evolution/node_modules/baileys/lib/Socket/messages-send.js && \
+    sed -i "s/const remoteJid = !isNodeFromMe || (0, WABinary_1.isJidGroup)(attrs.from) ? attrs.from : attrs.recipient;/const remoteJid = !isNodeFromMe || (0, WABinary_1.isJidGroup)(attrs.from) ? attrs.from : (attrs.recipient || attrs.from);/g" \
+    /evolution/node_modules/baileys/lib/Socket/messages-recv.js

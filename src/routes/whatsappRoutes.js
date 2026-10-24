@@ -153,6 +153,13 @@ router.post('/restart-instance', async (req, res) => {
   }
 });
 
+// GET /whatsapp/test-deploy-notification — Prueba o reenvío manual de la notificación de despliegue
+router.get('/test-deploy-notification', async (req, res) => {
+  const { notificarDespliegue } = require('../services/deployNotificationService');
+  const result = await notificarDespliegue({ force: true });
+  return res.json(result);
+});
+
 // GET /whatsapp/qr — página interactiva moderna con QR estable y contador
 router.get('/qr', (req, res) => {
   const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';

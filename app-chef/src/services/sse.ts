@@ -60,6 +60,16 @@ export function connectPedidosActivosStream(
       }
     };
 
+    es.addEventListener('server_restarted', (event: any) => {
+      try {
+        const payload = JSON.parse(event.data);
+        console.log('[SSE] 🚀 Servidor redesplegado / reiniciado:', payload);
+        webNotifications.notifySystem('🚀 Servidor Actualizado', payload.message || 'El servidor ha sido redesplegado y está listo.');
+      } catch (err) {
+        console.error('[SSE] Error procesando evento server_restarted:', err);
+      }
+    });
+
     es.onerror = (err) => {
       console.warn('[SSE] Conexión interrumpida, reintentando en 3s...', err);
       if (onStatusChange) onStatusChange(false);

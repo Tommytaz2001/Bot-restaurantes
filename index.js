@@ -56,7 +56,16 @@ if (require.main === module) {
 
   if (process.env.WHATSAPP_ENABLED === 'true') {
     const { setupEvolution } = require('./src/services/evolutionSetup');
-    setupEvolution();
+    setupEvolution()
+      .then(() => {
+        const { notificarDespliegue } = require('./src/services/deployNotificationService');
+        notificarDespliegue().catch((err) => {
+          console.error('[Deploy] Error en notificación de redespliegue:', err.message);
+        });
+      })
+      .catch((err) => {
+        console.error('[Evolution] Error en setup:', err.message);
+      });
 
     const { iniciarListenerNotificaciones } = require('./src/services/notificacionService');
     iniciarListenerNotificaciones();

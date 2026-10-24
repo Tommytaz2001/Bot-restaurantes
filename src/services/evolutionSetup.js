@@ -112,7 +112,7 @@ async function setWebhook(instance, webhookUrl) {
       url: webhookUrl,
       enabled: true,
       webhook_by_events: false,
-      events: ['MESSAGES_UPSERT'],
+      events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
     }),
   }, instance);
   return res.ok;

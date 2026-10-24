@@ -12,6 +12,7 @@ services:
     environment:
       - DB_HOST=postgres
       - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}
+      - NOTIFICAR_DESPLIEGUE_TELEFONO=${NOTIFICAR_DESPLIEGUE_TELEFONO:-}
     volumes:
       # Datos internos del backend (cache, archivos temporales)
       - backend_data:/app/data
@@ -75,6 +76,7 @@ services:
       - DATABASE_ENABLED=false
       - CACHE_REDIS_ENABLED=false
       - DEL_INSTANCE=false
+      - WPP_LID_MODE=false
     volumes:
       # Sesiones y claves de instancias de WhatsApp (QR, autenticación Baileys)
       - evolution_instances:/evolution/instances
