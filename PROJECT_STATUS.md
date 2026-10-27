@@ -2,7 +2,7 @@
 
 **Última actualización:** 27 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `6a9f0d4 docs: update PROJECT_STATUS.md with commit hash` 
+**Último commit:** `71331f2 feat: push notifications, high-volume kitchen chime, order change ETA updates, phone deduplication, and Jinotega location fixes` 
 
 ---
 
