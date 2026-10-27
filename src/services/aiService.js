@@ -30,7 +30,7 @@ const GEMINI_TOOLS = [
           type: 'OBJECT',
           properties: {
             cliente: { type: 'STRING', description: 'Nombre completo del cliente' },
-            telefono: { type: 'STRING', description: 'Número de teléfono del cliente (solo para delivery)' },
+            telefono: { type: 'STRING', description: 'Número de teléfono del cliente (solo para delivery). Debe ser un único número limpio (8 dígitos para Nicaragua, ej: "58544518"). NUNCA dupliques ni concatenes números.' },
             tipo_entrega: { type: 'STRING', enum: ['delivery', 'retiro'], description: 'delivery o retiro' },
             direccion: { type: 'STRING', description: 'Dirección de entrega. Para retiro usa "Retiro en local"' },
             costo_envio: { type: 'NUMBER', description: '40 para delivery, 0 para retiro' },
@@ -43,7 +43,7 @@ const GEMINI_TOOLS = [
                 type: 'OBJECT',
                 properties: {
                   nombre: { type: 'STRING' },
-                  cantidad: { type: 'NUMBER' },
+                  cantidad: { type: 'NUMBER', description: 'Cantidad pedida. Por defecto SIEMPRE es 1 si el cliente no especificó un número mayor. NUNCA asumas 2.' },
                   precio_unitario: { type: 'NUMBER' },
                   opcion: { type: 'STRING', description: 'Variante o nota (ej: "sin cebolla", "BBQ")' },
                 },
@@ -71,7 +71,7 @@ const GEMINI_TOOLS = [
                 type: 'OBJECT',
                 properties: {
                   nombre: { type: 'STRING' },
-                  cantidad: { type: 'NUMBER' },
+                  cantidad: { type: 'NUMBER', description: 'Cantidad pedida (por defecto 1).' },
                   precio_unitario: { type: 'NUMBER' },
                   opcion: { type: 'STRING' },
                 },

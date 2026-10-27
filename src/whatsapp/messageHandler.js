@@ -1,7 +1,7 @@
 const { processMessage } = require('../agent/agentService');
 const { verificarSpam } = require('./spamGuard');
 const { log } = require('../utils/logger');
-const { estaActivo } = require('../services/botStateService');
+const { estaActivo, estaIgnorandoHorario } = require('../services/botStateService');
 const { getRestauranteConfig } = require('../services/menuService');
 
 const DEBOUNCE_MS = 2_000; // 2 segundos — suficiente para acumular mensajes enviados en ráfaga
@@ -65,6 +65,12 @@ function formatHora12(hhmm) {
  */
 async function verificarHorario(restauranteId) {
   try {
+    // Si el modo test está activo (por botón en la app o por env), se ignora el horario (24/7)
+    if (estaIgnorandoHorario()) {
+      log('[Horario] Modo Test (Ignorar Horario) ACTIVO → Atención 24/7 forzada');
+      return { abierto: true };
+    }
+
     const config = await getRestauranteConfig(restauranteId);
     const horario = config.horario;
     if (!horario) return { abierto: true };
@@ -87,6 +93,13 @@ async function verificarHorario(restauranteId) {
       const diaConfig = horario[diaLocal];
       if (!diaConfig.abre) return { abierto: false, razon: 'dia_cerrado' };
       if (!diaConfig.apertura || !diaConfig.cierre) return { abierto: true };
+
+      // Soporte para 24 horas continuas (ej: 00:00 a 00:00 o 00:00 a 23:59)
+      if (diaConfig.apertura === diaConfig.cierre || (diaConfig.apertura === '00:00' && diaConfig.cierre === '23:59')) {
+        log(`[Horario] 24 horas continuas configuradas para ${diaLocal} → ABIERTO`);
+        return { abierto: true };
+      }
+
       const aperturaMin = parsearMinutos(diaConfig.apertura);
       const cierreMin   = parsearMinutos(diaConfig.cierre);
       // Horario nocturno (cruza medianoche): ej 23:00-08:00 → aperturaMin > cierreMin
@@ -100,6 +113,9 @@ async function verificarHorario(restauranteId) {
 
     // Formato antiguo: flat apertura/cierre
     if (!horario.apertura || !horario.cierre) return { abierto: true };
+    if (horario.apertura === horario.cierre || (horario.apertura === '00:00' && horario.cierre === '23:59')) {
+      return { abierto: true };
+    }
     const aperturaFlat = parsearMinutos(horario.apertura);
     const cierreFlat   = parsearMinutos(horario.cierre);
     const dentro = cierreFlat < aperturaFlat
@@ -115,6 +131,11 @@ async function verificarHorario(restauranteId) {
 // Cooldown para mensajes fuera de horario — evita spamear al mismo número
 const _fueraHorarioCooldown = new Map(); // telefono -> timestamp
 const FUERA_HORARIO_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutos
+
+function limpiarCooldownHorario() {
+  _fueraHorarioCooldown.clear();
+  log('[Horario] Cooldown de fuera de horario reiniciado.');
+}
 
 async function enviarMensajeFueraDeHorario(telefono, estadoHorario, sendReply) {
   const ahora = Date.now();
@@ -239,4 +260,4 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   }, DEBOUNCE_MS));
 }
 
-module.exports = { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario };
+module.exports = { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario, limpiarCooldownHorario };

@@ -166,7 +166,8 @@ PostgreSQL 16 sustituye la persistencia previa en Firestore, eliminando costos p
 2. La app envía `PATCH /pedidos-admin/:id/confirmar` con `{ tiempoEstimadoMin: 30 }`.
 3. `pedidosAdminService.js` actualiza el estado en PostgreSQL y dispara `orderEvents.emit('order:updated')`.
 4. `notificacionService.js` captura el evento y envía automáticamente un mensaje de WhatsApp al cliente con el tiempo de espera estimado.
-5. Los mismos pasos se repiten al cambiar a "En camino / Listo para retiro" y "Entregado".
+5. Si el cliente solicita un cambio o anexo en un pedido ya confirmado, el chef puede aprobar la modificación en la app KDS o móvil asignando un nuevo tiempo estimado (`tiempoEstimadoMin`). El backend actualiza `tiempo_estimado_min` y notifica inmediatamente al cliente por WhatsApp con el nuevo tiempo de espera y el desglose de productos actualizado.
+6. Al pasar a "En camino / Listo para retiro", se despacha la notificación final de envío. Al marcar "Entregado", la orden se archiva silenciosamente sin spam al cliente.
 
 ---
 

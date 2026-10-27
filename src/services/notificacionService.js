@@ -48,6 +48,9 @@ function iniciarListenerNotificaciones() {
             .join('\n');
           mensajeCambio += `\n\n📋 *Resumen actualizado:*\n${lineas}\n\n💰 *Total: C$${pedido.total}*`;
         }
+        if (pedido.tiempo_estimado_min) {
+          mensajeCambio += `\n\n🕐 *Nuevo tiempo estimado:* ${pedido.tiempo_estimado_min} minutos.`;
+        }
         pendientes.push({ clave: 'cambio_aprobado', mensaje: mensajeCambio });
       }
 

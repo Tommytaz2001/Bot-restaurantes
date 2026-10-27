@@ -108,7 +108,8 @@ router.patch('/:id/rechazar', requireAuth, async (req, res) => {
 // Aprobar cambio solicitado
 router.patch('/:id/cambio/aprobar', requireAuth, async (req, res) => {
   try {
-    await aprobarCambio(req.params.id);
+    const tiempoEstimadoMin = req.body?.tiempo_estimado_min ?? req.body?.tiempoEstimadoMin;
+    await aprobarCambio(req.params.id, tiempoEstimadoMin);
     res.json({ ok: true });
   } catch (err) {
     console.error('[PATCH /pedidos-admin/:id/cambio/aprobar]', err.message);

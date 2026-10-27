@@ -121,16 +121,22 @@ async function initDb() {
     console.log('[Database] Tablas del esquema verificadas exitosamente.');
 
     // 1. Verificar o crear Restaurante default
+    await query(`ALTER TABLE restaurantes ADD COLUMN IF NOT EXISTS departamento VARCHAR(64) DEFAULT 'Jinotega'`);
+    await query(`ALTER TABLE restaurantes ADD COLUMN IF NOT EXISTS direccion TEXT DEFAULT 'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento'`);
+    await query(`ALTER TABLE restaurantes ADD COLUMN IF NOT EXISTS push_tokens JSONB DEFAULT '[]'`);
+
     const restRes = await query('SELECT id FROM restaurantes WHERE id = $1', [RESTAURANTE_ID]);
     if (restRes.rows.length === 0) {
       await query(
-        `INSERT INTO restaurantes (id, nombre, moneda, pais, telefono, horario, cuentas_bancarias)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO restaurantes (id, nombre, moneda, pais, departamento, direccion, telefono, horario, cuentas_bancarias)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           RESTAURANTE_ID,
           'Urbano',
           'C$',
           'Nicaragua',
+          'Jinotega',
+          'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento',
           '+50588888888',
           JSON.stringify(DEFAULT_HORARIO),
           DEFAULT_CUENTAS,
@@ -140,8 +146,10 @@ async function initDb() {
     } else {
       await query(
         `UPDATE restaurantes
-         SET cuentas_bancarias = $1
-         WHERE id = $2 AND (cuentas_bancarias LIKE '%365-123456%' OR cuentas_bancarias LIKE '%Banpro%' OR cuentas_bancarias LIKE '%Láfise%')`,
+         SET cuentas_bancarias = $1,
+             departamento = COALESCE(departamento, 'Jinotega'),
+             direccion = COALESCE(direccion, 'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento')
+         WHERE id = $2`,
         [DEFAULT_CUENTAS, RESTAURANTE_ID]
       );
     }

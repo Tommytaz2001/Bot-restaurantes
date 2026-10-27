@@ -46,7 +46,26 @@ async function setProteinasBloqueadas(bloqueadas) {
 }
 
 async function registerPushToken(token) {
-  return true;
+  if (!token || typeof token !== 'string') return false;
+  try {
+    const res = await query('SELECT push_tokens FROM restaurantes WHERE id = $1', [RESTAURANTE_ID]);
+    let tokens = [];
+    if (res.rows.length > 0 && Array.isArray(res.rows[0].push_tokens)) {
+      tokens = res.rows[0].push_tokens;
+    }
+    if (!tokens.includes(token)) {
+      tokens.push(token);
+      await query(
+        'UPDATE restaurantes SET push_tokens = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(tokens), RESTAURANTE_ID]
+      );
+      console.log(`[restauranteService] Push token registrado para ${RESTAURANTE_ID}:`, token.substring(0, 30) + '...');
+    }
+    return true;
+  } catch (err) {
+    console.warn('[restauranteService] Error registrando push token:', err.message);
+    return false;
+  }
 }
 
 module.exports = {

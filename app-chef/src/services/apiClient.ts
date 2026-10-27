@@ -8,7 +8,7 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
   try {
     [backendUrl, token] = await Promise.all([
       getBackendUrl(),
-      auth.currentUser?.getIdToken(),
+      getAuthToken(),
     ]) as [string, string | undefined];
   } catch (err) {
     console.error(`[authFetch] Error obteniendo URL/token para ${path}:`, err);
@@ -39,5 +39,9 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
 }
 
 export async function getAuthToken(): Promise<string | undefined> {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const jwt = window.localStorage.getItem('token_urbano_chef');
+    if (jwt) return jwt;
+  }
   return auth.currentUser?.getIdToken();
 }

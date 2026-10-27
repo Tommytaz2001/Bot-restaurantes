@@ -45,7 +45,7 @@ async function rechazarPedido(id) {
   return actualizarEstado(id, { estado: 'cancelado' });
 }
 
-async function aprobarCambio(id) {
+async function aprobarCambio(id, tiempoEstimadoMin) {
   const snap = await query('SELECT * FROM pedidos WHERE id = $1', [id]);
   if (snap.rows.length === 0) throw new Error(`Pedido no encontrado: ${id}`);
 
@@ -55,6 +55,14 @@ async function aprobarCambio(id) {
 
   cambio.estado = 'aprobado';
   cambio.respondidoAt = new Date().toISOString();
+
+  const etaVal = (tiempoEstimadoMin !== undefined && tiempoEstimadoMin !== null && !isNaN(parseInt(tiempoEstimadoMin, 10)))
+    ? parseInt(tiempoEstimadoMin, 10)
+    : null;
+
+  if (etaVal !== null) {
+    cambio.nuevo_tiempo_estimado = etaVal;
+  }
 
   let totalNuevo = parseFloat(row.total);
   if (cambio.tipo === 'agregar_productos' && cambio.productos_nuevos?.length > 0) {
@@ -73,19 +81,37 @@ async function aprobarCambio(id) {
 
   if (cambio.tipo === 'cambiar_entrega' && cambio.datos_entrega) {
     const { tipo_entrega, direccion, costo_envio, total_nuevo } = cambio.datos_entrega;
-    await query(
-      `UPDATE pedidos 
-       SET tipo_entrega = $1, direccion = $2, costo_envio = $3, total = $4, cambio_solicitado = $5, updated_at = NOW()
-       WHERE id = $6`,
-      [tipo_entrega, direccion || null, costo_envio, total_nuevo, JSON.stringify(cambio), id]
-    );
+    if (etaVal !== null) {
+      await query(
+        `UPDATE pedidos 
+         SET tipo_entrega = $1, direccion = $2, costo_envio = $3, total = $4, cambio_solicitado = $5, tiempo_estimado_min = $6, updated_at = NOW()
+         WHERE id = $7`,
+        [tipo_entrega, direccion || null, costo_envio, total_nuevo, JSON.stringify(cambio), etaVal, id]
+      );
+    } else {
+      await query(
+        `UPDATE pedidos 
+         SET tipo_entrega = $1, direccion = $2, costo_envio = $3, total = $4, cambio_solicitado = $5, updated_at = NOW()
+         WHERE id = $6`,
+        [tipo_entrega, direccion || null, costo_envio, total_nuevo, JSON.stringify(cambio), id]
+      );
+    }
   } else {
-    await query(
-      `UPDATE pedidos 
-       SET total = $1, cambio_solicitado = $2, updated_at = NOW()
-       WHERE id = $3`,
-      [totalNuevo, JSON.stringify(cambio), id]
-    );
+    if (etaVal !== null) {
+      await query(
+        `UPDATE pedidos 
+         SET total = $1, cambio_solicitado = $2, tiempo_estimado_min = $3, updated_at = NOW()
+         WHERE id = $4`,
+        [totalNuevo, JSON.stringify(cambio), etaVal, id]
+      );
+    } else {
+      await query(
+        `UPDATE pedidos 
+         SET total = $1, cambio_solicitado = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [totalNuevo, JSON.stringify(cambio), id]
+      );
+    }
   }
 
   const updated = await getOrder(id);

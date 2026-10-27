@@ -145,7 +145,7 @@ export async function login(email: string, password: string): Promise<{ token: s
 }
 
 // ── Bot Status & Toggle ──────────────────────────────────────────────────────
-export async function fetchBotStatus(): Promise<{ botActivo: boolean }> {
+export async function fetchBotStatus(): Promise<{ botActivo: boolean; ignorarHorario?: boolean }> {
   const res = await authFetch('/whatsapp/status');
   if (!res.ok) throw new Error('Error obteniendo estado del bot');
   return res.json();
@@ -156,6 +156,17 @@ export async function toggleBot(currentActive: boolean): Promise<boolean> {
   const res = await authFetch(endpoint, { method: 'POST' });
   const data = await res.json();
   return data.botActivo;
+}
+
+export async function toggleIgnorarHorario(activo?: boolean): Promise<boolean> {
+  const res = await authFetch('/whatsapp/ignorar-horario', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activo }),
+  });
+  if (!res.ok) throw new Error('Error cambiando modo test de horario');
+  const data = await res.json();
+  return !!data.ignorarHorario;
 }
 
 // ── Acciones de Pedidos ──────────────────────────────────────────────────────
@@ -188,9 +199,11 @@ export async function rechazarPedido(id: string): Promise<void> {
   if (!res.ok) throw new Error('Error rechazando pedido');
 }
 
-export async function aprobarCambio(id: string): Promise<void> {
+export async function aprobarCambio(id: string, tiempoEstimadoMin?: number): Promise<void> {
   const res = await authFetch(`/pedidos-admin/${id}/cambio/aprobar`, {
     method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tiempoEstimadoMin }),
   });
   if (!res.ok) throw new Error('Error aprobando cambio');
 }

@@ -1,8 +1,8 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 23 de Octubre de 2026  
+**Última actualización:** 27 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `25560eb feat: add deploy notifications, resolve WhatsApp LID JIDs, and patch Baileys retry handshake` 
+**Último commit:** `6a9f0d4 docs: update PROJECT_STATUS.md with commit hash` 
 
 ---
 
@@ -26,6 +26,13 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 8. **Pipeline Automatizado de Generación de APK Android:** Scripts `scripts/build-apk.ps1`, `scripts/build-apk.bat` y comando `npm run build:apk`. Binario `UrbanoChef.apk` compilado y actualizado exitosamente con la versión más reciente del KDS.
 9. **Google Gemini Flash / Lite** para el procesamiento conversacional y function calling con fallback defensivo a OpenAI.
 10. **App de Cocina KDS en React 18 + Vite + TailwindCSS + Capacitor** con SSE y alertas sonoras.
+11. **Saneamiento y Deduplicación Defensiva de Teléfono para Delivery (`src/utils/phoneUtils.js`, `tests/phoneUtils.test.js`, `src/agent/agentService.js`, `src/orders/orderService.js`, `src/orders/orderValidator.js`, `src/services/aiService.js`, `prompts/agent.txt`, `app-chef/src/utils/phoneUtils.ts`, `app-chef/src/components/OrderCard.tsx`, `HistorialPage.tsx`, `app/pedido/[id].tsx`):** Detección, saneamiento y deduplicación en múltiples capas para evitar números telefónicos duplicados o concatenados (ej: `58544518558544518` o `5854451858544518`). Incluye reglas en prompt e IA, normalización en backend y app KDS, y validación estricta de longitud en órdenes delivery.
+12. **Configuración Oficial de Ubicación y Dirección en Jinotega (`prompts/agent.txt`, `src/agent/agentService.js`, `src/services/menuService.js`, `src/db/schema.sql`, `src/db/initDb.js`):** Corrección del problema donde el bot inventaba direcciones o respondía Managua. Se configuró la dirección oficial y exclusiva en Jinotega: `De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento`. Se prohibió expresamente mencionar Managua, inventar puntos de referencia y se eliminó la respuesta incorrecta 'no se requiere dirección de entrega' para retiros en local, asegurando que al preguntar por la ubicación o elegir retiro el cliente reciba la dirección exacta de la sucursal.
+13. **Regla de Cantidad por Defecto (=1) y Retención de Selección (`prompts/agent.txt`, `src/services/aiService.js`):** Corrección del problema donde el bot asumía '2 hamburguesas' cuando el cliente pedía 'una hamburguesa sencilla' y luego elegía 'clásica'. Se estableció la regla estricta de que la cantidad por defecto es SIEMPRE 1 a menos que se indique explícitamente un número mayor, se retiene la cantidad 'una/un' del mensaje previo y se diversificaron los ejemplos del prompt para erradicar el sesgo hacia el número 2.
+14. **Actualización de Tiempo Estimado (ETA) al Aprobar Cambios en Pedido (`src/services/pedidosAdminService.js`, `src/routes/pedidosAdminRoutes.js`, `src/services/notificacionService.js`, `src/orders/orderService.js`, `app-chef/src/components/ChangeApprovalModal.tsx`, `app-chef/src/pages/PedidosPage.tsx`, `app-chef/src/App.tsx`, `app-chef/src/services/api.ts`, `app-chef/src/services/pedidosService.ts`, `app-chef/app/pedido/[id].tsx`, `tests/changeOrderEta.test.js`):** Al solicitar el cliente una modificación o anexo de productos sobre un pedido ya confirmado con tiempo de espera, el chef/administrador puede elegir un nuevo tiempo de espera (ETA) en el modal de aprobación de cambios de la app web y app móvil. El backend actualiza `tiempo_estimado_min`, restablece las banderas de notificación para admitir múltiples cambios sucesivos y despacha automáticamente por WhatsApp el nuevo tiempo de entrega al cliente.
+15. **Modo Test 24/7 / Ignorar Restricciones de Horario (`src/services/botStateService.js`, `src/whatsapp/messageHandler.js`, `src/routes/whatsappRoutes.js`, `src/routes/restauranteRoutes.js`):** Interruptor en backend para ignorar el horario comercial durante pruebas puntuales de desarrollo (`/whatsapp/ignorar-horario`). Se mantiene desactivado por defecto (`_ignorarHorario = false`) para garantizar cumplimiento estricto del horario de atención en producción.
+16. **Notificaciones Push para Nuevos Pedidos y Sincronización Expo (`src/services/pushService.js`, `src/services/restauranteService.js`, `src/orders/orderService.js`, `src/db/schema.sql`, `src/db/initDb.js`, `app-chef/src/services/pushNotificationService.ts`, `app-chef/src/services/webNotificationService.ts`, `app-chef/src/services/sse.ts`, `tests/pushNotification.test.js`):** Implementación integral de notificaciones push en segundo plano para celulares y tablets (Expo Push API) y en navegador/PWA (Web Notifications API con `requireInteraction: true`). Registro persistente de tokens en PostgreSQL (`restaurantes.push_tokens`), purga automática de tokens obsoletos (`DeviceNotRegistered`), y disparo reactivo al crearse cada pedido en `orderService.js`.
+17. **Alerta Sonora de Cocina de Alto Volumen (`app-chef/src/services/audio.ts`, `app-chef/src/App.tsx`):** Rediseño acústico de la campana de pedidos utilizando Web Audio API con volumen al 95% (master gain 0.95), osciladores combinados (onda senoidal + armónicos metálicos en onda triangular a doble frecuencia), ráfaga doble de timbres (`Sol5` -> `Do6` -> `Mi6` resonante repetido a los 0.7s) y vibración háptica reforzada (`navigator.vibrate([400, 150, 400, 150, 600])`). Se retiraron los botones de prueba de la barra de navegación y horarios para dejar la interfaz lista para producción.
 
 ---
 
@@ -81,12 +88,14 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 ## 6. Pruebas Ejecutadas y Resultados Reales
 
 | Prueba / Archivo | Tipo | Resultado | Observaciones |
-| :--- | :--- | :--- | :--- |
-| `tests/orderValidator.test.js` | Unitaria | **PASS** (14/14) | Valida exhaustivamente esquemas, métodos de pago, totales y tipos de entrega. |
+| `tests/pushNotification.test.js` | Unitaria | **PASS** (3/3) | Valida formateo de push, despacho a Expo API, saneamiento de tokens obsoletos (DeviceNotRegistered) y tolerancia a fallos. |
+| `tests/changeOrderEta.test.js` | Unitaria | **PASS** (2/2) | Valida envío de nuevo tiempo estimado al aprobar cambio y formato de notificación sin ETA. |
+| `tests/phoneUtils.test.js` | Unitaria | **PASS** (12/12) | Valida extracción de dígitos, desduplicación de mitades y asimétrica (58544518558544518), código 505 y fallbacks. |
+| `tests/orderValidator.test.js` | Unitaria | **PASS** (16/16) | Valida esquemas, métodos de pago, totales, tipos de entrega y longitud estricta de teléfono para delivery. |
 | `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (5/5) | Valida resolución y caché bidireccional de @lid a número telefónico y fallbacks a Evolution API. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
-| `Compilación Vite app-chef` | Build / Frontend | **PASS** (1947 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
+| `Compilación Vite app-chef` | Build / Frontend | **PASS** (1948 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite, cap sync y gradle assembleDebug exitoso (14s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/. |
 | `Lifecycle Evolution API (Docker)` | Integración | **PASS** | Valida flujo completo: creación con token e integración (HTTP 201), fetchInstances, connect (QR base64), connectionState y webhook set. |
 | `tests/agentService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |

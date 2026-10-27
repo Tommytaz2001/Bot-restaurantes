@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, Search, Calendar, CheckCircle2, XCircle, Bike, Store, CreditCard, Banknote, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { fetchHistorial, Pedido } from '../services/api';
+import { formatDeliveryPhone } from '../utils/phoneUtils';
 
 const ITEMS_PER_PAGE = 9;
 
@@ -178,7 +179,7 @@ export const HistorialPage: React.FC = () => {
                           const lineas = [
                             '🛵 *Pedido para delivery*',
                             `👤 *Cliente:* ${p.cliente || 'Cliente'}`,
-                            `📞 *Teléfono:* ${p.telefono || 'No especificado'}`,
+                            `📞 *Teléfono:* ${formatDeliveryPhone(p.telefono) || 'No especificado'}`,
                             `📍 *Dirección:* ${p.direccion || 'No especificada'}`,
                             '─────────────────────',
                             ...p.productos.map(item => `• ${item.cantidad}× ${item.nombre}${item.opcion ? ` (${item.opcion})` : ''}`),

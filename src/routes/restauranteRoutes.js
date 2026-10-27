@@ -25,11 +25,29 @@ router.put('/horario', async (req, res) => {
     const { horario } = req.body;
     if (!horario) return res.status(400).json({ error: 'Falta el campo horario' });
     await saveHorario(horario);
+    const { limpiarCooldownHorario } = require('../whatsapp/messageHandler');
+    limpiarCooldownHorario();
     res.json({ ok: true });
   } catch (err) {
     console.error('[PUT /restaurante/horario]', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Modo Test Horario 24/7
+router.get('/ignorar-horario', (req, res) => {
+  const { estaIgnorandoHorario } = require('../services/botStateService');
+  res.json({ ignorarHorario: estaIgnorandoHorario() });
+});
+
+router.post('/ignorar-horario', (req, res) => {
+  const { estaIgnorandoHorario, setIgnorarHorario } = require('../services/botStateService');
+  const { limpiarCooldownHorario } = require('../whatsapp/messageHandler');
+  const { activo } = req.body;
+  const nuevo = activo !== undefined ? !!activo : !estaIgnorandoHorario();
+  setIgnorarHorario(nuevo);
+  limpiarCooldownHorario();
+  res.json({ ok: true, ignorarHorario: nuevo });
 });
 
 // Proteinas bloqueadas

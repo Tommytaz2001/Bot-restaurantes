@@ -21,6 +21,8 @@ async function getRestauranteConfig(restauranteId = 'urbano') {
     nombre: row.nombre,
     moneda: row.moneda,
     pais: row.pais,
+    departamento: row.departamento || 'Jinotega',
+    direccion: row.direccion || 'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento',
     telefono: row.telefono,
     activo: row.activo,
     horario: row.horario,

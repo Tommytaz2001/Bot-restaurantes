@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Save, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Clock, Save, CheckCircle2 } from 'lucide-react';
 import { fetchHorario, saveHorario } from '../services/api';
 
 const DIAS = [

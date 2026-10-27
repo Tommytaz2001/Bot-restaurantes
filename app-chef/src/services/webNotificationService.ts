@@ -47,7 +47,11 @@ export const webNotifications = {
           icon: '/favicon.ico',
           badge: '/favicon.ico',
           tag: `pedido-${pedido.id}`,
-        });
+          requireInteraction: true,
+          renotify: true,
+          vibrate: [400, 150, 400, 150, 600] as any,
+          silent: false,
+        } as any);
 
         notif.onclick = () => {
           if (typeof window !== 'undefined') {

@@ -12,7 +12,7 @@ import {
   Wifi,
   WifiOff,
   Bell,
-  BellRing
+  BellRing,
 } from 'lucide-react';
 import { Usuario } from '../services/api';
 import { audioAlert } from '../services/audio';
@@ -120,6 +120,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Bot className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{botActivo ? 'Bot ON' : 'Bot OFF'}</span>
             </button>
+
             <button
               onClick={toggleSound}
               className="p-1.5 sm:p-2 rounded-lg bg-slate-800/60 border border-slate-700/60 text-slate-300"
@@ -234,6 +235,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Bot className="w-4 h-4" />
             <span>{botActivo ? 'Bot Activo' : 'Bot Pausado'}</span>
           </button>
+
+
 
           {/* Sound Toggle */}
           <button

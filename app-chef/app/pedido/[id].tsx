@@ -12,6 +12,7 @@ import {
   type Pedido,
 } from '../../src/services/pedidosService';
 import { EstadoBadge } from '../../src/components/EstadoBadge';
+import { formatDeliveryPhone } from '../../src/utils/phoneUtils';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 
@@ -69,7 +70,7 @@ export default function DetallePedidoScreen() {
     const lineas: string[] = [
       '🛵 Pedido para delivery',
       `👤 ${pedido.cliente}`,
-      `📞 ${pedido.telefono}`,
+      `📞 ${formatDeliveryPhone(pedido.telefono) || 'No especificado'}`,
       `📍 ${pedido.direccion}`,
       '─────────────────────',
       ...pedido.productos.map((p) =>
@@ -162,7 +163,7 @@ export default function DetallePedidoScreen() {
           <Text style={styles.sectionLabel}>CLIENTE</Text>
           <Text style={styles.clienteName}>{pedido.cliente}</Text>
           <View style={styles.sectionDivider} />
-          <InfoRow icon="◎" label="Teléfono" value={pedido.telefono} />
+          <InfoRow icon="◎" label="Teléfono" value={formatDeliveryPhone(pedido.telefono)} />
           <InfoRow icon="⊙" label="Dirección" value={pedido.direccion} />
           {pedido.tipo_entrega === 'delivery' && (
             <>
@@ -279,9 +280,24 @@ export default function DetallePedidoScreen() {
               <ActionBtn
                 label="Aprobar cambio"
                 color="#22C55E"
-                onPress={() => ejecutar(async () => {
-                  await aprobarCambio(pedido.id);
-                })}
+                onPress={() => {
+                  Alert.alert(
+                    '⏱ Tiempo estimado de entrega',
+                    'Selecciona el nuevo tiempo aproximado para notificar al cliente con el cambio aprobado:',
+                    [
+                      { text: '15 min', onPress: () => ejecutar(() => aprobarCambio(pedido.id, 15)) },
+                      { text: '20 min', onPress: () => ejecutar(() => aprobarCambio(pedido.id, 20)) },
+                      { text: '30 min', onPress: () => ejecutar(() => aprobarCambio(pedido.id, 30)) },
+                      { text: '45 min', onPress: () => ejecutar(() => aprobarCambio(pedido.id, 45)) },
+                      { text: '60 min', onPress: () => ejecutar(() => aprobarCambio(pedido.id, 60)) },
+                      {
+                        text: pedido.tiempo_estimado_min ? `Mantener (${pedido.tiempo_estimado_min} min)` : 'Sin tiempo',
+                        onPress: () => ejecutar(() => aprobarCambio(pedido.id)),
+                      },
+                      { text: 'Cancelar', style: 'cancel' },
+                    ],
+                  );
+                }}
                 loading={accionando}
               />
               <ActionBtn

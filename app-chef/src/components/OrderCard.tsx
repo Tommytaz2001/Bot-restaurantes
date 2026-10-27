@@ -15,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { Pedido } from '../services/api';
+import { formatDeliveryPhone } from '../utils/phoneUtils';
 
 interface OrderCardProps {
   pedido: Pedido;
@@ -62,10 +63,12 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     const subtotal = pedido.total - costoEnvio;
     const moneda = 'C$';
 
+    const telefonoLimpio = formatDeliveryPhone(pedido.telefono);
+
     const lineas = [
       '🛵 *Pedido para delivery*',
       `👤 *Cliente:* ${pedido.cliente || 'Cliente'}`,
-      `📞 *Teléfono:* ${pedido.telefono || 'No especificado'}`,
+      `📞 *Teléfono:* ${telefonoLimpio || 'No especificado'}`,
       `📍 *Dirección:* ${pedido.direccion || 'No especificada'}`,
       '─────────────────────',
       ...pedido.productos.map(
@@ -151,7 +154,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           {pedido.telefono && (
             <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
               <Phone className="w-3 h-3 text-slate-500" />
-              <span>{pedido.telefono}</span>
+              <span>{formatDeliveryPhone(pedido.telefono)}</span>
             </div>
           )}
 

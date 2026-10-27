@@ -14,7 +14,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform, AppState, AppStateStatus } from 'react-native';
-import { authFetch } from './apiClient';
+import { authFetch, getAuthToken } from './apiClient';
 import { auth } from './firebaseConfig';
 
 let _lastRegisteredToken: string | null = null;
@@ -63,7 +63,8 @@ export async function registerPushToken(): Promise<void> {
     return;
   }
 
-  if (!auth.currentUser) {
+  const authToken = await getAuthToken();
+  if (!authToken) {
     return;
   }
 

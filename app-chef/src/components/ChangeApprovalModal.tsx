@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertCircle, Check, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertCircle, Check, X, Clock } from 'lucide-react';
 import { CambioSolicitado } from '../services/api';
 
 interface ChangeApprovalModalProps {
@@ -7,7 +7,8 @@ interface ChangeApprovalModalProps {
   onClose: () => void;
   cambio: CambioSolicitado | null | undefined;
   cliente: string;
-  onApprove: () => void;
+  tiempoEstimadoActual?: number | null;
+  onApprove: (nuevoTiempoEstimado?: number) => void;
   onReject: () => void;
 }
 
@@ -16,14 +17,24 @@ export const ChangeApprovalModal: React.FC<ChangeApprovalModalProps> = ({
   onClose,
   cambio,
   cliente,
+  tiempoEstimadoActual,
   onApprove,
   onReject,
 }) => {
+  const quickOptions = [15, 20, 25, 30, 45, 60];
+  const [selectedMins, setSelectedMins] = useState<number | undefined>(tiempoEstimadoActual || 25);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedMins(tiempoEstimadoActual || 25);
+    }
+  }, [isOpen, tiempoEstimadoActual]);
+
   if (!isOpen || !cambio) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-      <div className="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl border border-amber-500/40 bg-slate-900 text-slate-100">
+      <div className="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl border border-amber-500/40 bg-slate-900 text-slate-100 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2 text-amber-400">
             <AlertCircle className="w-5 h-5" />
@@ -80,6 +91,61 @@ export const ChangeApprovalModal: React.FC<ChangeApprovalModalProps> = ({
               )}
             </div>
           )}
+
+          {/* Selector de nuevo tiempo estimado */}
+          <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-orange-400 text-xs font-semibold uppercase tracking-wider">
+                <Clock className="w-4 h-4" />
+                <span>Nuevo Tiempo Estimado (ETA)</span>
+              </div>
+              {tiempoEstimadoActual ? (
+                <span className="text-xs text-slate-400">
+                  Actual: <strong className="text-slate-300">{tiempoEstimadoActual} min</strong>
+                </span>
+              ) : null}
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Se enviará este nuevo tiempo de espera al cliente por WhatsApp:
+            </p>
+
+            <div className="grid grid-cols-3 gap-2">
+              {quickOptions.map((mins) => (
+                <button
+                  type="button"
+                  key={mins}
+                  onClick={() => setSelectedMins(mins)}
+                  className={`py-2 px-1 rounded-lg text-xs font-bold border transition-all ${
+                    selectedMins === mins
+                      ? 'bg-orange-500 border-orange-400 text-white shadow-md shadow-orange-500/30'
+                      : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {mins} min
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectedMins(undefined)}
+                className={`text-xs px-2 py-1 rounded transition-colors ${
+                  selectedMins === undefined
+                    ? 'bg-slate-700 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Sin tiempo
+              </button>
+              {selectedMins !== undefined && (
+                <span className="text-xs text-orange-300 font-semibold">
+                  Nuevo ETA: {selectedMins} min
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 pt-3 border-t border-slate-800">
@@ -91,11 +157,11 @@ export const ChangeApprovalModal: React.FC<ChangeApprovalModalProps> = ({
             Rechazar
           </button>
           <button
-            onClick={onApprove}
+            onClick={() => onApprove(selectedMins)}
             className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-1.5"
           >
             <Check className="w-4 h-4" />
-            Aprobar Cambio
+            Aprobar {selectedMins ? `(${selectedMins}m)` : ''}
           </button>
         </div>
       </div>

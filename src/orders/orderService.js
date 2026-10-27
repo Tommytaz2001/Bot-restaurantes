@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const { query, pool } = require('../db/connection');
 const { validateOrder } = require('./orderValidator');
 const { orderEvents } = require('../services/orderEvents');
+const { cleanPhoneNumber } = require('../utils/phoneUtils');
 
 const COSTO_ENVIO = 40;
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
@@ -103,6 +104,10 @@ async function saveOrder(orderData) {
   const existing = await findExistingOrder(orderData.sessionId);
   if (existing) return existing;
 
+  if (orderData.telefono) {
+    orderData.telefono = cleanPhoneNumber(orderData.telefono, orderData.sessionId);
+  }
+
   validateOrder(orderData);
 
   const costoEnvio = orderData.tipo_entrega === 'delivery' ? COSTO_ENVIO : 0;
@@ -159,6 +164,14 @@ async function saveOrder(orderData) {
     // Emite evento en tiempo real para todos los clientes SSE (app del chef)
     orderEvents.emit('order:created', { restauranteId, pedido: nuevoPedido });
     console.log(`[orderService] Pedido guardado en PostgreSQL id=${id} total=${total} estado=${estado}`);
+
+    // Disparar push notification al chef (Expo / móvil / app)
+    try {
+      const { enviarPushNuevoPedido } = require('../services/pushService');
+      enviarPushNuevoPedido(restauranteId, nuevoPedido).catch((err) => {
+        console.warn('[orderService] Error enviando push notification:', err.message);
+      });
+    } catch (_) {}
 
     return nuevoPedido;
   } catch (err) {
@@ -280,9 +293,13 @@ async function solicitarCambioPedido({ pedidoId, descripcionCambio, tipo = 'modi
     solicitadoAt: new Date().toISOString(),
   };
 
+  const notif = { ...(pedido.notificaciones_enviadas || {}) };
+  delete notif.cambio_aprobado;
+  delete notif.cambio_rechazado;
+
   await query(
-    `UPDATE pedidos SET cambio_solicitado = $1, updated_at = NOW() WHERE id = $2`,
-    [JSON.stringify(cambioSolicitado), pedidoId]
+    `UPDATE pedidos SET cambio_solicitado = $1, notificaciones_enviadas = $2, updated_at = NOW() WHERE id = $3`,
+    [JSON.stringify(cambioSolicitado), JSON.stringify(notif), pedidoId]
   );
 
   const updated = await getOrder(pedidoId);

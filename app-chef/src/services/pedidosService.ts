@@ -76,9 +76,25 @@ export function suscribirPedidosActivos(
     if (cancelled) return;
     console.log('[suscribirPedidosActivos] Connecting SSE...');
     es = new EventSource(`${url}/pedidos-admin/activos/stream?token=${token}`);
+    let knownIds = new Set<string>();
+    let isFirstLoad = true;
+
     es.addEventListener('message', (e: any) => {
       const pedidos = JSON.parse(e.data) as Pedido[];
       console.log(`[suscribirPedidosActivos] snapshot received: ${pedidos.length} docs`);
+
+      if (!isFirstLoad) {
+        const newOrders = pedidos.filter(
+          (p) => !knownIds.has(p.id) && ['pendiente', 'pendiente_pago'].includes(p.estado)
+        );
+        if (newOrders.length > 0) {
+          console.log(`[suscribirPedidosActivos] 🔔 ¡${newOrders.length} nuevo(s) pedido(s) recibido(s)!`);
+        }
+      } else {
+        isFirstLoad = false;
+      }
+
+      knownIds = new Set(pedidos.map((p) => p.id));
       callback(sortByCreatedAtDesc(pedidos));
     });
     es.addEventListener('server_restarted', (e: any) => {
@@ -207,9 +223,13 @@ export async function rechazarPedido(id: string): Promise<void> {
   if (!res.ok) throw new Error(`rechazarPedido failed: ${res.status}`);
 }
 
-export async function aprobarCambio(pedidoId: string): Promise<void> {
-  console.log(`[📝 WRITE] aprobarCambio | pedido=${pedidoId}`);
-  const res = await authFetch(`/pedidos-admin/${pedidoId}/cambio/aprobar`, { method: 'PATCH' });
+export async function aprobarCambio(pedidoId: string, tiempoEstimadoMin?: number): Promise<void> {
+  console.log(`[📝 WRITE] aprobarCambio | pedido=${pedidoId} tiempoEstimadoMin=${tiempoEstimadoMin}`);
+  const res = await authFetch(`/pedidos-admin/${pedidoId}/cambio/aprobar`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tiempoEstimadoMin }),
+  });
   if (!res.ok) throw new Error(`aprobarCambio failed: ${res.status}`);
 }
 

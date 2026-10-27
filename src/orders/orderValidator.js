@@ -7,8 +7,14 @@ function validateOrder(order) {
   }
 
   // Teléfono requerido solo para delivery
-  if (order.tipo_entrega === 'delivery' && !order.telefono) {
-    throw new Error('Campo requerido faltante: telefono (requerido para delivery)');
+  if (order.tipo_entrega === 'delivery') {
+    if (!order.telefono) {
+      throw new Error('Campo requerido faltante: telefono (requerido para delivery)');
+    }
+    const digits = String(order.telefono).replace(/\D/g, '');
+    if (digits.length < 7 || digits.length > 15) {
+      throw new Error('telefono inválido: formato o longitud incorrecta');
+    }
   }
 
   if (!Array.isArray(order.productos) || order.productos.length === 0) {

@@ -1,5 +1,6 @@
 const express = require('express');
-const { estaActivo, pausarBot, reanudarBot } = require('../services/botStateService');
+const { estaActivo, pausarBot, reanudarBot, estaIgnorandoHorario, setIgnorarHorario } = require('../services/botStateService');
+const { limpiarCooldownHorario } = require('../whatsapp/messageHandler');
 const { handleWebhook } = require('../whatsapp/metaWebhook');
 const { clearMenuCache } = require('../services/menuService');
 const { requireAuth } = require('../middleware/authMiddleware');
@@ -11,6 +12,7 @@ router.get('/status', requireAuth, (req, res) => {
   res.json({
     status: 'active',
     botActivo: estaActivo(),
+    ignorarHorario: estaIgnorandoHorario(),
   });
 });
 
@@ -24,6 +26,54 @@ router.post('/pause', requireAuth, (req, res) => {
 router.post('/resume', requireAuth, (req, res) => {
   reanudarBot();
   res.json({ botActivo: true });
+});
+
+// POST /whatsapp/ignorar-horario — activa o desactiva modo test (ignorar horarios 24/7)
+router.post('/ignorar-horario', (req, res) => {
+  const { activo } = req.body || {};
+  const nuevo = activo !== undefined ? !!activo : !estaIgnorandoHorario();
+  setIgnorarHorario(nuevo);
+  limpiarCooldownHorario();
+  res.json({ ok: true, ignorarHorario: nuevo });
+});
+
+// GET /whatsapp/test-24-7 — botón rápido web para activar/desactivar modo test 24/7
+router.get('/test-24-7', (req, res) => {
+  const queryActivo = req.query.activo;
+  const nuevo = queryActivo !== undefined ? (queryActivo === 'true' || queryActivo === '1') : !estaIgnorandoHorario();
+  setIgnorarHorario(nuevo);
+  limpiarCooldownHorario();
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Modo Test Horario — Urbano Bot</title>
+      </head>
+      <body style="font-family: system-ui, -apple-system, sans-serif; background: #0b0f17; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;">
+        <div style="background: #182234; padding: 32px; border-radius: 24px; text-align: center; max-width: 440px; width: 100%; border: 2px solid ${nuevo ? '#10b981' : '#64748b'}; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+          <div style="font-size: 40px; margin-bottom: 12px;">${nuevo ? '⚡' : '🔒'}</div>
+          <h2 style="margin: 0 0 10px 0; color: ${nuevo ? '#34d399' : '#94a3b8'}; font-size: 22px;">
+            Modo Test (24/7): ${nuevo ? 'ACTIVADO' : 'DESACTIVADO'}
+          </h2>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin: 0 0 24px 0;">
+            ${nuevo 
+              ? 'El bot está configurado para <strong>ignorar el horario</strong> y responder inmediatamente a todos los mensajes de WhatsApp sin esperas ni cooldown.' 
+              : 'El bot está respetando el horario comercial configurado habitualmente.'}
+          </p>
+          <a href="/whatsapp/test-24-7" style="display: inline-block; padding: 12px 24px; background: ${nuevo ? '#dc2626' : '#10b981'}; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 14px; transition: opacity 0.2s;">
+            ${nuevo ? 'Desactivar Modo Test' : '⚡ Activar Modo Test (24/7)'}
+          </a>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+// GET /whatsapp/ignorar-horario — consulta si el modo test 24/7 está activo
+router.get('/ignorar-horario', (req, res) => {
+  res.json({ ignorarHorario: estaIgnorandoHorario() });
 });
 
 // POST /whatsapp/cache/clear — invalida el caché de configuración (llamar tras cambios en Firestore)

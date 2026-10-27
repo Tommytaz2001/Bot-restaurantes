@@ -39,6 +39,16 @@ describe('orderValidator', () => {
     expect(() => validateOrder(order)).toThrow('telefono');
   });
 
+  test('lanza error si telefono tiene longitud inválida o está duplicado (>15 dígitos)', () => {
+    const order = { ...validOrder, telefono: '58544518558544518' };
+    expect(() => validateOrder(order)).toThrow('telefono inválido');
+  });
+
+  test('lanza error si telefono tiene menos de 7 dígitos', () => {
+    const order = { ...validOrder, telefono: '12345' };
+    expect(() => validateOrder(order)).toThrow('telefono inválido');
+  });
+
   test('lanza error si falta direccion', () => {
     const { direccion, ...order } = validOrder;
     expect(() => validateOrder(order)).toThrow('direccion');

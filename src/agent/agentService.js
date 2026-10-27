@@ -5,6 +5,7 @@ const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = r
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress } = require('../orders/orderService');
 const { log } = require('../utils/logger');
+const { cleanPhoneNumber } = require('../utils/phoneUtils');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -15,8 +16,9 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, 
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
-  const telefonoContexto = telefono
-    ? `El número de teléfono del cliente es: ${telefono}. No necesitas pedírselo.`
+  const cleanTel = cleanPhoneNumber(telefono);
+  const telefonoContexto = cleanTel
+    ? `El número de teléfono del cliente en este chat es: ${cleanTel}. Usa este único número en el campo 'telefono' al invocar guardar_pedido (salvo que el cliente indique expresamente otro número de contacto para la entrega). NUNCA repitas, concatenes ni dupliques números telefónicos.`
     : 'No tienes el número de teléfono del cliente. Si el pedido es DELIVERY, pídelo. Si es RETIRO EN LOCAL, no lo necesitas — omite el campo telefono al guardar el pedido.';
 
   const contextoRepartidor = esRepartidor
@@ -72,6 +74,8 @@ Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
   return PROMPT_TEMPLATE
     .replace(/{{NOMBRE_RESTAURANTE}}/g, config.nombre)
     .replace(/{{MONEDA}}/g, config.moneda)
+    .replace(/{{DIRECCION_RESTAURANTE}}/g, config.direccion || 'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento')
+    .replace(/{{DEPARTAMENTO_RESTAURANTE}}/g, config.departamento || 'Jinotega')
     .replace('{{MENU}}', menuText)
     .replace('{{CUENTAS_BANCARIAS}}', cuentasBancariasText)
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
@@ -168,9 +172,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       try {
         const orderArgs = JSON.parse(toolCall.function.arguments);
         const prevOrderId = getLastOrderId(sessionId);
+        const rawTelefono = orderArgs.telefono || telefono || null;
+        const telefonoFinal = cleanPhoneNumber(rawTelefono, telefono);
         savedOrder = await saveOrder({
           ...orderArgs,
-          telefono: orderArgs.telefono || telefono || null,
+          telefono: telefonoFinal,
           restauranteId,
           sessionId,
           moneda: config.moneda,

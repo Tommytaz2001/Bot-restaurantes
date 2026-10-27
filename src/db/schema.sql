@@ -5,11 +5,14 @@ CREATE TABLE IF NOT EXISTS restaurantes (
     nombre VARCHAR(255) NOT NULL,
     moneda VARCHAR(16) DEFAULT 'C$',
     pais VARCHAR(64) DEFAULT 'Nicaragua',
+    departamento VARCHAR(64) DEFAULT 'Jinotega',
+    direccion TEXT DEFAULT 'De rest Mi Rancho 10 vrs al sur, casa naranja, sin rótulo de momento',
     telefono VARCHAR(64),
     activo BOOLEAN DEFAULT TRUE,
     horario JSONB DEFAULT '{}',
     cuentas_bancarias TEXT,
     proteinas_bloqueadas JSONB DEFAULT '[]',
+    push_tokens JSONB DEFAULT '[]',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

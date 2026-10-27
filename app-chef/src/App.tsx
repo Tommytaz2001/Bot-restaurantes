@@ -21,6 +21,7 @@ import { PedidosPage } from './pages/PedidosPage';
 import { HistorialPage } from './pages/HistorialPage';
 import { MenuPage } from './pages/MenuPage';
 import { HorariosPage } from './pages/HorariosPage';
+import { webNotifications } from './services/webNotificationService';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<Usuario | null>(() => getUser());
@@ -44,8 +45,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (user) {
       fetchBotStatus()
-        .then((data) => setBotActivo(data.botActivo ?? true))
+        .then((data) => {
+          setBotActivo(data.botActivo ?? true);
+        })
         .catch(() => {});
+
+      // Solicitar permiso de notificaciones push de sistema si aún no se ha decidido
+      if (webNotifications.isSupported() && webNotifications.getPermission() === 'default') {
+        webNotifications.requestPermission().catch(() => {});
+      }
     }
   }, [user]);
 
@@ -74,6 +82,8 @@ export const App: React.FC = () => {
       console.error('[App] Error cambiando bot:', e);
     }
   };
+
+
 
   const handleLogout = () => {
     removeToken();
@@ -115,9 +125,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleApproveChange = async (id: string) => {
+  const handleApproveChange = async (id: string, mins?: number) => {
     try {
-      await aprobarCambio(id);
+      await aprobarCambio(id, mins);
     } catch (e: any) {
       alert(e.message || 'Error aprobando cambio');
     }

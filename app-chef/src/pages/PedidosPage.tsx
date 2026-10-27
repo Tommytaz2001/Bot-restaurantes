@@ -23,7 +23,7 @@ interface PedidosPageProps {
   onEnCamino: (id: string) => void;
   onEntregado: (id: string) => void;
   onRechazar: (id: string) => void;
-  onApproveChange: (id: string) => void;
+  onApproveChange: (id: string, mins?: number) => void;
   onRejectChange: (id: string) => void;
 }
 
@@ -369,9 +369,10 @@ export const PedidosPage: React.FC<PedidosPageProps> = ({
         onClose={() => setChangeModalPedido(null)}
         cambio={changeModalPedido?.cambio_solicitado}
         cliente={changeModalPedido?.cliente || ''}
-        onApprove={() => {
+        tiempoEstimadoActual={changeModalPedido?.tiempo_estimado_min}
+        onApprove={(mins) => {
           if (changeModalPedido) {
-            onApproveChange(changeModalPedido.id);
+            onApproveChange(changeModalPedido.id, mins);
             setChangeModalPedido(null);
           }
         }}
