@@ -86,6 +86,76 @@ async function getMenu(restauranteId = 'urbano') {
   return _cache.get(restauranteId).menu;
 }
 
+// Diccionario de sinónimos, apodos y términos populares de búsqueda para el menú
+const ITEM_SYNONYMS = {
+  // Hamburguesas
+  'hamb-clasica': ['sencilla', 'normal', 'básica', 'simple', 'tradicional', 'la barata'],
+  'hamb-premium': ['especial', 'jamón y queso', 'con salsa barbacoa/bbq', 'con chipotle', 'con salsa dulce'],
+  'hamb-nivel-100': ['la más grande', 'la gigante', 'la que tiene de todo', 'la bomba', 'dos tortas con tocino', 'bacon', 'la monstruo', 'completa'],
+  'hamb-cheeseburguer': ['sin vegetales', 'sin verduras', 'sin monte', 'solo carne y queso', 'triple queso', 'cheeseburger'],
+  'hamb-pollito': ['de pollo', 'pollo a la plancha', 'pechuga'],
+  'hamb-chuletona': ['de chuleta', 'de cerdo', 'de chancho', 'chuletón'],
+  'hamb-double-cheeseburguer': ['doble carne', 'dos carnes', 'dos tortas', 'doble con queso', 'doble cheeseburger'],
+
+  // Tacos
+  'taco-birria': ['con caldo', 'con consomé', 'para remojar', 'birria'],
+  'taco-pastor-cerdo': ['al pastor', 'pastor', 'adobada'],
+  'taco-pollo': ['de pollo'],
+  'taco-cerdo': ['de cerdo', 'de chancho', 'de puerco'],
+  'taco-mixto': ['mixtos', 'combinados', 'mitad y mitad'],
+
+  // Burritos
+  'burrito-pastor-cerdo': ['al pastor', 'adobada', 'pastor'],
+  'burrito-pastor-combo': ['pastor combo', 'con papas y gaseosa'],
+  'burrito-pollo': ['de pollo'],
+  'burrito-pollo-combo': ['pollo combo', 'con papas y gaseosa'],
+  'burrito-cerdo': ['de cerdo', 'de chancho', 'de puerco'],
+  'burrito-cerdo-combo': ['cerdo combo', 'con papas y gaseosa'],
+  'burrito-mixto': ['mixto', 'con todo', 'dos carnes'],
+  'burrito-mixto-combo': ['mixto combo', 'con papas y gaseosa'],
+  'burrito-atun': ['de atún', 'de pescado', 'de mar'],
+  'burrito-birria': ['de birria', 'con consomé', 'con caldo'],
+
+  // Nachos
+  'nacho-pollo': ['de pollo'],
+  'nacho-cerdo': ['de cerdo', 'de chancho', 'de pastor'],
+  'nacho-birria': ['de birria', 'con caldo', 'con consomé'],
+
+  // Quesadillas
+  'quesadilla-pastor': ['de pastor', 'al pastor', 'de carne'],
+  'quesadilla-pollo': ['de pollo'],
+  'quesadilla-cerdo': ['de cerdo', 'de chancho'],
+
+  // Papas Fritas
+  'papas-peor-es-nada': ['sencillas', 'con kétchup y cheddar', 'las normales de 80'],
+  'papas-de-calle': ['bañadas', 'de la calle', 'con salsa dulce y queso rayado'],
+  'papas-premium': ['salchipapas', 'con salchicha parrillera', 'con salchicha'],
+  'papas-nivel-100': ['cargadas', 'con todo', 'locas', 'con carne y salchicha', 'preparadas'],
+
+  // Bebidas
+  'coca-cola': ['coca', 'coca normal', 'chesco', 'gaseosa negra'],
+  'fresca': ['de toronja', 'gaseosa blanca'],
+  'hi-c': ['té', 'té frío', 'té limón', 'jugo'],
+
+  // Extras
+  'extra-salsa-aguacate': ['guacamole', 'salsa verde'],
+  'extra-salsa-roja': ['chile', 'picante', 'salsita roja'],
+  'extra-cheddar': ['queso extra', 'queso amarillo'],
+  'extra-papas': ['papas extras', 'más papas', 'porción de papas'],
+};
+
+function getItemSynonyms(item) {
+  if (item.id && ITEM_SYNONYMS[item.id]) return ITEM_SYNONYMS[item.id];
+  const normName = (item.nombre || '').toLowerCase().trim();
+  for (const [id, syns] of Object.entries(ITEM_SYNONYMS)) {
+    const cleanId = id.replace(/^(hamb-|taco-|burrito-|nacho-|quesadilla-|papas-|extra-)/, '').toLowerCase();
+    if (normName.includes(cleanId) || cleanId.includes(normName)) {
+      return syns;
+    }
+  }
+  return null;
+}
+
 async function formatMenuForPrompt(restauranteId = 'urbano') {
   const config = await getRestauranteConfig(restauranteId);
   const menu = await getMenu(restauranteId);
@@ -99,6 +169,10 @@ async function formatMenuForPrompt(restauranteId = 'urbano') {
       let line = `- ${item.nombre}: ${moneda}${item.precio} — ${item.descripcion}`;
       if (item.opciones && item.opciones.length > 0) {
         line += ` [Opciones: ${item.opciones.join(', ')}]`;
+      }
+      const sinonimos = getItemSynonyms(item);
+      if (sinonimos && sinonimos.length > 0) {
+        line += ` [Sinónimos/Apodos: ${sinonimos.join(', ')}]`;
       }
       if (agotado) {
         if (item.bloqueadoPorProteina) {

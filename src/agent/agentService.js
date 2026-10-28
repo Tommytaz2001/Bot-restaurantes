@@ -153,11 +153,50 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   // Add user message to history
   addMessage(sessionId, { role: 'user', content: message });
 
-  const assistantMessage = await chatCompletion({
+  log(`[agentService] Procesando mensaje de ${telefono || sessionId} (historial=${history.length}): "${message.substring(0, 70)}"`);
+
+  let assistantMessage = await chatCompletion({
     systemPrompt,
     messages: sanitizeMessages([...history, { role: 'user', content: message }]),
     tools: true,
   });
+
+  const hasToolCalls = Array.isArray(assistantMessage.tool_calls) && assistantMessage.tool_calls.length > 0;
+  log(`[agentService] Respuesta AI para ${sessionId}: toolCalls=${hasToolCalls ? assistantMessage.tool_calls.map(tc => tc.function.name).join(', ') : 'NINGUNA'} | texto="${(assistantMessage.content || '').substring(0, 80)}"`);
+
+  // --- INTERCEPTOR DE MISSED TOOL CALL EN CONFIRMACIÓN ---
+  // Si el usuario confirmó el resumen pero el LLM devolvió solo texto sin tool_calls
+  if (!hasToolCalls) {
+    const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
+    const isSummaryPending = lastAssistantMsg && (
+      lastAssistantMsg.content?.includes('Resumen de tu pedido') ||
+      lastAssistantMsg.content?.includes('¿Está todo correcto?') ||
+      lastAssistantMsg.content?.includes('Envía un "ok"') ||
+      lastAssistantMsg.content?.includes('Envía un ok')
+    );
+    const isUserConfirming = /^(ok|okay|okey|si|sí|dale|va|confirmo|confirmado|listo|correcto|todo bien|procede|adelante|simon|simón|va pues|porfa|bueno|perfecto|así es|exacto|sale|manda|enviar|todo correcto)/i.test(message.trim().toLowerCase());
+    const isAiFalselyConfirming = assistantMessage.content && /pedido.*(recibido|confirmado|enviado|registrado)|orden.*(recibida|enviada|registrada)|avisamos al chef/i.test(assistantMessage.content);
+
+    if ((isSummaryPending && isUserConfirming) || isAiFalselyConfirming) {
+      log(`[agentService] ⚠️ INTERCEPTOR: Cliente confirmó resumen pero el LLM respondió con texto sin invocar guardar_pedido. Forzando llamada a guardar_pedido...`);
+      const forcedPrompt = `${systemPrompt}\n\n[INSTRUCCIÓN CRÍTICA DE SISTEMA]: El cliente acaba de confirmar su pedido diciendo: "${message}". Es OBLIGATORIO que invoques la herramienta guardar_pedido AHORA MISMO con los datos del pedido resumido anteriormente. NO respondas con texto plano sin invocar guardar_pedido.`;
+      try {
+        const forcedMessage = await chatCompletion({
+          systemPrompt: forcedPrompt,
+          messages: sanitizeMessages([...history, { role: 'user', content: message }]),
+          tools: true,
+        });
+        if (forcedMessage.tool_calls && forcedMessage.tool_calls.length > 0) {
+          log(`[agentService] ✅ Interceptor exitoso: Se obtuvo tool call ${forcedMessage.tool_calls[0].function.name}`);
+          assistantMessage = forcedMessage;
+        } else {
+          log(`[agentService] ⚠️ Reintento no produjo tool call. Respuesta texto: "${(forcedMessage.content || '').substring(0, 80)}"`);
+        }
+      } catch (retryErr) {
+        log(`[agentService] Error en reintento forzado de tool call: ${retryErr.message}`);
+      }
+    }
+  }
 
   // Handle function calls
   if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -169,11 +208,14 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       let savedOrder = null;
       let esNuevo = false;
 
+      log(`[PEDIDO] >>> Iniciando guardar_pedido con args: ${toolCall.function.arguments}`);
+
       try {
         const orderArgs = JSON.parse(toolCall.function.arguments);
         const prevOrderId = getLastOrderId(sessionId);
         const rawTelefono = orderArgs.telefono || telefono || null;
         const telefonoFinal = cleanPhoneNumber(rawTelefono, telefono);
+
         savedOrder = await saveOrder({
           ...orderArgs,
           telefono: telefonoFinal,
@@ -182,11 +224,14 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           moneda: config.moneda,
           jid: remoteJid, // JID real para notificaciones WhatsApp
         });
+
         esNuevo = !prevOrderId || prevOrderId !== savedOrder.id;
         setLastOrderId(sessionId, savedOrder.id);
-        log(`[PEDIDO] guardado id=${savedOrder.id} telefono=${telefono} esNuevo=${esNuevo}`);
+        log(`[PEDIDO] ✅ Pedido guardado exitosamente id=${savedOrder.id} telefono=${telefonoFinal} esNuevo=${esNuevo} total=${savedOrder.total}`);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id, esNuevo });
       } catch (err) {
+        log(`[PEDIDO] ❌ ERROR al guardar pedido en PostgreSQL: ${err.message}`);
+        log(`[PEDIDO] Stack: ${err.stack}`);
         toolResult = JSON.stringify({ error: err.message });
       }
 
@@ -197,8 +242,26 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         addMessage(sessionId, { role: 'tool', tool_call_id: extraCall.id, content: JSON.stringify({ error: 'Solo se procesa una herramienta a la vez.' }) });
       }
 
+      // Si el pedido no se pudo guardar (savedOrder es null), NO enviar confirmación de éxito falsa
+      if (!savedOrder) {
+        log(`[PEDIDO] 🚨 CRÍTICO: savedOrder es null tras fallo. No se enviará confirmación falsa.`);
+        const orderArgs = JSON.parse(toolCall.function.arguments || '{}');
+        const nombre = orderArgs.cliente || 'amigo';
+        let errorReply;
+        try {
+          const errorHistory = sanitizeMessages(getSession(sessionId));
+          const errorMessage = await chatCompletion({ systemPrompt, messages: errorHistory, tools: false });
+          errorReply = errorMessage.content;
+        } catch (_) {
+          errorReply = `Disculpa ${nombre}, tuvimos un inconveniente registrando tu orden en el sistema. ¿Podrías confirmarnos de nuevo para procesarlo de inmediato? 🙏`;
+        }
+        addMessage(sessionId, { role: 'assistant', content: errorReply });
+        return { reply: errorReply, order: null };
+      }
+
       // Pedido ya existía — el cliente confirmó de nuevo. No enviar otra "¡Pedido recibido!".
       if (!esNuevo) {
+        log(`[PEDIDO] Pedido no es nuevo (id=${savedOrder.id}). No se duplica notificación.`);
         return { reply: null, order: savedOrder };
       }
 

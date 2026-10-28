@@ -57,6 +57,10 @@ const INITIAL_MENU = [
       { id: 'burrito-pollo-combo', nombre: 'Burrito Pollo Combo', precio: 220, descripcion: 'Burrito Pollo más papas fritas y gaseosa 355ml.', opciones: [] },
       { id: 'burrito-cerdo', nombre: 'Burrito Cerdo', precio: 160, descripcion: 'Tortilla de harina con frijoles molidos, mozarella, queso rayado y cerdo. Incluye crema, salsa guacamole y roja.', opciones: [] },
       { id: 'burrito-cerdo-combo', nombre: 'Burrito Cerdo Combo', precio: 220, descripcion: 'Burrito Cerdo más papas fritas y gaseosa 355ml.', opciones: [] },
+      { id: 'burrito-mixto', nombre: 'Burrito Mixto', precio: 160, descripcion: 'Tortilla de harina con frijoles molidos, mozarella, queso rayado, pollo y cerdo. Incluye crema, salsa guacamole y roja.', opciones: [] },
+      { id: 'burrito-mixto-combo', nombre: 'Burrito Mixto Combo', precio: 220, descripcion: 'Burrito Mixto más papas fritas y gaseosa 355ml.', opciones: [] },
+      { id: 'burrito-atun', nombre: 'Burrito de Atún', precio: 170, descripcion: 'Tortilla de harina con frijoles molidos, mozarella, queso rayado y atún.', opciones: [] },
+      { id: 'burrito-birria', nombre: 'Burrito de Birria', precio: 180, descripcion: 'Tortilla de harina con frijoles molidos, mozarella, queso rayado y birria. Incluye consomé.', opciones: [] },
     ],
   },
   {

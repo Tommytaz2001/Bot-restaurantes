@@ -25,7 +25,7 @@ const GEMINI_TOOLS = [
     functionDeclarations: [
       {
         name: 'guardar_pedido',
-        description: 'Guarda el pedido confirmado por el cliente en el sistema. Invoca esta función ÚNICAMENTE cuando el cliente haya visto el resumen del pedido Y haya respondido confirmándolo explícitamente (ej: "sí", "confirmo", "dale"). NUNCA la invoques en el primer mensaje ni antes de mostrar el resumen.',
+        description: 'OBLIGATORIA al confirmar: Guarda el pedido confirmado por el cliente en el sistema. Debes invocar esta función INMEDIATAMENTE cuando el cliente confirme el resumen del pedido (ej: "ok", "sí", "dale", "confirmo"). ESTÁ PROHIBIDO responder con texto plano diciendo que el pedido fue recibido sin invocar esta función.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -81,7 +81,7 @@ const GEMINI_TOOLS = [
             datos_entrega: {
               type: 'OBJECT',
               properties: {
-                tipo_entrega: { type: 'STRING', enum: ['domicilio', 'retiro'] },
+                tipo_entrega: { type: 'STRING', enum: ['delivery', 'retiro'] },
                 direccion: { type: 'STRING' },
                 costo_envio: { type: 'NUMBER' },
                 total_nuevo: { type: 'NUMBER' },
@@ -330,6 +330,8 @@ async function chatCompletion({ systemPrompt, messages, tools = true }) {
           });
         }
       }
+
+      console.log(`[AI Engine] Gemini finishReason="${candidate.finishReason || 'STOP'}", toolCalls=${toolCalls.length ? toolCalls.map(t => t.function.name).join(', ') : '0'}, textChars=${textContent?.length || 0}`);
 
       return {
         role: 'assistant',

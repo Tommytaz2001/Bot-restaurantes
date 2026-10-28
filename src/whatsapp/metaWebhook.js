@@ -170,11 +170,53 @@ async function _processMessage(data) {
     } catch (err) {
       log(`[Webhook] Error procesando comprobante de ${telefono}: ${err.message}`);
     }
-    // Sin pedido pendiente_pago → si hay sesión activa, el usuario está a mitad de un pedido
-    // (puede haber enviado el comprobante antes de confirmar). Ignorar silenciosamente.
+    // Sin pedido pendiente_pago → verificar si hay sesión activa
     const sessionMsgs = getSession(telefono);
     if (sessionMsgs.length > 0) {
-      log(`[Webhook] Imagen de ${telefono} ignorada — sesión activa sin pedido pendiente_pago`);
+      const lastMsg = [...sessionMsgs].reverse().find(m => m.role === 'assistant');
+      const waitingConfirmation = lastMsg && (
+        lastMsg.content?.includes('Resumen de tu pedido') ||
+        lastMsg.content?.includes('¿Está todo correcto?') ||
+        lastMsg.content?.includes('Envía un "ok"') ||
+        lastMsg.content?.includes('Envía un ok')
+      );
+
+      if (waitingConfirmation) {
+        log(`[Webhook] Imagen de ${telefono} recibida con resumen pendiente de confirmación → procesando como confirmación de pedido con comprobante`);
+        const caption = message.imageMessage?.caption ? ` ${message.imageMessage.caption}` : '';
+        await recibirMensaje({
+          telefono,
+          remoteJid: replyTo,
+          texto: `Ok, confirmo mi pedido y adjunto mi comprobante de transferencia.${caption}`,
+          restauranteId: RESTAURANTE_ID,
+          contactName,
+          esMensajeReenviado: !!(message.contextInfo?.isForwarded),
+          sendTyping: () => Promise.resolve(),
+          sendReply: async (reply) => {
+            try {
+              // Descargar y adjuntar comprobante si el pedido acaba de crearse en pendiente_pago
+              const nuevoPendiente = await findPedidoPendientePago(telefono);
+              if (nuevoPendiente) {
+                try {
+                  const { buffer, mimeType } = await downloadMediaEvolution(data);
+                  await attachComprobante(nuevoPendiente.id, buffer, mimeType);
+                  log(`[Webhook] Comprobante adjuntado inmediatamente tras confirmación por imagen para pedido ${nuevoPendiente.id}`);
+                } catch (attachErr) {
+                  log(`[Webhook] Error adjuntando comprobante tras confirmación: ${attachErr.message}`);
+                }
+              }
+              await sendWhatsAppMessage(replyTo, reply);
+              log(`[Webhook] → ${telefono}: ${reply.substring(0, 80)}`);
+            } catch (err) {
+              log(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`);
+            }
+          },
+        });
+        return;
+      }
+
+      log(`[Webhook] Imagen de ${telefono} recibida durante sesión activa sin resumen pendiente → avisando al cliente`);
+      await sendWhatsAppMessage(replyTo, '📸 Recibimos tu imagen. Si deseas ordenar, por favor escríbenos qué platillos te gustaría pedir para armar tu orden. 🍔');
       return;
     }
     // Sin sesión ni pedido pendiente → verificar horario antes de responder

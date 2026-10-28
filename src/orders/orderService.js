@@ -50,9 +50,12 @@ function mapRowToOrder(row, items = []) {
 
 async function findExistingOrder(sessionId) {
   if (!sessionId) return null;
+  // Solo deduplica pedidos creados en los últimos 60 segundos (ventana de idempotencia / doble mensaje)
   const res = await query(
     `SELECT * FROM pedidos 
-     WHERE session_id = $1 AND estado IN ('pendiente', 'pendiente_pago')
+     WHERE session_id = $1 
+       AND estado IN ('pendiente', 'pendiente_pago')
+       AND created_at >= NOW() - INTERVAL '60 seconds'
      ORDER BY created_at DESC LIMIT 1`,
     [sessionId]
   );
@@ -61,7 +64,9 @@ async function findExistingOrder(sessionId) {
     `SELECT * FROM pedido_items WHERE pedido_id = $1`,
     [res.rows[0].id]
   );
-  return mapRowToOrder(res.rows[0], itemsRes.rows);
+  const existing = mapRowToOrder(res.rows[0], itemsRes.rows);
+  console.log(`[orderService] [IDEMPOTENCIA] Pedido existente reciente detectado id=${existing.id} (<60s)`);
+  return existing;
 }
 
 async function findActiveOrderByPhone(telefono) {
@@ -101,25 +106,96 @@ async function findLastDeliveryAddress(telefono) {
 }
 
 async function saveOrder(orderData) {
-  const existing = await findExistingOrder(orderData.sessionId);
-  if (existing) return existing;
+  console.log(`[orderService] >>> Iniciando saveOrder para sessionId=${orderData.sessionId}...`);
+  console.log(`[orderService] Datos crudos recibidos:`, JSON.stringify(orderData));
 
-  if (orderData.telefono) {
-    orderData.telefono = cleanPhoneNumber(orderData.telefono, orderData.sessionId);
+  // 1. Normalización defensiva de tipo_entrega
+  let tipoEntrega = String(orderData.tipo_entrega || '').toLowerCase().trim();
+  if (tipoEntrega.includes('deliv') || tipoEntrega.includes('domicil') || tipoEntrega.includes('envi') || tipoEntrega.includes('casa')) {
+    tipoEntrega = 'delivery';
+  } else if (tipoEntrega.includes('retir') || tipoEntrega.includes('llevar') || tipoEntrega.includes('recog') || tipoEntrega.includes('local')) {
+    tipoEntrega = 'retiro';
+  } else {
+    tipoEntrega = (orderData.direccion && !orderData.direccion.toLowerCase().includes('retiro')) ? 'delivery' : 'retiro';
+  }
+  orderData.tipo_entrega = tipoEntrega;
+
+  // 2. Normalización defensiva de dirección
+  if (orderData.tipo_entrega === 'retiro') {
+    if (!orderData.direccion || String(orderData.direccion).trim() === '') {
+      orderData.direccion = 'Retiro en local';
+    }
   }
 
-  validateOrder(orderData);
+  // 3. Normalización defensiva de método de pago
+  let metodoPago = String(orderData.metodo_pago || '').toLowerCase().trim();
+  if (metodoPago.includes('transf') || metodoPago.includes('banc') || metodoPago.includes('bac') || metodoPago.includes('depo')) {
+    metodoPago = 'transferencia';
+  } else {
+    metodoPago = 'efectivo';
+  }
+  orderData.metodo_pago = metodoPago;
 
+  // 4. Normalización defensiva de cliente
+  if (!orderData.cliente || String(orderData.cliente).trim() === '') {
+    orderData.cliente = 'Cliente';
+  }
+
+  // 5. Normalización defensiva de productos
+  if (Array.isArray(orderData.productos)) {
+    orderData.productos = orderData.productos.map((p) => {
+      const cantidad = Math.max(1, parseInt(p.cantidad || 1, 10) || 1);
+      const precioUnitario = parseFloat(p.precio_unitario ?? p.precio ?? p.unit_price ?? 0);
+      return {
+        nombre: String(p.nombre || 'Producto').trim(),
+        cantidad,
+        precio_unitario: isNaN(precioUnitario) ? 0 : precioUnitario,
+        opcion: p.opcion || null,
+      };
+    });
+  }
+
+  // 6. Normalización y deduplicación defensiva de teléfono
+  let tel = orderData.telefono || null;
+  if (!tel && orderData.sessionId) {
+    tel = cleanPhoneNumber(orderData.sessionId);
+  }
+  if (!tel && orderData.jid) {
+    tel = cleanPhoneNumber(orderData.jid.split('@')[0]);
+  }
+  orderData.telefono = tel ? cleanPhoneNumber(tel, orderData.sessionId) : null;
+
+  // 7. Calcular costo_envio y total ANTES de validar
   const costoEnvio = orderData.tipo_entrega === 'delivery' ? COSTO_ENVIO : 0;
-  const subtotal = orderData.productos.reduce(
-    (sum, p) => sum + p.precio_unitario * p.cantidad,
+  orderData.costo_envio = costoEnvio;
+  const subtotal = (orderData.productos || []).reduce(
+    (sum, p) => sum + (p.precio_unitario * p.cantidad),
     0
   );
-  const total = subtotal + costoEnvio;
+  orderData.total = subtotal + costoEnvio;
+
+  console.log(`[orderService] Datos normalizados: cliente="${orderData.cliente}", telefono="${orderData.telefono}", tipo="${orderData.tipo_entrega}", pago="${orderData.metodo_pago}", total=${orderData.total}, items=${orderData.productos?.length}`);
+
+  // Verificar idempotencia (solo ventana de 60s)
+  const existing = await findExistingOrder(orderData.sessionId);
+  if (existing) {
+    console.log(`[orderService] Pedido deduplicado retornado: id=${existing.id}`);
+    return existing;
+  }
+
+  // Validación estricta
+  try {
+    validateOrder(orderData);
+  } catch (valErr) {
+    console.error(`[orderService] ❌ Error de validación en validateOrder: ${valErr.message}`);
+    throw valErr;
+  }
+
   const id = randomUUID();
   const estado = buildEstado(orderData.metodo_pago);
   const restauranteId = orderData.restauranteId || 'urbano';
 
+  console.log(`[orderService] Conectando a PostgreSQL para insertar pedido id=${id}...`);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -140,7 +216,7 @@ async function saveOrder(orderData) {
       orderData.tipo_entrega,
       orderData.direccion,
       costoEnvio,
-      total,
+      orderData.total,
       orderData.metodo_pago,
       estado,
       orderData.sessionId,
@@ -158,12 +234,13 @@ async function saveOrder(orderData) {
     }
 
     await client.query('COMMIT');
+    console.log(`[orderService] ✅ COMMIT completado exitosamente en PostgreSQL id=${id} total=${orderData.total} items=${items.length}`);
 
     const nuevoPedido = mapRowToOrder(pedidoRes.rows[0], items);
 
     // Emite evento en tiempo real para todos los clientes SSE (app del chef)
     orderEvents.emit('order:created', { restauranteId, pedido: nuevoPedido });
-    console.log(`[orderService] Pedido guardado en PostgreSQL id=${id} total=${total} estado=${estado}`);
+    console.log(`[orderService] 📡 Evento SSE order:created emitido para id=${id}`);
 
     // Disparar push notification al chef (Expo / móvil / app)
     try {
@@ -171,11 +248,13 @@ async function saveOrder(orderData) {
       enviarPushNuevoPedido(restauranteId, nuevoPedido).catch((err) => {
         console.warn('[orderService] Error enviando push notification:', err.message);
       });
+      console.log(`[orderService] 🔔 Push notification encolada para id=${id}`);
     } catch (_) {}
 
     return nuevoPedido;
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error(`[orderService] ❌ ERROR en transacción PostgreSQL para pedido id=${id}: ${err.message}`, err.stack);
     throw err;
   } finally {
     client.release();
