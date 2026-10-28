@@ -2,7 +2,7 @@
 
 **Última actualización:** 27 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `8be1895 fix: persist initial quantity across conversational turns and integrate hot dogs category` 
+**Último commit:** `033ee06 fix: prioritize combo keyword and explicit price for burrito combo orders` 
 
 ---
 
