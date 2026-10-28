@@ -2,7 +2,7 @@
 
 **Última actualización:** 27 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `71331f2 feat: push notifications, high-volume kitchen chime, order change ETA updates, phone deduplication, and Jinotega location fixes` 
+**Último commit:** `52f1829 feat: order confirmation persistence fixes, 60s idempotency window, missed tool call interceptor, combo disambiguation, and 'quizas quisiste decir' menu protocol` 
 
 ---
 
