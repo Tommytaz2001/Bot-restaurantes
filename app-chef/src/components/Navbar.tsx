@@ -13,6 +13,7 @@ import {
   WifiOff,
   Bell,
   BellRing,
+  ShieldAlert,
 } from 'lucide-react';
 import { Usuario } from '../services/api';
 import { audioAlert } from '../services/audio';
@@ -20,8 +21,9 @@ import { webNotifications } from '../services/webNotificationService';
 
 interface NavbarProps {
   user: Usuario | null;
-  activeTab: 'pedidos' | 'historial' | 'menu' | 'horarios';
-  setActiveTab: (tab: 'pedidos' | 'historial' | 'menu' | 'horarios') => void;
+  activeTab: 'pedidos' | 'historial' | 'menu' | 'horarios' | 'blacklist';
+  setActiveTab: (tab: 'pedidos' | 'historial' | 'menu' | 'horarios' | 'blacklist') => void;
+
   pedidosCount: number;
   pendientesCambioCount: number;
   isLive: boolean;
@@ -219,7 +221,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Clock className="w-4 h-4" />
             <span>Horarios</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('blacklist')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === 'blacklist'
+                ? 'bg-rose-500 text-white shadow-md shadow-rose-500/25'
+                : 'text-slate-300 hover:bg-slate-800/60'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            <span>Lista Negra</span>
+          </button>
         </nav>
+
 
         {/* Acciones de Escritorio */}
         <div className="hidden md:flex items-center gap-2.5">

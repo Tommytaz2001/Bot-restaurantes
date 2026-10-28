@@ -153,7 +153,16 @@ async function _processMessage(data) {
   if (_processedIds.has(messageId)) return;
   _markProcessed(messageId);
 
+  // ── Comprobar Lista Negra (repartidores / números bloqueados) ───────────────
+  // Si está en lista negra, el bot NO responde absolutamente nada (evita confusiones con repartidores)
+  const { isBlacklisted } = require('../services/blacklistService');
+  if (await isBlacklisted(telefono, RESTAURANTE_ID)) {
+    log(`[Webhook] Mensaje de ${telefono} ignorado por estar en Lista Negra (Repartidor / Bloqueado)`);
+    return;
+  }
+
   // ── Imagen: posible comprobante de pago ──────────────────────────────────────
+
   if (messageType === 'imageMessage') {
     try {
       const pedidoPendiente = await findPedidoPendientePago(telefono);

@@ -370,3 +370,47 @@ export async function saveHorario(horario: any): Promise<void> {
   });
   if (!res.ok) throw new Error('Error guardando horario');
 }
+
+// ── Lista Negra (Blacklist / Repartidores) ──────────────────────────────────
+export interface BlacklistItem {
+  id: string;
+  restaurante_id: string;
+  telefono: string;
+  telefono_clean: string;
+  nombre: string;
+  motivo: string;
+  created_at: string;
+}
+
+export async function fetchBlacklist(): Promise<BlacklistItem[]> {
+  const res = await authFetch('/blacklist');
+  if (!res.ok) throw new Error('Error al obtener lista negra');
+  const data = await res.json();
+  return data.blacklist || [];
+}
+
+export async function addBlacklistNumber(payload: {
+  telefono: string;
+  nombre?: string;
+  motivo?: string;
+}): Promise<BlacklistItem> {
+  const res = await authFetch('/blacklist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Error al agregar número a la lista negra');
+  }
+  const data = await res.json();
+  return data.item;
+}
+
+export async function deleteBlacklistNumber(id: string): Promise<void> {
+  const res = await authFetch(`/blacklist/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Error al eliminar número de la lista negra');
+}
+

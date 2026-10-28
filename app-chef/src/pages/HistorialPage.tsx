@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { History, Search, Calendar, CheckCircle2, XCircle, Bike, Store, CreditCard, Banknote, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { History, Search, Calendar, CheckCircle2, XCircle, Bike, Store, CreditCard, Banknote, Copy } from 'lucide-react';
 import { fetchHistorial, Pedido } from '../services/api';
 import { formatDeliveryPhone } from '../utils/phoneUtils';
-
-const ITEMS_PER_PAGE = 9;
 
 export const HistorialPage: React.FC = () => {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<'hoy' | 'ayer' | '7dias' | 'todos'>('hoy');
   const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const loadData = async (f: string) => {
@@ -29,11 +26,6 @@ export const HistorialPage: React.FC = () => {
     loadData(filtro);
   }, [filtro]);
 
-  // Reset pagination when filter or search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filtro, search]);
-
   const filtered = pedidos.filter((p) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -48,11 +40,6 @@ export const HistorialPage: React.FC = () => {
     .filter((p) => p.estado === 'entregado')
     .reduce((sum, p) => sum + p.total, 0);
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
-  const paginatedHistorial = filtered.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
@@ -118,7 +105,8 @@ export const HistorialPage: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {paginatedHistorial.map((p) => {
+            {filtered.map((p) => {
+
               const isEntregado = p.estado === 'entregado';
               return (
                 <div
@@ -207,61 +195,9 @@ export const HistorialPage: React.FC = () => {
               );
             })}
           </div>
-
-          {/* Controles de Paginación */}
-          {totalPages > 1 && (
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 py-3 border-t border-slate-800">
-              <span className="text-xs text-slate-400">
-                Mostrando <strong className="text-white">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</strong> - <strong className="text-white">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</strong> de <strong className="text-white">{filtered.length}</strong> pedidos
-              </span>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Anterior</span>
-                </button>
-
-                {Array.from({ length: totalPages }).map((_, i) => {
-                  const pageNum = i + 1;
-                  if (totalPages > 5 && Math.abs(pageNum - currentPage) > 1 && pageNum !== 1 && pageNum !== totalPages) {
-                    if (pageNum === 2 || pageNum === totalPages - 1) {
-                      return <span key={pageNum} className="text-slate-600 px-1 text-xs">...</span>;
-                    }
-                    return null;
-                  }
-
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
-                        currentPage === pageNum
-                          ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25'
-                          : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 flex items-center gap-1"
-                >
-                  <span>Siguiente</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
   );
 };
+

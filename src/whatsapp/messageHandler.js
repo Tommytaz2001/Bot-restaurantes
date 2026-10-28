@@ -3,42 +3,10 @@ const { verificarSpam } = require('./spamGuard');
 const { log } = require('../utils/logger');
 const { estaActivo, estaIgnorandoHorario } = require('../services/botStateService');
 const { getRestauranteConfig } = require('../services/menuService');
+const { isBlacklisted } = require('../services/blacklistService');
 
 const DEBOUNCE_MS = 2_000; // 2 segundos — suficiente para acumular mensajes enviados en ráfaga
 
-// Palabras clave para detectar repartidores por nombre de contacto guardado
-const REPARTIDOR_KEYWORDS = ['delivery', 'moto mandado', 'mandado'];
-
-// Historial de reenvíos por teléfono (ventana deslizante de 5 mensajes)
-const _forwardedHistory = new Map(); // telefono -> boolean[]
-// Nombre de contacto más reciente por teléfono
-const _contactNames = new Map(); // telefono -> string
-
-function registrarMetadataMensaje(telefono, contactName, esMensajeReenviado) {
-  if (contactName) _contactNames.set(telefono, contactName);
-
-  if (!_forwardedHistory.has(telefono)) _forwardedHistory.set(telefono, []);
-  const hist = _forwardedHistory.get(telefono);
-  hist.push(!!esMensajeReenviado);
-  if (hist.length > 5) hist.shift();
-}
-
-function detectarRepartidor(telefono) {
-  const contactName = _contactNames.get(telefono) ?? null;
-
-  // Caso 1: nombre de contacto guardado contiene keyword de repartidor
-  if (contactName) {
-    const lower = contactName.toLowerCase();
-    if (REPARTIDOR_KEYWORDS.some((kw) => lower.includes(kw))) return true;
-  }
-
-  // Casos 2 y 3: alguno de los últimos 5 mensajes fue reenviado
-  // (detecta tanto "no guardado + reenvío actual" como "bot perdió primer mensaje")
-  const hist = _forwardedHistory.get(telefono) ?? [];
-  if (hist.some((f) => f)) return true;
-
-  return false;
-}
 
 // Horario de atención leído desde Firestore (restaurantes/{id}.horario)
 // Soporta formato por día: { lunes: { abre, apertura, cierre }, ... }
@@ -180,7 +148,13 @@ function debeIgnorar(texto) {
  * @param {Function} params.sendReply       - Función async para enviar respuesta
  */
 async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply, sendTyping = null }) {
-  // 0. Kill switch — bot pausado desde la app
+  // 0. Lista Negra — repartidores y contactos bloqueados no reciben respuesta
+  if (await isBlacklisted(telefono, restauranteId)) {
+    log(`[messageHandler] Mensaje de ${telefono} ignorado por estar en Lista Negra`);
+    return;
+  }
+
+  // 0.1 Kill switch — bot pausado desde la app
   if (!estaActivo()) {
     log(`[messageHandler] Bot pausado — ignorando mensaje de ${telefono}`);
     return;
@@ -204,14 +178,11 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   // 3. Filtrar mensajes vacíos o muy cortos
   if (debeIgnorar(texto)) return;
 
-  // 4. Registrar metadatos para detección de repartidor
-  registrarMetadataMensaje(telefono, contactName, esMensajeReenviado);
-
-  // 5. Acumular en buffer por teléfono
+  // 4. Acumular en buffer por teléfono
   if (!_buffers.has(telefono)) _buffers.set(telefono, []);
   _buffers.get(telefono).push(texto.trim());
 
-  // 6. Reiniciar debounce con cada mensaje nuevo
+  // 5. Reiniciar debounce con cada mensaje nuevo
   if (_timers.has(telefono)) clearTimeout(_timers.get(telefono));
 
   _timers.set(telefono, setTimeout(async () => {
@@ -225,6 +196,12 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
       log(`[messageHandler] @lid resuelto: ${telefono} → ${telefonoFinal}`);
     }
 
+    // Verificar si el teléfono final resuelto está en lista negra
+    if (await isBlacklisted(telefonoFinal, restauranteId)) {
+      log(`[messageHandler] Mensaje de ${telefonoFinal} ignorado tras resolución por Lista Negra`);
+      return;
+    }
+
     // Si el @lid no pudo resolverse al número real, pasamos null para que el agente
     // le pida al cliente su número durante el pedido (así queda guardado correctamente)
     const esLidNoResuelto = remoteJid?.endsWith('@lid') && telefonoFinal === telefono;
@@ -233,11 +210,10 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
       log(`[messageHandler] @lid sin resolver — el agente pedirá el número al cliente`);
     }
 
-    const esRepartidor = detectarRepartidor(telefono);
-    log(`[messageHandler] Procesando de ${telefonoFinal}${esRepartidor ? ' [REPARTIDOR]' : ''}: "${mensajesAcumulados.substring(0, 60)}"`);
-    log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}${esRepartidor ? ' repartidor=true' : ''}`);
+    log(`[messageHandler] Procesando de ${telefonoFinal}: "${mensajesAcumulados.substring(0, 60)}"`);
+    log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}`);
 
-    // Indicador de "escribiendo..." mientras OpenAI procesa
+    // Indicador de "escribiendo..." mientras IA procesa
     if (sendTyping) sendTyping().catch(() => {});
 
     try {
@@ -247,7 +223,6 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
         restauranteId,
         telefono: telefonoParaPedido,  // null si @lid no resuelto → agente pide al cliente
         remoteJid,
-        esRepartidor,
       });
       if (result.reply) {
         await sendReply(result.reply);

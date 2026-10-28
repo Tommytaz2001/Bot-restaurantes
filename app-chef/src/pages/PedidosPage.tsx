@@ -7,10 +7,9 @@ import {
   LayoutGrid, 
   Columns3,
   Search,
-  Filter,
-  ChevronLeft,
-  ChevronRight
+  Filter
 } from 'lucide-react';
+
 import { Pedido } from '../services/api';
 import { OrderCard } from '../components/OrderCard';
 import { EtaModal } from '../components/EtaModal';
@@ -69,20 +68,9 @@ export const PedidosPage: React.FC<PedidosPageProps> = ({
     return true;
   });
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 6;
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterEstado, search]);
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
-  const paginatedOrders = filtered.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
-
   const pendientesCount = pedidos.filter((p) => ['pendiente', 'pendiente_pago'].includes(p.estado)).length;
+
+
   const confirmadosCount = pedidos.filter((p) => p.estado === 'confirmado').length;
   const enCaminoCount = pedidos.filter((p) => p.estado === 'en_camino').length;
 
@@ -271,7 +259,7 @@ export const PedidosPage: React.FC<PedidosPageProps> = ({
         /* Vista Cuadrícula Responsiva (Móvil y Escritorio) */
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {paginatedOrders.map((pedido) => (
+            {filtered.map((pedido) => (
               <OrderCard
                 key={pedido.id}
                 pedido={pedido}
@@ -284,65 +272,9 @@ export const PedidosPage: React.FC<PedidosPageProps> = ({
               />
             ))}
           </div>
-
-          {/* Paginación */}
-          {totalPages > 1 && (
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800/80 pt-5">
-              <span className="text-xs text-slate-400 font-medium">
-                Mostrando <span className="text-slate-200 font-bold">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> a{' '}
-                <span className="text-slate-200 font-bold">
-                  {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}
-                </span>{' '}
-                de <span className="text-slate-200 font-bold">{filtered.length}</span> pedidos
-              </span>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Anterior</span>
-                </button>
-
-                {Array.from({ length: totalPages }).map((_, i) => {
-                  const pageNum = i + 1;
-                  if (totalPages > 5 && Math.abs(pageNum - currentPage) > 1 && pageNum !== 1 && pageNum !== totalPages) {
-                    if (pageNum === 2 || pageNum === totalPages - 1) {
-                      return <span key={pageNum} className="text-slate-600 px-1 text-xs">...</span>;
-                    }
-                    return null;
-                  }
-
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
-                        currentPage === pageNum
-                          ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25'
-                          : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 flex items-center gap-1"
-                >
-                  <span>Siguiente</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
+
 
       {/* Modales */}
       <EtaModal

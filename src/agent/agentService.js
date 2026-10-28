@@ -12,7 +12,7 @@ const PROMPT_TEMPLATE = fs.readFileSync(
   'utf-8'
 );
 
-async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, activeOrder = null, lastAddress = null) {
+async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
@@ -20,10 +20,6 @@ async function buildSystemPrompt(restauranteId, telefono, esRepartidor = false, 
   const telefonoContexto = cleanTel
     ? `El número de teléfono del cliente en este chat es: ${cleanTel}. Usa este único número en el campo 'telefono' al invocar guardar_pedido (salvo que el cliente indique expresamente otro número de contacto para la entrega). NUNCA repitas, concatenes ni dupliques números telefónicos.`
     : 'No tienes el número de teléfono del cliente. Si el pedido es DELIVERY, pídelo. Si es RETIRO EN LOCAL, no lo necesitas — omite el campo telefono al guardar el pedido.';
-
-  const contextoRepartidor = esRepartidor
-    ? `\n## MODO REPARTIDOR\nEste chat proviene de un REPARTIDOR (moto/mandado) que pasa a retirar el pedido en el local, NO de un cliente final.\n\nComportamiento obligatorio:\n- NO preguntes nombre, dirección ni método de pago — no son necesarios.\n- Saluda brevemente y pide directamente qué quieren ordenar.\n- Al confirmar el pedido, usa siempre tipo_entrega: "retiro", direccion: "Retiro repartidor", cliente: "Repartidor", metodo_pago: "efectivo".\n- Después de guardar responde EXACTAMENTE: "✅ ¡Pedido recibido! Ya le avisamos al chef. Te notificamos aquí cuando esté listo para retirar. 🍔"\n- La consulta de estado y cancelación aplican igual que normalmente.`
-    : '';
 
   let contextoPedidoActivo = '';
   if (activeOrder) {
@@ -67,7 +63,7 @@ Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
   }
 
   let contextoDireccion = '';
-  if (lastAddress && !esRepartidor) {
+  if (lastAddress) {
     contextoDireccion = `\n## DIRECCIÓN ANTERIOR\nLa última dirección de entrega de este cliente fue: "${lastAddress}".\nCuando pida delivery, ofrece: "¿Te lo enviamos a ${lastAddress} como la última vez, o a otra dirección?"\nSi confirma, usa esa dirección. Si da una nueva, usa la nueva.`;
   }
 
@@ -79,7 +75,7 @@ Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
     .replace('{{MENU}}', menuText)
     .replace('{{CUENTAS_BANCARIAS}}', cuentasBancariasText)
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
-    .replace('{{CONTEXTO_REPARTIDOR}}', contextoRepartidor)
+    .replace('{{CONTEXTO_REPARTIDOR}}', '')
     .replace('{{CONTEXTO_PEDIDO_ACTIVO}}', contextoPedidoActivo)
     .replace('{{CONTEXTO_DIRECCION}}', contextoDireccion);
 }
@@ -121,7 +117,7 @@ function sanitizeMessages(messages) {
   return result;
 }
 
-async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid, esRepartidor = false }) {
+async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid }) {
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
 
@@ -145,7 +141,8 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   // Buscar dirección anterior para clientes frecuentes
   const lastAddress = telefono ? await findLastDeliveryAddress(telefono) : null;
 
-  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, esRepartidor, activeOrder, lastAddress);
+  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress);
+
 
   // Capture history BEFORE addMessage to avoid duplication when spreading
   const history = getSession(sessionId);

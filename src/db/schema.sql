@@ -90,9 +90,22 @@ CREATE TABLE IF NOT EXISTS notificaciones_queue (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS lista_negra (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurante_id VARCHAR(64) REFERENCES restaurantes(id) ON DELETE CASCADE,
+    telefono VARCHAR(64) NOT NULL,
+    telefono_clean VARCHAR(64) NOT NULL,
+    nombre VARCHAR(255) DEFAULT 'Repartidor',
+    motivo VARCHAR(255) DEFAULT 'Repartidor',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Índices para consultas eficientes en tiempo real
 CREATE INDEX IF NOT EXISTS idx_pedidos_restaurante_estado ON pedidos (restaurante_id, estado);
 CREATE INDEX IF NOT EXISTS idx_pedidos_created_at ON pedidos (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pedidos_telefono ON pedidos (telefono);
 CREATE INDEX IF NOT EXISTS idx_pedidos_session_id ON pedidos (session_id);
 CREATE INDEX IF NOT EXISTS idx_productos_restaurante ON productos (restaurante_id);
+CREATE INDEX IF NOT EXISTS idx_lista_negra_restaurante ON lista_negra (restaurante_id);
+CREATE INDEX IF NOT EXISTS idx_lista_negra_clean ON lista_negra (telefono_clean);
+

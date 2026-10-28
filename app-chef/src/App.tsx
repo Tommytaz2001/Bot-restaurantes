@@ -21,11 +21,13 @@ import { PedidosPage } from './pages/PedidosPage';
 import { HistorialPage } from './pages/HistorialPage';
 import { MenuPage } from './pages/MenuPage';
 import { HorariosPage } from './pages/HorariosPage';
+import { BlacklistPage } from './pages/BlacklistPage';
 import { webNotifications } from './services/webNotificationService';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<Usuario | null>(() => getUser());
-  const [activeTab, setActiveTab] = useState<'pedidos' | 'historial' | 'menu' | 'horarios'>('pedidos');
+  const [activeTab, setActiveTab] = useState<'pedidos' | 'historial' | 'menu' | 'horarios' | 'blacklist'>('pedidos');
+
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [isLive, setIsLive] = useState(false);
   const [botActivo, setBotActivo] = useState(true);
@@ -110,6 +112,8 @@ export const App: React.FC = () => {
 
   const handleEntregado = async (id: string) => {
     try {
+      // Mover optimísticamente de inmediato en la UI para respuesta instantánea
+      setPedidos((prev) => prev.filter((p) => p.id !== id));
       await marcarEntregado(id);
     } catch (e: any) {
       alert(e.message || 'Error marcando entregado');
@@ -179,9 +183,11 @@ export const App: React.FC = () => {
         {activeTab === 'historial' && <HistorialPage />}
         {activeTab === 'menu' && <MenuPage />}
         {activeTab === 'horarios' && <HorariosPage />}
+        {activeTab === 'blacklist' && <BlacklistPage />}
       </main>
 
       <BackendConfigModal isOpen={showConfig} onClose={() => setShowConfig(false)} />
     </div>
   );
+
 };

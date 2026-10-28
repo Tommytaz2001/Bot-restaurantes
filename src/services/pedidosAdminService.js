@@ -154,7 +154,8 @@ async function fetchHistorial({ filtro = 'todos' }) {
   const sql = `
     SELECT * FROM pedidos 
     WHERE restaurante_id = $1 AND estado IN ('entregado', 'cancelado') ${dateCondition}
-    ORDER BY created_at DESC LIMIT 50
+    ORDER BY created_at DESC LIMIT 1000
+
   `;
   const res = await query(sql, [RESTAURANTE_ID]);
   const pedidos = [];

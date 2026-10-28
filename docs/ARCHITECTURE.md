@@ -78,6 +78,7 @@ d:\Bot-restaurantes\
 │   │   └── orderValidator.js    # Validación síncrona de esquema de pedido
 │   ├── routes/                  # Endpoints REST y vistas públicas
 │   │   ├── authRoutes.js        # POST /auth/login
+│   │   ├── blacklistRoutes.js   # CRUD /blacklist (números bloqueados y repartidores)
 │   │   ├── chatRoutes.js        # POST /chat (interfaz directa de chat)
 │   │   ├── logRoutes.js         # /logs (monitor web de logs en tiempo real)
 │   │   ├── menuAdminRoutes.js   # CRUD de categorías y platillos para la app
@@ -88,7 +89,9 @@ d:\Bot-restaurantes\
 │   ├── services/                # Servicios de negocio auxiliares
 │   │   ├── aiService.js         # Cliente Google Gemini API con fallback a OpenAI
 │   │   ├── authService.js       # Autenticación de usuarios con bcrypt y JWT
+│   │   ├── blacklistService.js  # Servicio con caché en memoria y normalización de números
 │   │   ├── botStateService.js   # Pausa/reanudación global del bot (kill switch)
+
 │   │   ├── evolutionSetup.js    # Inicialización de instancia y webhook en Evolution
 │   │   ├── menuAdminService.js  # Modificaciones administrativas del menú en Postgres
 │   │   ├── menuService.js       # Lectura de configuración, menú y formateo para prompt
@@ -141,6 +144,8 @@ PostgreSQL 16 sustituye la persistencia previa en Firestore, eliminando costos p
 - `pedidos` y `pedido_items`: Registro de comandas con cálculo de subtotales y detalle de producto.
 - `usuarios`: Administradores y chefs con credenciales encriptadas vía `bcrypt`.
 - `notificaciones_queue`: Cola con reintentos para mensajes de WhatsApp en caso de indisponibilidad de la API.
+- `lista_negra`: Números telefónicos de repartidores o contactos bloqueados para silenciar automáticamente las respuestas del bot.
+
 
 ### 3.4. Tiempo Real y KDS (`src/services/sseService.js` y `app-chef/`)
 - **Arquitectura SSE (Server-Sent Events):** Los clientes KDS se conectan a `/pedidos-admin/activos/stream`. El backend utiliza un `EventEmitter` interno (`orderEvents`) para emitir snapshots inmediatos ante cualquier mutación de pedidos (`order:created`, `order:updated`, `order:cancelled`).

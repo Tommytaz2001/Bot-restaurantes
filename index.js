@@ -12,6 +12,7 @@ const logRoutes = require('./src/routes/logRoutes');
 const pedidosAdminRoutes = require('./src/routes/pedidosAdminRoutes');
 const restauranteRoutes = require('./src/routes/restauranteRoutes');
 const menuAdminRoutes = require('./src/routes/menuAdminRoutes');
+const blacklistRoutes = require('./src/routes/blacklistRoutes');
 const { requireAuth } = require('./src/middleware/authMiddleware');
 const { requestLogger } = require('./src/middleware/requestLogger');
 const { initDb } = require('./src/db/initDb');
@@ -37,6 +38,8 @@ app.use('/orders', requireAuth, orderRoutes);
 app.use('/pedidos-admin', pedidosAdminRoutes); // Contiene middleware requireAuth / requireAuthQuery internamente
 app.use('/restaurante', requireAuth, restauranteRoutes);
 app.use('/menu-admin', requireAuth, menuAdminRoutes);
+app.use('/blacklist', requireAuth, blacklistRoutes);
+
 
 app.get('/health', (req, res) => res.json({ status: 'ok', database: 'postgresql', time: new Date() }));
 

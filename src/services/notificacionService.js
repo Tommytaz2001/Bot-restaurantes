@@ -19,8 +19,12 @@ function iniciarListenerNotificaciones() {
     if (!pedido) return;
     try {
       const { id, estado, telefono, jid, tipo_entrega, cambio_solicitado, notificaciones_enviadas = {} } = pedido;
+      // Al marcar como entregado, NUNCA enviar mensaje a WhatsApp al cliente (solo mover de apartado en la app de cocina)
+      if (estado === 'entregado') return;
+
       const destino = jid || telefono;
       if (!destino) return;
+
 
       const pendientes = [];
 
