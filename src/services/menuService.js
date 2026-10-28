@@ -105,16 +105,16 @@ const ITEM_SYNONYMS = {
   'taco-mixto': ['mixtos', 'combinados', 'mitad y mitad'],
 
   // Burritos
-  'burrito-pastor-cerdo': ['al pastor', 'adobada', 'pastor'],
-  'burrito-pastor-combo': ['pastor combo', 'con papas y gaseosa'],
-  'burrito-pollo': ['de pollo'],
-  'burrito-pollo-combo': ['pollo combo', 'con papas y gaseosa'],
-  'burrito-cerdo': ['de cerdo', 'de chancho', 'de puerco'],
-  'burrito-cerdo-combo': ['cerdo combo', 'con papas y gaseosa'],
-  'burrito-mixto': ['mixto', 'con todo', 'dos carnes'],
-  'burrito-mixto-combo': ['mixto combo', 'con papas y gaseosa'],
-  'burrito-atun': ['de atún', 'de pescado', 'de mar'],
-  'burrito-birria': ['de birria', 'con consomé', 'con caldo'],
+  'burrito-pastor-cerdo': ['al pastor', 'adobada', 'pastor', 'burrito pastor solo', 'burrito pastor de 170', 'el de 170'],
+  'burrito-pastor-combo': ['pastor combo', 'combo de pastor', 'combo de burrito pastor', 'con papas y gaseosa', 'burrito pastor de 230', 'el de 230', 'del que vale 230'],
+  'burrito-pollo': ['de pollo', 'burrito pollo solo', 'burrito de pollo solo', 'burrito de pollo de 160', 'el de 160'],
+  'burrito-pollo-combo': ['pollo combo', 'combo de pollo', 'combo de burrito de pollo', 'burrito pollo en combo', 'burrito de pollo combo', 'con papas y gaseosa', 'burrito de pollo de 220', 'el de 220', 'del que vale 220'],
+  'burrito-cerdo': ['de cerdo', 'de chancho', 'de puerco', 'burrito cerdo solo', 'burrito de cerdo de 160', 'el de 160'],
+  'burrito-cerdo-combo': ['cerdo combo', 'combo de cerdo', 'combo de burrito cerdo', 'burrito cerdo en combo', 'burrito de cerdo combo', 'con papas y gaseosa', 'burrito de cerdo de 220', 'el de 220', 'del que vale 220'],
+  'burrito-mixto': ['mixto', 'con todo', 'dos carnes', 'burrito mixto solo', 'burrito mixto de 160', 'el de 160'],
+  'burrito-mixto-combo': ['mixto combo', 'combo mixto', 'combo de burrito mixto', 'burrito mixto en combo', 'burrito mixto combo', 'con papas y gaseosa', 'burrito mixto de 220', 'el de 220', 'del que vale 220'],
+  'burrito-atun': ['de atún', 'de pescado', 'de mar', 'el de 170'],
+  'burrito-birria': ['de birria', 'con consomé', 'con caldo', 'el de 180'],
 
   // Nachos
   'nacho-pollo': ['de pollo'],

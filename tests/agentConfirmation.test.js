@@ -254,6 +254,29 @@ describe('agentService - Confirmation and Error Handling', () => {
     expect(callArgs.systemPrompt).toContain('420 C$');
     expect(result.reply).toContain('2 Hot Dog');
   });
+
+  test('reconoce "combo de burrito de pollo (del que vale 220)" como Combo a C$220 y no como C$160', async () => {
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Perfecto, 1 Burrito Pollo en Combo! 🌯🥤 ¿Quieres que te enviemos el pedido a domicilio 🛵 o prefieres pasar a retirarlo al local 🏪?',
+      tool_calls: null,
+    });
+
+    const result = await processMessage({
+      message: 'Me podrían enviar un combo de burrito de pollo de Urbano (del que vale 220)',
+      sessionId,
+      restauranteId,
+      telefono: '88888888',
+    });
+
+    expect(chatCompletion).toHaveBeenCalledTimes(1);
+    const callArgs = chatCompletion.mock.calls[0][0];
+    expect(callArgs.systemPrompt).toContain('REGLA DE PRECIOS Y COMBOS');
+    expect(callArgs.systemPrompt).toContain('Burrito Pollo en Combo (C$220)');
+    expect(callArgs.systemPrompt).toContain('del que vale 220');
+    expect(result.reply).toContain('Combo');
+  });
 });
+
 
 

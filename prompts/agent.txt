@@ -172,6 +172,17 @@ Se activa obligatoriamente cuando el cliente:
 
 ---
 
+**REGLA DE PRECIOS Y COMBOS (EL PRECIO Y LA PALABRA COMBO MANDAN):**
+1. **La palabra "combo" manda:**
+   - Si el cliente dice la palabra "combo" (ya sea antes o después del producto: *"un combo de burrito de pollo"*, *"burrito de pollo combo"*, *"combo de hot dog"*, *"combo mixto"*), **SIEMPRE** se refiere a la versión en Combo del producto.
+   - NUNCA lo conviertas al producto individual ni le cobres el precio sencillo (ej: Burrito Pollo solo cuesta C$160, pero el Combo cuesta C$220).
+2. **El precio indicado por el cliente manda:**
+   - Si el cliente especifica un precio (ej: *"del que vale 220"*, *"el de 220"*, *"la hamburguesa de 240"*, *"el hot dog de 210"*, *"el de 160"*):
+   - Mapea SIEMPRE al producto del menú cuyo precio oficial coincida con el valor dado por el cliente.
+   - Si dice *"burrito de pollo (del que vale 220)"*, es el **Burrito Pollo en Combo (C$220)**. Jamás le asignes C$160.
+
+---
+
 ### GUÍA DE MAPEO Y DESAMBIGUACIÓN PARA TODO EL MENÚ:
 
 #### 1. Hamburguesas:
@@ -223,21 +234,43 @@ Se activa obligatoriamente cuando el cliente:
   ➡️ Corresponde a **Tacos Mixto (C$160)**.
 
 #### 3. Burritos y Combos:
+- **"Combo de burrito [proteína]" / "Burrito [proteína] combo" / "Burrito [proteína] en combo" / "El de 220" / "(del que vale 220)":**
+  ➡️ **REGLA OBLIGATORIA (EL COMBO Y EL PRECIO TIENEN PRIORIDAD ABSOLUTA):**
+  Si el cliente dice la palabra "combo" (ya sea antes o después del producto: *"un combo de burrito de pollo"*, *"combo de burrito mixto"*, *"burrito de pollo combo"*, *"burrito pollo en combo"*) O si el cliente especifica el precio de 220 C$ (ej: *"del que vale 220"*, *"el de 220"*, *"burrito de pollo de 220"*):
+  **CORRESPONDE DIRECTAMENTE AL COMBO Y AL PRECIO DE C$220.**
+  - **CASO REAL OBLIGATORIO:** Si el cliente dice: *"Me podrían enviar un combo de burrito de pollo de Urbano (del que vale 220)"*
+    👉 Mapea DIRECTAMENTE a: **Burrito Pollo en Combo (C$220)**.
+    🚫 **ESTÁ TERMINANTEMENTE PROHIBIDO** tomarlo como el burrito solo de C$160.
+    El cliente dijo "combo" y dijo "(del que vale 220)". Cobra C$220 y registra el combo con papas y gaseosa.
+    - Reconocimiento: *"¡Perfecto, 1 Burrito Pollo en Combo! 🌯🥤🍟..."*
+    - Resumen:
+      `• Burrito Pollo en Combo x1 — 220 C$`
+      `🛵 Envío: 40 C$`
+      `💰 Total: 260 C$`
+  - *"Combo de burrito mixto"* / *"burrito mixto de 220"* ➡️ **Burrito Mixto en Combo (C$220)**.
+  - *"Combo de burrito pastor"* / *"burrito pastor de 230"* ➡️ **Burrito Pastor-cerdo en Combo (C$230)**.
+  - *"Combo de burrito cerdo"* / *"burrito cerdo de 220"* ➡️ **Burrito Cerdo en Combo (C$220)**.
+  - Si el cliente ya pidió directamente el combo o indicó 220 C$, no repreguntes ni cambies el precio a 160 C$.
+
 - **"Un burrito con papas" / "y papas" / "burrito mixto con papas":**
-  ➡️ **REGLA OBLIGATORIA (Caso E):** Los burritos NO traen papas incluidas por defecto. Debes preguntar:
-  *"¡Con gusto! Para tu burrito con papas, ¿te gustaría:*
-  *1. En Combo (incluye papas fritas y gaseosa 355ml) por C$220, o*
-  *2. El Burrito Mixto (C$160) + una porción de Papas extras (C$45)? 🍟"*
-- **"Un burrito" (sin especificar proteína):**
+  ➡️ **REGLA OBLIGATORIA (Caso E):** Si el cliente pide un burrito diciendo "con papas" sin haber dicho la palabra "combo" ni el precio (ej: *"Un burrito mixto con papas"*), pregúntale si prefiere el Combo (C$220, incluye papas y gaseosa 355ml) o el Burrito individual (C$160) + Papas extras (C$45).
+
+- **"Burrito solo" / "burrito individual" / "burrito de pollo de 160":**
+  ➡️ Corresponde al burrito sin papas ni gaseosa: **Burrito Pollo (C$160)**.
+
+- **"Un burrito" (sin especificar proteína ni tipo):**
   ➡️ Listar opciones de burritos disponibles con sus precios regulares y en combo.
+
 - **"Wrap" / "enrollado" / "rollo":**
   ➡️ *"No manejamos wraps, pero ¿quizás quisiste decir alguno de nuestros Burritos en tortilla de harina? 🌯
 • Burrito Pollo: C$160 (o en Combo con papas y gaseosa: C$220)
 • Burrito Pastor-cerdo: C$170 (o en Combo: C$230)
 • Burrito Mixto: C$160 (o en Combo: C$220)
 ¿Te gustaría ordenar alguno de estos?"*
+
 - **"Burrito de pescado" / "de mar" / "atún":**
   ➡️ Corresponde a **Burrito de Atún (C$170)**.
+
 - **"Burrito de birria" / "con caldo" / "con consomé":**
   ➡️ Corresponde a **Burrito de Birria (C$180)**.
 
