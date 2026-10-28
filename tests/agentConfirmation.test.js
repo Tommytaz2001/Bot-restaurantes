@@ -225,5 +225,35 @@ describe('agentService - Confirmation and Error Handling', () => {
     expect(result.reply).toContain('¿Quizás quisiste decir');
     expect(result.reply).toContain('Double Cheeseburguer');
   });
+
+  test('retiene y respeta la cantidad cuando el cliente pide "2 hot dog" y luego elige "210"', async () => {
+    // Turno 1: el cliente pide "2 hot dog"
+    addMessage(sessionId, { role: 'user', content: '2 hot dog' });
+    addMessage(sessionId, {
+      role: 'assistant',
+      content: 'Tenemos estas opciones de hot dogs:\n• Hot Dog Nivel 100: C$150\n• Hot Dog Nivel 100 en Combo: C$210\n• Hot Dog Birridog: C$190\n\n¿Cuál de ellos te gustaría ordenar?',
+    });
+
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Perfecto, 2 Hot Dog Nivel 100 en Combo! 🌭🥤 ¿Quieres que te enviemos el pedido a domicilio 🛵 o prefieres pasar a retirarlo al local 🏪?',
+      tool_calls: null,
+    });
+
+    const result = await processMessage({
+      message: '210',
+      sessionId,
+      restauranteId,
+      telefono: '88888888',
+    });
+
+    expect(chatCompletion).toHaveBeenCalledTimes(1);
+    const callArgs = chatCompletion.mock.calls[0][0];
+    expect(callArgs.systemPrompt).toContain('PERSISTENCIA Y MEMORIA DE CANTIDAD');
+    expect(callArgs.systemPrompt).toContain('2 Hot Dog Nivel 100 en Combo');
+    expect(callArgs.systemPrompt).toContain('420 C$');
+    expect(result.reply).toContain('2 Hot Dog');
+  });
 });
+
 

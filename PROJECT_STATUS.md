@@ -48,6 +48,9 @@ El sistema superó su fase de MVP inicial y ha incorporado:
     - **Protocolo de Desambiguación Guiada:** Si el cliente utiliza términos inadecuados, apodos, modismos locales, pide por ingredientes sin nombrar el plato ('la de dos carnes', 'sin monte', 'con tocino'), menciona nombres de otras cadenas ('Big Mac', 'Whopper', 'salchipapas', 'wrap') o números de combos inexistentes, el bot tiene terminantemente prohibido adivinar en silencio o rechazar diciendo 'eso no existe'.
     - **Fórmula Obligatoria con Opciones:** El bot responde con *"¿Quizás quisiste decir alguna de estas opciones?"* o *"¿Quizás quisiste decir...?"* presentando las 2 o 3 opciones más probables con sus nombres oficiales, viñetas y precios en C$, desglosando la diferencia clave.
     - **Diccionario de Sinónimos y Apodos en Menú (`src/services/menuService.js`):** Inyección de metadatos `[Sinónimos/Apodos: ...]` directamente en el formateo del menú para el LLM (`formatMenuForPrompt`), cubriendo hamburguesas, tacos, burritos, nachos, quesadillas, papas fritas, bebidas y extras.
+21. **Persistencia y Memoria de Cantidad a Través del Chat (`prompts/agent.txt`, `src/services/aiService.js`, `src/db/initDb.js`, `src/services/menuService.js`, `tests/agentConfirmation.test.js`):**
+    - **Retención de Cantidad Inicial en Flujo por Categoría:** Corrección del error donde el bot rebajaba a 1 cuando el cliente pedía *"2 hot dog"* y luego seleccionaba el precio *"210"*. Se estableció la regla de retención estricta donde cualquier cantidad especificada al inicio del flujo queda fijada para el producto seleccionado (ej: 2x Hot Dog Combo = C$420), evitando pérdidas de venta.
+    - **Categoría Hot Dogs Integrada:** Incorporación oficial de la categoría Hot Dogs (`Hot Dog Nivel 100` C$150, `Hot Dog Nivel 100 en Combo` C$210, `Hot Dog Birridog` C$190) y sus sinónimos en base de datos, servicio de menú y prompt del agente.
 
 ---
 
@@ -104,7 +107,7 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 
 | Prueba / Archivo | Tipo | Resultado | Observaciones |
 | `tests/orderNormalization.test.js` | Unitaria | **PASS** (4/4) | Valida normalización defensiva de tipo de entrega ("domicilio" -> "delivery"), método de pago, dirección por defecto y recálculo de totales. |
-| `tests/agentConfirmation.test.js` | Unitaria | **PASS** (5/5) | Valida invocación exitosa de guardar_pedido, interceptor de respuestas de texto en confirmación (missed tool call), bloqueo de confirmaciones falsas ante fallo en BD, desambiguación de combos/papas (Caso E) y protocolo "¿Quizás quisiste decir...?". |
+| `tests/agentConfirmation.test.js` | Unitaria | **PASS** (6/6) | Valida invocación exitosa de guardar_pedido, interceptor de respuestas de texto en confirmación (missed tool call), bloqueo de confirmaciones falsas ante fallo en BD, desambiguación de combos/papas (Caso E), protocolo "¿Quizás quisiste decir...?" y persistencia de cantidad entre turnos (2 hot dog -> 210 = x2). |
 | `tests/pushNotification.test.js` | Unitaria | **PASS** (3/3) | Valida formateo de push, despacho a Expo API, saneamiento de tokens obsoletos (DeviceNotRegistered) y tolerancia a fallos. |
 | `tests/changeOrderEta.test.js` | Unitaria | **PASS** (2/2) | Valida envío de nuevo tiempo estimado al aprobar cambio y formato de notificación sin ETA. |
 | `tests/phoneUtils.test.js` | Unitaria | **PASS** (12/12) | Valida extracción de dígitos, desduplicación de mitades y asimétrica (58544518558544518), código 505 y fallbacks. |

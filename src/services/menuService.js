@@ -126,6 +126,11 @@ const ITEM_SYNONYMS = {
   'quesadilla-pollo': ['de pollo'],
   'quesadilla-cerdo': ['de cerdo', 'de chancho'],
 
+  // Hot Dogs
+  'hot-dog-nivel-100': ['hot dog sencillo', 'hot dog normal'],
+  'hot-dog-nivel-100-combo': ['hot dog combo', 'en combo', 'con papas y gaseosa', '210'],
+  'hot-dog-birridog': ['con birria', 'con caldo', 'con consomé', 'birridog'],
+
   // Papas Fritas
   'papas-peor-es-nada': ['sencillas', 'con kétchup y cheddar', 'las normales de 80'],
   'papas-de-calle': ['bañadas', 'de la calle', 'con salsa dulce y queso rayado'],

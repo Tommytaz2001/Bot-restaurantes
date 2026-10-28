@@ -84,9 +84,19 @@ const INITIAL_MENU = [
     ],
   },
   {
+    id: 'hot-dogs',
+    nombre: 'Hot Dogs',
+    orden: 6,
+    items: [
+      { id: 'hot-dog-nivel-100', nombre: 'Hot Dog Nivel 100', precio: 150, descripcion: 'Salchicha jumbo con salsas y quesos.', opciones: [] },
+      { id: 'hot-dog-nivel-100-combo', nombre: 'Hot Dog Nivel 100 en Combo', precio: 210, descripcion: 'Hot Dog Nivel 100 más papas fritas y gaseosa 355ml.', opciones: [] },
+      { id: 'hot-dog-birridog', nombre: 'Hot Dog Birridog', precio: 190, descripcion: 'Hot Dog con carne de birria, queso y consomé.', opciones: [] },
+    ],
+  },
+  {
     id: 'papas-fritas',
     nombre: 'Papas Fritas',
-    orden: 6,
+    orden: 7,
     items: [
       { id: 'papas-peor-es-nada', nombre: 'Papas Peor es Nada', precio: 80, descripcion: 'Papas fritas con salsa de tomate y cheddar.', opciones: [] },
       { id: 'papas-de-calle', nombre: 'Papas De Calle', precio: 100, descripcion: 'Papas fritas bañadas en salsa dulce, salsa de tomate, cheddar y queso rayado.', opciones: [] },
@@ -97,7 +107,7 @@ const INITIAL_MENU = [
   {
     id: 'bebidas',
     nombre: 'Bebidas',
-    orden: 7,
+    orden: 8,
     items: [
       { id: 'coca-cola', nombre: 'Coca Cola 355ml', precio: 30, descripcion: 'Refresco Coca Cola lata 355ml.', opciones: [] },
       { id: 'fresca', nombre: 'Fresca 355ml', precio: 30, descripcion: 'Refresco Fresca lata 355ml.', opciones: [] },
@@ -107,7 +117,7 @@ const INITIAL_MENU = [
   {
     id: 'extras',
     nombre: 'Extras',
-    orden: 8,
+    orden: 9,
     items: [
       { id: 'extra-salsa-aguacate', nombre: 'Salsa aguacate', precio: 20, descripcion: 'Extra salsa de aguacate.', opciones: [] },
       { id: 'extra-salsa-roja', nombre: 'Salsa roja', precio: 10, descripcion: 'Extra salsa roja.', opciones: [] },

@@ -43,7 +43,7 @@ const GEMINI_TOOLS = [
                 type: 'OBJECT',
                 properties: {
                   nombre: { type: 'STRING' },
-                  cantidad: { type: 'NUMBER', description: 'Cantidad pedida. Por defecto SIEMPRE es 1 si el cliente no especificó un número mayor. NUNCA asumas 2.' },
+                  cantidad: { type: 'NUMBER', description: 'Cantidad pedida. Debe respetar estrictamente el número que el cliente indicó en el chat (ej: si dijo "2 hot dog" y luego eligió "210", la cantidad es 2). Solo usa 1 si el cliente no especificó ningún número ni cantidad.' },
                   precio_unitario: { type: 'NUMBER' },
                   opcion: { type: 'STRING', description: 'Variante o nota (ej: "sin cebolla", "BBQ")' },
                 },
