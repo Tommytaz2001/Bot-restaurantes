@@ -43,7 +43,20 @@ async function verificarHorario(restauranteId) {
     const horario = config.horario;
     if (!horario) return { abierto: true };
 
+    // ── Modo Dev / Test Automático ──────────────────────────────────────────────
+    // Si todos los días de la semana están desactivados (abre === false), se activa
+    // automáticamente el Modo Dev del bot, atendiendo 24/7 sin restricciones de horario.
+    const diasConfigurados = DIAS_SEMANA.filter((dia) => horario[dia] !== undefined);
+    if (diasConfigurados.length > 0) {
+      const hayAlgunDiaActivo = diasConfigurados.some((dia) => horario[dia]?.abre === true);
+      if (!hayAlgunDiaActivo) {
+        log('[Horario] 🛠️ MODO DEV ACTIVO: Todos los días están desactivados en horario → Bot activo siempre 24/7 (ignora horarios)');
+        return { abierto: true, modoDev: true };
+      }
+    }
+
     const ahora = new Date();
+
     const offsetHoras = parseInt(process.env.TZ_OFFSET ?? '-6', 10);
     // Minutos transcurridos en el día (hora local según TZ_OFFSET)
     const minutosLocal = ((ahora.getUTCHours() + offsetHoras + 24) % 24) * 60 + ahora.getUTCMinutes();

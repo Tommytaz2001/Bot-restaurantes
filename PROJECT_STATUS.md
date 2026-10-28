@@ -65,6 +65,11 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 25. **Silenciamiento Garantizado al Marcar Pedido "Entregado" (`src/services/notificacionService.js`, `src/routes/orderRoutes.js`, `app-chef/src/App.tsx`):**
     - Se aseguró y reforzó el guard en `notificacionService.js` para que al pasar un pedido al estado `entregado`, nunca se despache mensaje alguno por WhatsApp al cliente.
     - Se agregó una actualización optimista inmediata en `app-chef/src/App.tsx` para remover el pedido de la pantalla de activos instantáneamente al pulsar "Marcar Entregado", logrando una transición inmediata hacia el historial.
+26. **Modo Dev Automático 24/7 al Desactivar Todos los Días del Horario (`src/whatsapp/messageHandler.js`, `app-chef/src/pages/HorariosPage.tsx`, `tests/verificarHorario.test.js`):**
+    - Al desactivar todos los días de la semana en la app de cocina (`abre: false` para lunes a domingo), el verificador de horarios activa automáticamente el **Modo Dev**, haciendo que el bot atienda siempre (24/7 sin restricciones de horario) para pruebas continuas de desarrollo.
+    - Al habilitar al menos un día (`abre: true`), el bot reactiva su control de horario habitual de forma instantánea.
+    - Se incorporó en `HorariosPage.tsx` un banner visual con la etiqueta "BOT SIEMPRE ACTIVO" y botones de acceso rápido para conmutar entre Modo Dev y atención normal en un clic.
+
 
 
 ---

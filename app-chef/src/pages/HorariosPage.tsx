@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Save, CheckCircle2 } from 'lucide-react';
+import { Clock, Save, CheckCircle2, Sparkles, PowerOff, Power } from 'lucide-react';
 import { fetchHorario, saveHorario } from '../services/api';
 
 const DIAS = [
@@ -25,6 +25,11 @@ export const HorariosPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  const todosDesactivados = DIAS.length > 0 && DIAS.every(({ key }) => {
+    const config = horario[key];
+    return config && config.abre === false;
+  });
+
   const handleChange = (dia: string, field: string, value: any) => {
     setHorario((prev: any) => ({
       ...prev,
@@ -33,6 +38,28 @@ export const HorariosPage: React.FC = () => {
         [field]: value,
       },
     }));
+    setSavedSuccess(false);
+  };
+
+  const handleDesactivarTodos = () => {
+    setHorario((prev: any) => {
+      const next: any = { ...prev };
+      DIAS.forEach(({ key }) => {
+        next[key] = { ...(next[key] || {}), abre: false };
+      });
+      return next;
+    });
+    setSavedSuccess(false);
+  };
+
+  const handleActivarTodos = () => {
+    setHorario((prev: any) => {
+      const next: any = { ...prev };
+      DIAS.forEach(({ key }) => {
+        next[key] = { ...(next[key] || {}), abre: true };
+      });
+      return next;
+    });
     setSavedSuccess(false);
   };
 
@@ -62,24 +89,69 @@ export const HorariosPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {savedSuccess ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 text-white" />
-              <span>¡Guardado!</span>
-            </>
+        <div className="flex items-center gap-2">
+          {todosDesactivados ? (
+            <button
+              onClick={handleActivarTodos}
+              type="button"
+              className="px-3.5 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/60 font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Restaurar atención en todos los días"
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>Activar Todos</span>
+            </button>
           ) : (
-            <>
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'Guardando...' : 'Guardar Horarios'}</span>
-            </>
+            <button
+              onClick={handleDesactivarTodos}
+              type="button"
+              className="px-3.5 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/40 text-amber-300 hover:bg-amber-900/60 font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Desactivar todos los días para activar Modo Dev 24/7 del bot"
+            >
+              <PowerOff className="w-3.5 h-3.5" />
+              <span>Modo Dev (24/7)</span>
+            </button>
           )}
-        </button>
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
+          >
+            {savedSuccess ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>¡Guardado!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>{saving ? 'Guardando...' : 'Guardar Horarios'}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Banner de Modo Dev / Test 24/7 */}
+      {todosDesactivados && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 flex items-start gap-3 shadow-lg shadow-amber-500/5 animate-fadeIn">
+          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-white flex items-center gap-2">
+              <span>🛠️ Modo Dev / Test 24/7 Activado</span>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono font-bold">
+                BOT SIEMPRE ACTIVO
+              </span>
+            </div>
+            <p className="text-xs text-amber-200/90 mt-1">
+              Todos los días de la semana están desactivados. En este modo, el bot <strong>ignora los horarios y atenderá siempre (24/7 sin restricciones)</strong> por WhatsApp para pruebas.
+            </p>
+          </div>
+        </div>
+      )}
+
 
       {loading ? (
         <div className="py-20 text-center text-slate-400 text-sm">
