@@ -2,7 +2,7 @@
 
 **Última actualización:** 27 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `52f1829 feat: order confirmation persistence fixes, 60s idempotency window, missed tool call interceptor, combo disambiguation, and 'quizas quisiste decir' menu protocol` 
+**Último commit:** `8be1895 fix: persist initial quantity across conversational turns and integrate hot dogs category` 
 
 ---
 
