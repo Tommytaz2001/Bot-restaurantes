@@ -38,43 +38,16 @@ function getLidForPhone(phone) {
 /**
  * Resuelve un @lid a número de teléfono real.
  * 1. Primero busca en caché en memoria.
- * 2. Busca en historial de pedidos en PostgreSQL (tabla pedidos).
+ * 2. Consulta endpoints de contacto de Evolution API (/contact/profile, /chat/findContacts).
  * 3. Busca en Evolution API findMessages (campo key.senderPn).
- * 4. Consulta endpoints de contacto de Evolution API (/contact/profile, /chat/findContacts).
  */
 async function resolveLid(lidJid, overrideFetch) {
   if (!lidJid) return null;
   const lidKey = lidJid.includes('@') ? lidJid : `${lidJid}@lid`;
-  const lidRaw = lidKey.split('@')[0];
 
   // 1. Revisar caché en memoria
   const cached = getPhoneForLid(lidKey);
   if (cached) return cached;
-
-  // 2. Revisar historial en PostgreSQL (tabla pedidos)
-  try {
-    const { query } = require('../db/connection');
-    const resDb = await query(
-      `SELECT telefono FROM pedidos 
-       WHERE (jid = $1 OR jid LIKE $2) 
-         AND telefono IS NOT NULL 
-         AND LENGTH(telefono) >= 7 
-         AND telefono NOT LIKE '%@lid%' 
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [lidKey, `%${lidRaw}%`]
-    );
-    if (resDb && resDb.rows && resDb.rows.length > 0 && resDb.rows[0].telefono) {
-      const dbCandidate = resDb.rows[0].telefono.replace(/\D/g, '');
-      if (dbCandidate.length >= 7 && dbCandidate.length <= 15) {
-        log(`[LidResolver] @lid ${lidKey} resuelto desde historial de pedidos en BD → ${dbCandidate}`);
-        cacheLidMapping(lidKey, dbCandidate);
-        return dbCandidate;
-      }
-    }
-  } catch {
-    // Si BD no disponible en este contexto, continuar
-  }
 
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;

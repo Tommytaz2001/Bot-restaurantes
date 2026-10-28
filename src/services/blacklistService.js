@@ -46,7 +46,55 @@ async function asegurarTabla() {
 }
 
 /**
- * Carga o refresca la lista negra en memoria y sincroniza LIDs conocidos
+ * Comprueba si un número de teléfono entrante coincide con un número de la lista negra.
+ * Maneja códigos de país internacionales de forma estricta:
+ * - Coincidencia exacta de dígitos
+ * - Nicaragua (+505): 8 dígitos locales vs 11 dígitos con prefijo 505
+ * - Ecuador (+593): 9 dígitos locales vs 12 dígitos con prefijo 593
+ * - Nunca cruza prefijos distintos (un número 593 jamás coincidirá con uno 505)
+ */
+function phonesMatch(incomingClean, entryClean) {
+  if (!incomingClean || !entryClean) return false;
+  if (incomingClean === entryClean) return true;
+
+  // Si ambos tienen prefijo de país distinto, jamás coinciden
+  const incomingIs505 = incomingClean.startsWith('505') && incomingClean.length === 11;
+  const entryIs505 = entryClean.startsWith('505') && entryClean.length === 11;
+  const incomingIs593 = incomingClean.startsWith('593') && incomingClean.length === 12;
+  const entryIs593 = entryClean.startsWith('593') && entryClean.length === 12;
+
+  // Si uno es Nicaragua (505) y el otro es Ecuador (593), no coinciden
+  if ((incomingIs505 && entryIs593) || (incomingIs593 && entryIs505)) {
+    return false;
+  }
+
+  // Nicaragua: comparar local (8 dígitos) con internacional (505 + 8 dígitos)
+  if (entryIs505 && incomingClean.length === 8) {
+    return entryClean === `505${incomingClean}`;
+  }
+  if (incomingIs505 && entryClean.length === 8) {
+    return incomingClean === `505${entryClean}`;
+  }
+
+  // Ecuador: comparar local (9 dígitos) con internacional (593 + 9 dígitos)
+  if (entryIs593 && incomingClean.length === 9) {
+    return entryClean === `593${incomingClean}`;
+  }
+  if (incomingIs593 && entryClean.length === 9) {
+    return incomingClean === `593${entryClean}`;
+  }
+
+  // Normalización genérica de prefijo solo si coincide exactamente
+  if (incomingClean.startsWith('505') && incomingClean.substring(3) === entryClean) return true;
+  if (entryClean.startsWith('505') && entryClean.substring(3) === incomingClean) return true;
+  if (incomingClean.startsWith('593') && incomingClean.substring(3) === entryClean) return true;
+  if (entryClean.startsWith('593') && entryClean.substring(3) === incomingClean) return true;
+
+  return false;
+}
+
+/**
+ * Carga o refresca la lista negra en memoria
  */
 async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) {
   const now = Date.now();
@@ -65,24 +113,6 @@ async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) 
       [restauranteId]
     );
 
-    // Mapear LIDs históricos conocidos en pedidos para agilizar resolución
-    try {
-      const lidsRes = await query(
-        `SELECT DISTINCT jid, telefono 
-         FROM pedidos 
-         WHERE jid LIKE '%@lid%' 
-           AND telefono IS NOT NULL 
-           AND LENGTH(telefono) >= 7`
-      );
-      if (lidsRes && lidsRes.rows) {
-        for (const row of lidsRes.rows) {
-          cacheLidMapping(row.jid, row.telefono);
-        }
-      }
-    } catch {
-      // Ignorar si falla la carga de LIDs
-    }
-
     _cache.set(restauranteId, res.rows || []);
     _lastCacheTime = now;
     return res.rows || [];
@@ -93,10 +123,8 @@ async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) 
 }
 
 /**
- * Verifica si un número telefónico, JID o remitente está registrado en la lista negra.
- * Es compatible con formato @lid de WhatsApp resolviendo contra pedidos y caché.
- *
- * @param {string} telefono Número o JID de WhatsApp (+505..., 505..., 8888..., o LID numérico)
+ * Verifica si un número telefónico o remitente está registrado en la lista negra.
+ * @param {string} telefono Número o JID de WhatsApp (+505..., 505..., 8888..., etc.)
  * @param {string} [restauranteId]
  * @param {string} [remoteJid] JID completo original si está disponible (ej: 229712098017378@lid)
  * @returns {Promise<boolean>}
@@ -110,38 +138,11 @@ async function isBlacklisted(telefono, restauranteId = RESTAURANTE_ID, remoteJid
   if (rawTel) candidates.add(rawTel);
   if (rawJid) candidates.add(rawJid);
 
-  // 1. Verificar si telefono o remoteJid es un LID y tiene mapeo en caché
+  // Si telefono o remoteJid es un @lid, consultar teléfono verificado por WhatsApp en caché
   const cachedTel = getPhoneForLid(telefono) || (remoteJid ? getPhoneForLid(remoteJid) : null);
   if (cachedTel) {
     const cleanCached = cleanDigits(cachedTel);
     if (cleanCached) candidates.add(cleanCached);
-  }
-
-  // 2. Si el identificador tiene 14-16 dígitos (típico @lid) y aún no hay mapeo en caché,
-  // consultar si la tabla pedidos tiene registrado el número real
-  const lidCandidate = (rawTel.length >= 14 && rawTel.length <= 16) ? rawTel : (rawJid.length >= 14 && rawJid.length <= 16 ? rawJid : null);
-  if (lidCandidate) {
-    try {
-      const dbLid = await query(
-        `SELECT telefono FROM pedidos 
-         WHERE (jid LIKE $1 OR jid = $2) 
-           AND telefono IS NOT NULL 
-           AND LENGTH(telefono) >= 7 
-           AND telefono NOT LIKE '%@lid%' 
-         ORDER BY created_at DESC 
-         LIMIT 1`,
-        [`%${lidCandidate}%`, `${lidCandidate}@lid`]
-      );
-      if (dbLid && dbLid.rows && dbLid.rows.length > 0 && dbLid.rows[0].telefono) {
-        const dbPhoneClean = cleanDigits(dbLid.rows[0].telefono);
-        if (dbPhoneClean) {
-          candidates.add(dbPhoneClean);
-          cacheLidMapping(`${lidCandidate}@lid`, dbPhoneClean);
-        }
-      }
-    } catch {
-      // Ignorar si BD no disponible en este contexto
-    }
   }
 
   if (candidates.size === 0) return false;
@@ -152,15 +153,8 @@ async function isBlacklisted(telefono, restauranteId = RESTAURANTE_ID, remoteJid
     if (!entryClean) continue;
 
     for (const cand of candidates) {
-      // Coincidencia exacta de dígitos
-      if (cand === entryClean) return true;
-
-      // Coincidencia con/sin código de país (>= 8 dígitos)
-      // Ej: '50558544518' termina con '58544518'
-      if (cand.length >= 8 && entryClean.length >= 8) {
-        if (cand.endsWith(entryClean) || entryClean.endsWith(cand)) {
-          return true;
-        }
+      if (phonesMatch(cand, entryClean)) {
+        return true;
       }
     }
   }
@@ -229,24 +223,6 @@ async function addBlacklist({
       [restauranteId, telefono.trim(), clean, nombre.trim(), motivo.trim()]
     );
     result = insertRes.rows[0];
-  }
-
-  // Asociar de inmediato cualquier LID histórico existente en pedidos para este número
-  try {
-    const localPhone = clean.length >= 8 && clean.startsWith('505') ? clean.substring(3) : clean;
-    const dbJids = await query(
-      `SELECT DISTINCT jid FROM pedidos 
-       WHERE (telefono = $1 OR telefono = $2 OR telefono LIKE $3) 
-         AND jid LIKE '%@lid%'`,
-      [clean, localPhone, `%${localPhone}%`]
-    );
-    if (dbJids && dbJids.rows) {
-      for (const row of dbJids.rows) {
-        cacheLidMapping(row.jid, clean);
-      }
-    }
-  } catch {
-    // Continuar si la consulta falla
   }
 
   // Refrescar caché

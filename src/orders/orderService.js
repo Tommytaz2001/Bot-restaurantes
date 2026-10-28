@@ -238,14 +238,6 @@ async function saveOrder(orderData) {
 
     const nuevoPedido = mapRowToOrder(pedidoRes.rows[0], items);
 
-    // Cachear mapeo de @lid con teléfono si corresponde
-    if (orderData.jid && orderData.telefono && String(orderData.jid).includes('@lid')) {
-      try {
-        const { cacheLidMapping } = require('../whatsapp/lidResolver');
-        cacheLidMapping(orderData.jid, orderData.telefono);
-      } catch {}
-    }
-
     // Emite evento en tiempo real para todos los clientes SSE (app del chef)
     orderEvents.emit('order:created', { restauranteId, pedido: nuevoPedido });
     console.log(`[orderService] 📡 Evento SSE order:created emitido para id=${id}`);

@@ -162,5 +162,27 @@ describe('blacklistService', () => {
       expect(await isBlacklisted('229712098017378@lid', 'urbano')).toBe(true);
       expect(await isBlacklisted('229712098017378', 'urbano', '229712098017378@lid')).toBe(true);
     });
+
+    test('NO bloquea números distintos ni mezcla prefijos de país (+505 vs +593)', async () => {
+      // Bloquear solo un número de Nicaragua
+      await addBlacklist({
+        restauranteId: 'urbano',
+        telefono: '+505 5854 4518',
+        nombre: 'Repartidor Nicaragua',
+        motivo: 'Delivery',
+      });
+
+      // Número diferente de Nicaragua: NO debe estar bloqueado
+      expect(await isBlacklisted('50577449468', 'urbano')).toBe(false);
+      expect(await isBlacklisted('77449468', 'urbano')).toBe(false);
+
+      // Número de Ecuador (+593): NO debe estar bloqueado
+      expect(await isBlacklisted('593963748405', 'urbano')).toBe(false);
+      expect(await isBlacklisted('593963748405@s.whatsapp.net', 'urbano')).toBe(false);
+
+      // El número bloqueado SÍ debe estar bloqueado
+      expect(await isBlacklisted('50558544518', 'urbano')).toBe(true);
+      expect(await isBlacklisted('58544518', 'urbano')).toBe(true);
+    });
   });
 });
