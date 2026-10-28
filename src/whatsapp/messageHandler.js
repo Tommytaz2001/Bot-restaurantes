@@ -162,8 +162,8 @@ function debeIgnorar(texto) {
  */
 async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, contactName = null, esMensajeReenviado = false, resolverFn = null, sendReply, sendTyping = null }) {
   // 0. Lista Negra — repartidores y contactos bloqueados no reciben respuesta
-  if (await isBlacklisted(telefono, restauranteId)) {
-    log(`[messageHandler] Mensaje de ${telefono} ignorado por estar en Lista Negra`);
+  if (await isBlacklisted(telefono, restauranteId, remoteJid)) {
+    log(`[messageHandler] Mensaje de ${telefono} (${remoteJid}) ignorado por estar en Lista Negra`);
     return;
   }
 

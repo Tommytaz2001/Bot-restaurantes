@@ -122,23 +122,31 @@ async function _processMessage(data) {
 
   if (!telefono) return;
 
-  // Si remoteJid viene con @lid, verificar si Evolution API adjuntó número alternativo en el payload
-  const altCandidate = key.remoteJidAlt || key.participantAlt || data.senderPn || data.cleanedSenderPn;
+  // Si remoteJid viene con @lid, verificar si Evolution API adjuntó número real en senderPn o alternativo
+  const altCandidate = key.senderPn 
+    || (data.key && data.key.senderPn)
+    || key.remoteJidAlt 
+    || key.participantAlt 
+    || key.participantPn 
+    || data.senderPn 
+    || data.cleanedSenderPn 
+    || data.participantPn;
+
   if (remoteJid.endsWith('@lid') && altCandidate) {
-    const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0] : '';
-    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 14 && !rawAlt.endsWith('@lid')) {
+    const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0].replace(/\D/g, '') : '';
+    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid')) {
       cacheLidMapping(remoteJid, rawAlt);
       telefono = rawAlt;
       remoteJid = `${rawAlt}@s.whatsapp.net`;
-      log(`[Webhook] @lid resuelto desde payload alternativo (${altCandidate}) → ${rawAlt}`);
+      log(`[Webhook] @lid resuelto desde senderPn / payload alternativo (${altCandidate}) → ${rawAlt}`);
     }
   }
 
-  // Si sigue siendo @lid o un identificador numérico de 15 dígitos sin resolver, intentar resolver vía API
+  // Si sigue siendo @lid o un identificador numérico de 15 dígitos sin resolver, intentar resolver vía API o BD
   if (remoteJid.endsWith('@lid') || /^\d{14,16}$/.test(telefono)) {
     const resolved = await resolveLid(remoteJid);
     if (resolved) {
-      log(`[Webhook] @lid ${remoteJid} resuelto vía Evolution API → ${resolved}`);
+      log(`[Webhook] @lid ${remoteJid} resuelto vía API/BD → ${resolved}`);
       telefono = resolved;
       remoteJid = `${resolved}@s.whatsapp.net`;
     }
@@ -156,8 +164,8 @@ async function _processMessage(data) {
   // ── Comprobar Lista Negra (repartidores / números bloqueados) ───────────────
   // Si está en lista negra, el bot NO responde absolutamente nada (evita confusiones con repartidores)
   const { isBlacklisted } = require('../services/blacklistService');
-  if (await isBlacklisted(telefono, RESTAURANTE_ID)) {
-    log(`[Webhook] Mensaje de ${telefono} ignorado por estar en Lista Negra (Repartidor / Bloqueado)`);
+  if (await isBlacklisted(telefono, RESTAURANTE_ID, key.remoteJid)) {
+    log(`[Webhook] Mensaje de ${telefono} (${key.remoteJid}) ignorado por estar en Lista Negra (Repartidor / Bloqueado)`);
     return;
   }
 

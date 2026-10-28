@@ -70,4 +70,26 @@ describe('lidResolver', () => {
     const phone = await resolveLid('000000000000000@lid', mockFetch);
     expect(phone).toBeNull();
   });
+
+  test('resolveLid resuelve vía endpoint /chat/findMessages cuando tiene key.senderPn', async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 }) // profile falla
+      .mockResolvedValueOnce({ ok: false, status: 404 }) // findContacts falla
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            key: {
+              remoteJid: '229712098017378@lid',
+              senderPn: '50558544518@s.whatsapp.net',
+            },
+          },
+        ],
+      });
+
+    const phone = await resolveLid('229712098017378@lid', mockFetch);
+    expect(phone).toBe('50558544518');
+    expect(getPhoneForLid('229712098017378@lid')).toBe('50558544518');
+  });
 });

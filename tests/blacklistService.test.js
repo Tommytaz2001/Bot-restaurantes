@@ -143,5 +143,24 @@ describe('blacklistService', () => {
         addBlacklist({ restauranteId: 'urbano', telefono: '12345' })
       ).rejects.toThrow('El número debe tener al menos 7 dígitos');
     });
+
+    test('detecta y bloquea contactos que escriben desde un @lid asociado a un teléfono en lista negra', async () => {
+      const { cacheLidMapping } = require('../src/whatsapp/lidResolver');
+      // Usuario registra el teléfono normal de Nicaragua
+      await addBlacklist({
+        restauranteId: 'urbano',
+        telefono: '+505 5854 4518',
+        nombre: 'Repartidor LID Test',
+        motivo: 'Delivery',
+      });
+
+      // Mapeo de LID asociado
+      cacheLidMapping('229712098017378@lid', '50558544518');
+
+      // WhatsApp envía el mensaje como LID de 15 dígitos o con remoteJid
+      expect(await isBlacklisted('229712098017378', 'urbano')).toBe(true);
+      expect(await isBlacklisted('229712098017378@lid', 'urbano')).toBe(true);
+      expect(await isBlacklisted('229712098017378', 'urbano', '229712098017378@lid')).toBe(true);
+    });
   });
 });

@@ -8,9 +8,18 @@ function cacheLidMapping(lid, phone) {
   if (!lid || !phone) return;
   const canonicalLid = lid.includes('@') ? lid : `${lid}@lid`;
   const canonicalPhone = phone.includes('@') ? phone.split('@')[0] : phone;
-  _lidToPhone.set(canonicalLid, canonicalPhone);
-  _lidToPhone.set(canonicalLid.split('@')[0], canonicalPhone);
-  _phoneToLid.set(canonicalPhone, canonicalLid);
+  const cleanPhone = String(canonicalPhone).replace(/\D/g, '');
+
+  // Evitar almacenar LIDs como si fueran teléfonos
+  if (cleanPhone.length > 15 || canonicalPhone.endsWith('@lid')) return;
+
+  _lidToPhone.set(canonicalLid, cleanPhone || canonicalPhone);
+  _lidToPhone.set(canonicalLid.split('@')[0], cleanPhone || canonicalPhone);
+  _phoneToLid.set(cleanPhone || canonicalPhone, canonicalLid);
+
+  if (cleanPhone.length >= 8 && cleanPhone.startsWith('505')) {
+    _phoneToLid.set(cleanPhone.substring(3), canonicalLid);
+  }
 }
 
 function getPhoneForLid(lid) {
@@ -22,21 +31,50 @@ function getPhoneForLid(lid) {
 function getLidForPhone(phone) {
   if (!phone) return null;
   const canonicalPhone = phone.includes('@') ? phone.split('@')[0] : phone;
-  return _phoneToLid.get(canonicalPhone) || null;
+  const clean = String(canonicalPhone).replace(/\D/g, '');
+  return _phoneToLid.get(canonicalPhone) || _phoneToLid.get(clean) || null;
 }
 
 /**
  * Resuelve un @lid a número de teléfono real.
  * 1. Primero busca en caché en memoria.
- * 2. Si no está en caché, consulta a Evolution API (perfil de contacto / lista de contactos).
+ * 2. Busca en historial de pedidos en PostgreSQL (tabla pedidos).
+ * 3. Busca en Evolution API findMessages (campo key.senderPn).
+ * 4. Consulta endpoints de contacto de Evolution API (/contact/profile, /chat/findContacts).
  */
 async function resolveLid(lidJid, overrideFetch) {
   if (!lidJid) return null;
   const lidKey = lidJid.includes('@') ? lidJid : `${lidJid}@lid`;
+  const lidRaw = lidKey.split('@')[0];
 
-  // 1. Revisar caché
+  // 1. Revisar caché en memoria
   const cached = getPhoneForLid(lidKey);
   if (cached) return cached;
+
+  // 2. Revisar historial en PostgreSQL (tabla pedidos)
+  try {
+    const { query } = require('../db/connection');
+    const resDb = await query(
+      `SELECT telefono FROM pedidos 
+       WHERE (jid = $1 OR jid LIKE $2) 
+         AND telefono IS NOT NULL 
+         AND LENGTH(telefono) >= 7 
+         AND telefono NOT LIKE '%@lid%' 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [lidKey, `%${lidRaw}%`]
+    );
+    if (resDb && resDb.rows && resDb.rows.length > 0 && resDb.rows[0].telefono) {
+      const dbCandidate = resDb.rows[0].telefono.replace(/\D/g, '');
+      if (dbCandidate.length >= 7 && dbCandidate.length <= 15) {
+        log(`[LidResolver] @lid ${lidKey} resuelto desde historial de pedidos en BD → ${dbCandidate}`);
+        cacheLidMapping(lidKey, dbCandidate);
+        return dbCandidate;
+      }
+    }
+  } catch {
+    // Si BD no disponible en este contexto, continuar
+  }
 
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
@@ -47,10 +85,13 @@ async function resolveLid(lidJid, overrideFetch) {
   const fetchFn = overrideFetch || globalThis.fetch;
 
   try {
-    // 2. Intentar GET /contact/profile/:remoteJid
-    const resProfile = await fetchFn(`${apiUrl}/contact/profile/${lidKey}`, {
-      headers: { apikey: apiKey },
-    }).catch(() => null);
+    // 3. Intentar GET /contact/profile/:remoteJid
+    let resProfile = null;
+    try {
+      resProfile = await fetchFn(`${apiUrl}/contact/profile/${lidKey}`, {
+        headers: { apikey: apiKey },
+      });
+    } catch {}
 
     if (resProfile && resProfile.ok) {
       const data = await resProfile.json().catch(() => ({}));
@@ -61,12 +102,15 @@ async function resolveLid(lidJid, overrideFetch) {
       }
     }
 
-    // 3. Intentar POST /chat/findContacts/:instance con filtro
-    const resContacts = await fetchFn(`${apiUrl}/chat/findContacts/${instance}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify({ where: { id: lidKey } }),
-    }).catch(() => null);
+    // 4. Intentar POST /chat/findContacts/:instance con filtro
+    let resContacts = null;
+    try {
+      resContacts = await fetchFn(`${apiUrl}/chat/findContacts/${instance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: apiKey },
+        body: JSON.stringify({ where: { id: lidKey } }),
+      });
+    } catch {}
 
     if (resContacts && resContacts.ok) {
       const data = await resContacts.json().catch(() => []);
@@ -76,6 +120,35 @@ async function resolveLid(lidJid, overrideFetch) {
         if (cPhone && !cPhone.endsWith('@lid') && cPhone.length <= 14) {
           cacheLidMapping(lidKey, cPhone);
           return cPhone;
+        }
+      }
+    }
+
+    // 5. Intentar POST /chat/findMessages para ver si mensajes previos tienen key.senderPn
+    let resMessages = null;
+    try {
+      resMessages = await fetchFn(`${apiUrl}/chat/findMessages/${instance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: apiKey },
+        body: JSON.stringify({
+          where: { key: { remoteJid: lidKey } },
+          take: 5,
+        }),
+      });
+    } catch {}
+
+    if (resMessages && resMessages.ok) {
+      const msgData = await resMessages.json().catch(() => []);
+      const msgList = Array.isArray(msgData) ? msgData : (msgData.messages?.records || msgData.data || []);
+      for (const m of msgList) {
+        const senderPn = m.key?.senderPn || m.senderPn;
+        if (senderPn) {
+          const rawPn = String(senderPn).split('@')[0].replace(/\D/g, '');
+          if (rawPn.length >= 7 && rawPn.length <= 15) {
+            log(`[LidResolver] @lid ${lidKey} resuelto desde findMessages de Evolution API → ${rawPn}`);
+            cacheLidMapping(lidKey, rawPn);
+            return rawPn;
+          }
         }
       }
     }

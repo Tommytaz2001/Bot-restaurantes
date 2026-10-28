@@ -69,6 +69,12 @@ El sistema superó su fase de MVP inicial y ha incorporado:
     - Al desactivar todos los días de la semana en la app de cocina (`abre: false` para lunes a domingo), el verificador de horarios activa automáticamente el **Modo Dev**, haciendo que el bot atienda siempre (24/7 sin restricciones de horario) para pruebas continuas de desarrollo.
     - Al habilitar al menos un día (`abre: true`), el bot reactiva su control de horario habitual de forma instantánea.
     - Se incorporó en `HorariosPage.tsx` un banner visual con la etiqueta "BOT SIEMPRE ACTIVO" y botones de acceso rápido para conmutar entre Modo Dev y atención normal en un clic.
+27. **Soporte Completo de LIDs WhatsApp (`@lid`) en Lista Negra y Resolución Multicapa (`src/whatsapp/lidResolver.js`, `src/services/blacklistService.js`, `src/whatsapp/metaWebhook.js`, `src/whatsapp/messageHandler.js`, `src/orders/orderService.js`, `tests/blacklistService.test.js`, `tests/lidResolver.test.js`):**
+    - **Causa Raíz Resuelta:** Al escribir contactos con formato privado `@lid` (15 dígitos), el webhook extraía `remoteJid` sin resolver su número real debido a que `key.senderPn` no era leído del payload de Evolution API y `resolveLid` no consultaba el historial de la base de datos. En consecuencia, el remitente `229712098017378` no coincidía con el teléfono en lista negra `+505 5854 4518` y el bot le respondía.
+    - **Extracción Inmediata de `senderPn`:** En `metaWebhook.js` se añadió la lectura exhaustiva de `key.senderPn`, `key.participantPn`, `data.senderPn`, permitiendo decodificar el número telefónico real inmediatamente sin latencia.
+    - **Resolución Multicapa en `lidResolver.js`:** Se encadenó: 1) Caché en memoria bidireccional; 2) Historial de pedidos en PostgreSQL (`SELECT telefono FROM pedidos WHERE jid = ...`); 3) Búsqueda en mensajes previos con `POST /chat/findMessages` de Evolution API; 4) Endpoints de contacto `/contact/profile` y `/chat/findContacts`.
+    - **Comprobación Bidireccional en `blacklistService.js`:** La función `isBlacklisted` ahora recibe `(telefono, restauranteId, remoteJid)`, evalúa candidatos telefónicos y LIDs asociados contra la lista negra, y al cargar o añadir registros a la lista negra mapea proactivamente los LIDs conocidos desde la tabla `pedidos`.
+    - **Sincronización en `orderService.js`:** Al registrar cada nuevo pedido se asocia el JID `@lid` con el teléfono en caché en memoria.
 
 
 
@@ -133,7 +139,8 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/phoneUtils.test.js` | Unitaria | **PASS** (12/12) | Valida extracción de dígitos, desduplicación de mitades y asimétrica (58544518558544518), código 505 y fallbacks. |
 | `tests/orderValidator.test.js` | Unitaria | **PASS** (16/16) | Valida esquemas, métodos de pago, totales, tipos de entrega y longitud estricta de teléfono para delivery. |
 | `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
-| `tests/lidResolver.test.js`  | Unitaria | **PASS** (5/5) | Valida resolución y caché bidireccional de @lid a número telefónico y fallbacks a Evolution API. |
+| `tests/blacklistService.test.js` | Unitaria | **PASS** (8/8) | Valida bloqueo internacional, formato local de 8 dígitos, eliminación inmediata, validación de longitud y detección de contactos bajo formato @lid asociados a números en lista negra. |
+| `tests/lidResolver.test.js`  | Unitaria | **PASS** (6/6) | Valida resolución y caché bidireccional de @lid a número telefónico, resolución contra BD de pedidos, extracción de senderPn en findMessages y fallbacks de Evolution API. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1948 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite, cap sync y gradle assembleDebug exitoso (14s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/. |

@@ -1,4 +1,5 @@
 const { query } = require('../db/connection');
+const { getPhoneForLid, cacheLidMapping } = require('../whatsapp/lidResolver');
 
 const RESTAURANTE_ID = process.env.RESTAURANTE_ID || 'urbano';
 
@@ -45,7 +46,7 @@ async function asegurarTabla() {
 }
 
 /**
- * Carga o refresca la lista negra en memoria
+ * Carga o refresca la lista negra en memoria y sincroniza LIDs conocidos
  */
 async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) {
   const now = Date.now();
@@ -63,6 +64,25 @@ async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) 
        ORDER BY created_at DESC`,
       [restauranteId]
     );
+
+    // Mapear LIDs históricos conocidos en pedidos para agilizar resolución
+    try {
+      const lidsRes = await query(
+        `SELECT DISTINCT jid, telefono 
+         FROM pedidos 
+         WHERE jid LIKE '%@lid%' 
+           AND telefono IS NOT NULL 
+           AND LENGTH(telefono) >= 7`
+      );
+      if (lidsRes && lidsRes.rows) {
+        for (const row of lidsRes.rows) {
+          cacheLidMapping(row.jid, row.telefono);
+        }
+      }
+    } catch {
+      // Ignorar si falla la carga de LIDs
+    }
+
     _cache.set(restauranteId, res.rows || []);
     _lastCacheTime = now;
     return res.rows || [];
@@ -73,30 +93,74 @@ async function cargarListaNegra(restauranteId = RESTAURANTE_ID, forzar = false) 
 }
 
 /**
- * Verifica si un número telefónico o remitente está registrado en la lista negra
- * @param {string} telefono Número o JID de WhatsApp (+505..., 505..., 8888..., etc.)
+ * Verifica si un número telefónico, JID o remitente está registrado en la lista negra.
+ * Es compatible con formato @lid de WhatsApp resolviendo contra pedidos y caché.
+ *
+ * @param {string} telefono Número o JID de WhatsApp (+505..., 505..., 8888..., o LID numérico)
  * @param {string} [restauranteId]
+ * @param {string} [remoteJid] JID completo original si está disponible (ej: 229712098017378@lid)
  * @returns {Promise<boolean>}
  */
-async function isBlacklisted(telefono, restauranteId = RESTAURANTE_ID) {
-  if (!telefono) return false;
-  const inClean = cleanDigits(telefono);
-  if (!inClean) return false;
+async function isBlacklisted(telefono, restauranteId = RESTAURANTE_ID, remoteJid = null) {
+  if (!telefono && !remoteJid) return false;
+
+  const candidates = new Set();
+  const rawTel = cleanDigits(telefono);
+  const rawJid = cleanDigits(remoteJid);
+  if (rawTel) candidates.add(rawTel);
+  if (rawJid) candidates.add(rawJid);
+
+  // 1. Verificar si telefono o remoteJid es un LID y tiene mapeo en caché
+  const cachedTel = getPhoneForLid(telefono) || (remoteJid ? getPhoneForLid(remoteJid) : null);
+  if (cachedTel) {
+    const cleanCached = cleanDigits(cachedTel);
+    if (cleanCached) candidates.add(cleanCached);
+  }
+
+  // 2. Si el identificador tiene 14-16 dígitos (típico @lid) y aún no hay mapeo en caché,
+  // consultar si la tabla pedidos tiene registrado el número real
+  const lidCandidate = (rawTel.length >= 14 && rawTel.length <= 16) ? rawTel : (rawJid.length >= 14 && rawJid.length <= 16 ? rawJid : null);
+  if (lidCandidate) {
+    try {
+      const dbLid = await query(
+        `SELECT telefono FROM pedidos 
+         WHERE (jid LIKE $1 OR jid = $2) 
+           AND telefono IS NOT NULL 
+           AND LENGTH(telefono) >= 7 
+           AND telefono NOT LIKE '%@lid%' 
+         ORDER BY created_at DESC 
+         LIMIT 1`,
+        [`%${lidCandidate}%`, `${lidCandidate}@lid`]
+      );
+      if (dbLid && dbLid.rows && dbLid.rows.length > 0 && dbLid.rows[0].telefono) {
+        const dbPhoneClean = cleanDigits(dbLid.rows[0].telefono);
+        if (dbPhoneClean) {
+          candidates.add(dbPhoneClean);
+          cacheLidMapping(`${lidCandidate}@lid`, dbPhoneClean);
+        }
+      }
+    } catch {
+      // Ignorar si BD no disponible en este contexto
+    }
+  }
+
+  if (candidates.size === 0) return false;
 
   const entries = await cargarListaNegra(restauranteId);
   for (const entry of entries) {
     const entryClean = entry.telefono_clean || cleanDigits(entry.telefono);
     if (!entryClean) continue;
 
-    // 1. Coincidencia exacta de dígitos
-    if (inClean === entryClean) return true;
+    for (const cand of candidates) {
+      // Coincidencia exacta de dígitos
+      if (cand === entryClean) return true;
 
-    // 2. Coincidencia de número local vs con código de país
-    // Ej: número guardado como '88888888' y entrante como '50588888888'
-    // o guardado como '50588888888' y entrante como '88888888'
-    if (inClean.length >= 8 && entryClean.length >= 8) {
-      if (inClean.endsWith(entryClean) || entryClean.endsWith(inClean)) {
-        return true;
+      // Coincidencia con/sin código de país (>= 8 dígitos)
+      // Ej: '50558544518' termina con '58544518'
+      if (cand.length >= 8 && entryClean.length >= 8) {
+        if (cand.endsWith(entryClean) || entryClean.endsWith(cand)) {
+          return true;
+        }
       }
     }
   }
@@ -165,6 +229,24 @@ async function addBlacklist({
       [restauranteId, telefono.trim(), clean, nombre.trim(), motivo.trim()]
     );
     result = insertRes.rows[0];
+  }
+
+  // Asociar de inmediato cualquier LID histórico existente en pedidos para este número
+  try {
+    const localPhone = clean.length >= 8 && clean.startsWith('505') ? clean.substring(3) : clean;
+    const dbJids = await query(
+      `SELECT DISTINCT jid FROM pedidos 
+       WHERE (telefono = $1 OR telefono = $2 OR telefono LIKE $3) 
+         AND jid LIKE '%@lid%'`,
+      [clean, localPhone, `%${localPhone}%`]
+    );
+    if (dbJids && dbJids.rows) {
+      for (const row of dbJids.rows) {
+        cacheLidMapping(row.jid, clean);
+      }
+    }
+  } catch {
+    // Continuar si la consulta falla
   }
 
   // Refrescar caché
