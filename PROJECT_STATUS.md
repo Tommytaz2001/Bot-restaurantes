@@ -2,7 +2,7 @@
 
 **Última actualización:** 28 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `db9743f fix(whatsapp): preserve original transport JID to prevent E2EE 'waiting for message' decryption errors and update APK` 
+**Último commit:** `50772cb fix(whatsapp): preserve original transport JID to prevent E2EE 'waiting for message' decryption errors and update APK` 
 
 ---
 
