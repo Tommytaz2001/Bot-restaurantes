@@ -3,8 +3,11 @@ const MAX_MESSAGES = 50;
 
 const _sessions = new Map(); // Map<sessionId, { messages: [], lastActivity: timestamp, lastOrderId?: string }>
 
-function getSession(sessionId) {
-  const entry = _sessions.get(sessionId);
+function getSession(sessionId, altId = null) {
+  let entry = _sessions.get(sessionId);
+  if ((!entry || entry.messages.length === 0) && altId) {
+    entry = _sessions.get(altId);
+  }
   if (!entry) return [];
   entry.lastActivity = Date.now();
   return entry.messages;
@@ -41,8 +44,13 @@ function setLastOrderId(sessionId, orderId) {
   _sessions.get(sessionId).lastOrderId = orderId;
 }
 
-function getLastOrderId(sessionId) {
-  return _sessions.get(sessionId)?.lastOrderId ?? null;
+function getLastOrderId(sessionId, altId = null) {
+  const primary = _sessions.get(sessionId)?.lastOrderId;
+  if (primary) return primary;
+  if (altId) {
+    return _sessions.get(altId)?.lastOrderId ?? null;
+  }
+  return null;
 }
 
 function clearSession(sessionId) {

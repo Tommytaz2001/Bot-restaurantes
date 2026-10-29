@@ -3,11 +3,13 @@
  * Evolution API envuelve Baileys y lo expone como REST API.
  */
 
-const { getPhoneForLid } = require('./lidResolver');
-
 /**
  * Envía un mensaje de texto a un número de WhatsApp.
- * @param {string} to   - Número de teléfono limpio o JID, ej: "50512345678"
+ * IMPORTANTE: 'to' debe preservar el JID original (@lid o @s.whatsapp.net).
+ * Nunca debe forzarse la conversión de un @lid a @s.whatsapp.net al enviar mensajes,
+ * ya que WhatsApp desincroniza las claves de cifrado E2EE y muestra "Esperando el mensaje".
+ *
+ * @param {string} to   - Número de teléfono limpio o JID completo, ej: "50512345678" o "229712...@lid"
  * @param {string} text - Texto del mensaje
  * @returns {Promise<object>} Respuesta de la API de Evolution
  */
@@ -20,17 +22,8 @@ async function sendWhatsAppMessage(to, text) {
     throw new Error('EVOLUTION_API_URL, EVOLUTION_API_KEY y EVOLUTION_INSTANCE son requeridos');
   }
 
-  // Si el destino es un @lid o un número de 15 dígitos, resolver con caché si existe
-  let destination = to;
-  if (destination && typeof destination === 'string') {
-    const isLid = destination.endsWith('@lid') || (/^\d{14,16}$/.test(destination));
-    if (isLid) {
-      const cached = getPhoneForLid(destination);
-      if (cached) {
-        destination = `${cached}@s.whatsapp.net`;
-      }
-    }
-  }
+  // Preservar el destino original sin mutar identificadores de sesión
+  const destination = to;
 
   const url = `${apiUrl}/message/sendText/${instance}`;
 

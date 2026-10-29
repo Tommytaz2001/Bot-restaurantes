@@ -116,13 +116,21 @@ async function _processMessage(data) {
     return;
   }
 
-  // Extraer número de teléfono y remoteJid completo
-  let remoteJid = key.remoteJid || '';
-  let telefono = remoteJid.split('@')[0];
+  // Extraer JID de transporte original y número inicial
+  const incomingJid = key.remoteJid || '';
+  let telefono = incomingJid.split('@')[0];
 
   if (!telefono) return;
 
-  // Si remoteJid viene con @lid, verificar si Evolution API adjuntó número real en senderPn o alternativo
+  // REGLA CRÍTICA DE CIFRADO E2EE: replyTo y remoteJid para el transporte de WhatsApp
+  // DEBEN ser SIEMPRE el incomingJid exacto (sea @lid o @s.whatsapp.net).
+  // Si respondemos a @s.whatsapp.net cuando el cliente chatea por @lid, su teléfono
+  // no puede descifrar el mensaje y muestra "Esperando el mensaje. Esto puede tomar tiempo".
+  const replyTo = incomingJid;
+  const remoteJid = incomingJid;
+
+  // Si incomingJid viene con @lid, resolver su número telefónico real EXCLUSIVAMENTE
+  // para base de datos (pedidos.telefono), cocina (KDS) y Lista Negra.
   const altCandidate = key.senderPn 
     || (data.key && data.key.senderPn)
     || key.remoteJidAlt 
@@ -132,27 +140,23 @@ async function _processMessage(data) {
     || data.cleanedSenderPn 
     || data.participantPn;
 
-  if (remoteJid.endsWith('@lid') && altCandidate) {
+  if (incomingJid.endsWith('@lid') && altCandidate) {
     const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0].replace(/\D/g, '') : '';
     if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid')) {
-      cacheLidMapping(remoteJid, rawAlt);
+      cacheLidMapping(incomingJid, rawAlt);
       telefono = rawAlt;
-      remoteJid = `${rawAlt}@s.whatsapp.net`;
       log(`[Webhook] @lid resuelto desde senderPn / payload alternativo (${altCandidate}) → ${rawAlt}`);
     }
   }
 
   // Si sigue siendo @lid o un identificador numérico de 15 dígitos sin resolver, intentar resolver vía API o BD
-  if (remoteJid.endsWith('@lid') || /^\d{14,16}$/.test(telefono)) {
-    const resolved = await resolveLid(remoteJid);
+  if (incomingJid.endsWith('@lid') || /^\d{14,16}$/.test(telefono)) {
+    const resolved = await resolveLid(incomingJid);
     if (resolved) {
-      log(`[Webhook] @lid ${remoteJid} resuelto vía API/BD → ${resolved}`);
+      log(`[Webhook] @lid ${incomingJid} resuelto vía API/BD → ${resolved}`);
       telefono = resolved;
-      remoteJid = `${resolved}@s.whatsapp.net`;
     }
   }
-
-  const replyTo = remoteJid;
 
   const messageId = key.id;
   const contactName = data?.pushName || null;
@@ -187,8 +191,8 @@ async function _processMessage(data) {
     } catch (err) {
       log(`[Webhook] Error procesando comprobante de ${telefono}: ${err.message}`);
     }
-    // Sin pedido pendiente_pago → verificar si hay sesión activa
-    const sessionMsgs = getSession(telefono);
+    // Sin pedido pendiente_pago → verificar si hay sesión activa (por teléfono o por JID)
+    const sessionMsgs = getSession(telefono).length > 0 ? getSession(telefono) : getSession(replyTo);
     if (sessionMsgs.length > 0) {
       const lastMsg = [...sessionMsgs].reverse().find(m => m.role === 'assistant');
       const waitingConfirmation = lastMsg && (

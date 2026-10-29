@@ -144,8 +144,8 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress);
 
 
-  // Capture history BEFORE addMessage to avoid duplication when spreading
-  const history = getSession(sessionId);
+  // Capture history BEFORE addMessage to avoid duplication when spreading (soporta fallback por remoteJid para @lid)
+  const history = getSession(sessionId, remoteJid);
 
   // Add user message to history
   addMessage(sessionId, { role: 'user', content: message });
@@ -209,7 +209,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       try {
         const orderArgs = JSON.parse(toolCall.function.arguments);
-        const prevOrderId = getLastOrderId(sessionId);
+        const prevOrderId = getLastOrderId(sessionId, remoteJid);
         const rawTelefono = orderArgs.telefono || telefono || null;
         const telefonoFinal = cleanPhoneNumber(rawTelefono, telefono);
 

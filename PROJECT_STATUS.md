@@ -1,8 +1,8 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 27 de Octubre de 2026  
+**Última actualización:** 28 de Octubre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `033ee06 fix: prioritize combo keyword and explicit price for burrito combo orders` 
+**Último commit:** `db9743f fix(whatsapp): preserve original transport JID to prevent E2EE 'waiting for message' decryption errors and update APK` 
 
 ---
 
@@ -74,6 +74,14 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       1. Contactos con formato privado `@lid` (15 dígitos) no resolvían su número real porque no se leía `key.senderPn` del payload de Evolution API. Al leer `key.senderPn`, el número real de WhatsApp (`50558544518`) queda inmediatamente disponible.
       2. Se eliminó la asociación de LIDs a teléfonos de la tabla `pedidos`, ya que un cliente puede escribir un número de teléfono de otra persona para delivery en el chat, lo que provocaba falsos positivos bloqueando números no registrados (como `50577449468`).
       3. Se implementó la función estricta `phonesMatch` en `blacklistService.js`: aísla los códigos de país internacionales (+505 Nicaragua vs +593 Ecuador) evitando cruces indebidos, y permitiendo que solo el número exactamente bloqueado sea ignorado, mientras los demás números (legítimos o de otros países) son atendidos normalmente.
+28. **Preservación Estricta de JID de Transporte (`@lid` vs `@s.whatsapp.net`) y Mitigación de Desincronización E2EE (`src/whatsapp/metaWebhook.js`, `src/whatsapp/metaSender.js`, `src/agent/agentService.js`, `src/agent/sessionStore.js`, `tests/metaSender.test.js`):**
+    - **Causa Raíz Resuelta:** Al resolver el número de teléfono real tras los primeros mensajes de un contacto con `@lid`, el webhook y `metaSender` mutaban forzosamente `replyTo` y `destination` a `${cached}@s.whatsapp.net`. Como el cliente abrió la conversación bajo el contexto `@lid`, su dispositivo carecía de las claves de sesión activas para el JID de número telefónico en ese hilo, provocando que los mensajes salientes quedaran bloqueados con *"Esperando el mensaje. Esto puede tomar tiempo"*.
+    - **Solución Aplicada:**
+      1. Desacoplamiento total: el número resuelto (`telefono`) se emplea únicamente para persistencia en base de datos (`pedidos.telefono`), comandas del chef/repartidor (KDS) y Lista Negra.
+      2. El destino de transporte (`replyTo` y `remoteJid`) es estrictamente inmutable y conserva el JID original entrante (`key.remoteJid`), enviando respuestas al mismo hilo y sesión criptográfica que abrió el cliente.
+      3. Se eliminó la mutación en `src/whatsapp/metaSender.js` que convertía `@lid` a `@s.whatsapp.net`.
+      4. Soporte de alias en `src/agent/sessionStore.js` (`getSession` y `getLastOrderId` con fallback a `remoteJid`) garantizando continuidad absoluta del historial conversacional.
+      5. Validación con suite de pruebas unitarias en `tests/metaSender.test.js` (3/3 PASS).
 
 
 
@@ -140,9 +148,10 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
 | `tests/blacklistService.test.js` | Unitaria | **PASS** (8/8) | Valida bloqueo internacional, formato local de 8 dígitos, eliminación inmediata, validación de longitud y detección de contactos bajo formato @lid asociados a números en lista negra. |
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (6/6) | Valida resolución y caché bidireccional de @lid a número telefónico, resolución contra BD de pedidos, extracción de senderPn en findMessages y fallbacks de Evolution API. |
+| `tests/metaSender.test.js`  | Unitaria | **PASS** (3/3) | Valida preservación estricta de destinos @lid y @s.whatsapp.net sin mutaciones destructivas de JID. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
-| `Compilación Vite app-chef` | Build / Frontend | **PASS** (1948 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
-| `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite, cap sync y gradle assembleDebug exitoso (14s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/. |
+| `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
+| `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite (1949 módulos), cap sync y gradle assembleDebug exitoso (9s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/ y raíz. |
 | `Lifecycle Evolution API (Docker)` | Integración | **PASS** | Valida flujo completo: creación con token e integración (HTTP 201), fetchInstances, connect (QR base64), connectionState y webhook set. |
 | `tests/agentService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
 | `tests/menuService.test.js` | Integración | **FAIL** | Falla por falta de conexión activa a Postgres en entorno de test. |
