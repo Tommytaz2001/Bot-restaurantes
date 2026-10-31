@@ -5,21 +5,30 @@ const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = r
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress } = require('../orders/orderService');
 const { log } = require('../utils/logger');
-const { cleanPhoneNumber } = require('../utils/phoneUtils');
+const { cleanPhoneNumber, isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
   'utf-8'
 );
 
-async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null) {
+async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null, contactName = null) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
-  const cleanTel = cleanPhoneNumber(telefono);
+  const cleanTel = (!isAdminOrOwnerPhone(telefono)) ? cleanPhoneNumber(telefono) : null;
   const telefonoContexto = cleanTel
     ? `El número de teléfono del cliente en este chat es: ${cleanTel}. Usa este único número en el campo 'telefono' al invocar guardar_pedido (salvo que el cliente indique expresamente otro número de contacto para la entrega). NUNCA repitas, concatenes ni dupliques números telefónicos.`
-    : 'No tienes el número de teléfono del cliente. Si el pedido es DELIVERY, pídelo. Si es RETIRO EN LOCAL, no lo necesitas — omite el campo telefono al guardar el pedido.';
+    : `NO TIENES el número de teléfono del cliente en este chat (contacto con número privado o @lid).
+- Si el pedido es RETIRO EN LOCAL: no necesitas pedir su número de teléfono. Omite el campo 'telefono' al guardar el pedido.
+- Si el pedido es DELIVERY: ES ESTRICTAMENTE OBLIGATORIO que le pidas su número de teléfono de contacto para el repartidor ("¿Me podrías brindar un número de teléfono de contacto para que el repartidor te llame al llegar?"). NUNCA inventes números ni uses números del restaurante. Si el cliente no te da su teléfono de contacto, NO muestres el resumen y pídelo antes de proceder.`;
+
+  let contextoCliente = '';
+  if (contactName && String(contactName).trim() && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(String(contactName).trim())) {
+    contextoCliente = `\n## IDENTIDAD DEL CLIENTE\nEl nombre del cliente según su WhatsApp es: "${String(contactName).trim()}". Si el cliente no ha dado otro nombre en el chat, usa este nombre tanto para dirigirte a él como en la línea 👤 *Cliente:* del resumen y en el campo 'cliente' al invocar guardar_pedido. NUNCA inventes nombres genéricos como "Cliente Urbano".`;
+  } else {
+    contextoCliente = `\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA)\nNO TIENES el nombre del cliente en este chat. Es ESTRICTAMENTE OBLIGATORIO que le pidas su nombre completo ("¿A qué nombre completo dejamos el pedido?") antes de mostrar el resumen o guardar el pedido. NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", etc. Si el cliente envía dirección y pago pero no da su nombre, DEBES responder pidiéndole su nombre completo antes de mostrar el resumen.`;
+  }
 
   let contextoPedidoActivo = '';
   if (activeOrder) {
@@ -76,6 +85,7 @@ Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
     .replace('{{CUENTAS_BANCARIAS}}', cuentasBancariasText)
     .replace('{{CONTEXTO_TELEFONO}}', telefonoContexto)
     .replace('{{CONTEXTO_REPARTIDOR}}', '')
+    .replace('{{CONTEXTO_CLIENTE}}', contextoCliente)
     .replace('{{CONTEXTO_PEDIDO_ACTIVO}}', contextoPedidoActivo)
     .replace('{{CONTEXTO_DIRECCION}}', contextoDireccion);
 }
@@ -117,20 +127,27 @@ function sanitizeMessages(messages) {
   return result;
 }
 
-async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid }) {
+async function processMessage({ message, sessionId, restauranteId, telefono, remoteJid, contactName = null }) {
+  if (telefono && isAdminOrOwnerPhone(telefono)) {
+    log(`[agentService] Teléfono ${telefono} descartado por pertenecer al administrador/dueño`);
+    telefono = null;
+  }
+
   // Throws 'Restaurante no encontrado' if restauranteId is invalid
   const config = await getRestauranteConfig(restauranteId);
 
   // Rehidratar contexto de pedido activo si la sesión en memoria expiró
   let activeOrder = null;
-  if (!getLastOrderId(sessionId) && telefono) {
-    activeOrder = await findActiveOrderByPhone(telefono);
+  const currentOrderId = getLastOrderId(sessionId, remoteJid);
+  if (!currentOrderId && (telefono || sessionId)) {
+    activeOrder = await findActiveOrderByPhone(telefono, sessionId);
     if (activeOrder) {
       setLastOrderId(sessionId, activeOrder.id);
-      log(`[agentService] Pedido activo recuperado de Firestore: ${activeOrder.id} (${activeOrder.estado})`);
+      if (remoteJid && remoteJid !== sessionId) setLastOrderId(remoteJid, activeOrder.id);
+      log(`[agentService] Pedido activo recuperado de PostgreSQL: ${activeOrder.id} (${activeOrder.estado})`);
     }
-  } else if (getLastOrderId(sessionId)) {
-    activeOrder = await findActiveOrderByPhone(telefono);
+  } else if (currentOrderId) {
+    activeOrder = await findActiveOrderByPhone(telefono, sessionId);
     if (!activeOrder && telefono) {
       // El pedido rastreado ya no está activo (entregado/cancelado externamente) — resetear sesión
       clearSession(sessionId);
@@ -141,7 +158,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   // Buscar dirección anterior para clientes frecuentes
   const lastAddress = telefono ? await findLastDeliveryAddress(telefono) : null;
 
-  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress);
+  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress, contactName);
 
 
   // Capture history BEFORE addMessage to avoid duplication when spreading (soporta fallback por remoteJid para @lid)
@@ -162,21 +179,26 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   log(`[agentService] Respuesta AI para ${sessionId}: toolCalls=${hasToolCalls ? assistantMessage.tool_calls.map(tc => tc.function.name).join(', ') : 'NINGUNA'} | texto="${(assistantMessage.content || '').substring(0, 80)}"`);
 
   // --- INTERCEPTOR DE MISSED TOOL CALL EN CONFIRMACIÓN ---
-  // Si el usuario confirmó el resumen pero el LLM devolvió solo texto sin tool_calls
-  if (!hasToolCalls) {
+  // Si el usuario confirmó el resumen pero el LLM devolvió solo texto sin tool_calls.
+  // REGLA CRÍTICA ANTI-DUPLICADOS: Si ya existe un pedido activo en cocina (activeOrder o currentOrderId),
+  // NUNCA ejecutar el interceptor para evitar duplicar pedidos ante mensajes de cortesía o dudas ("ok", "gracias", etc.)
+  const hasActiveOrder = Boolean(activeOrder || getLastOrderId(sessionId, remoteJid));
+
+  if (!hasToolCalls && !hasActiveOrder) {
     const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
     const isSummaryPending = lastAssistantMsg && (
       lastAssistantMsg.content?.includes('Resumen de tu pedido') ||
       lastAssistantMsg.content?.includes('¿Está todo correcto?') ||
       lastAssistantMsg.content?.includes('Envía un "ok"') ||
       lastAssistantMsg.content?.includes('Envía un ok')
-    );
+    ) && !lastAssistantMsg.content?.includes('¡Pedido recibido!') && !lastAssistantMsg.content?.includes('orden fue enviada al chef');
+
     const isUserConfirming = /^(ok|okay|okey|si|sí|dale|va|confirmo|confirmado|listo|correcto|todo bien|procede|adelante|simon|simón|va pues|porfa|bueno|perfecto|así es|exacto|sale|manda|enviar|todo correcto)/i.test(message.trim().toLowerCase());
-    const isAiFalselyConfirming = assistantMessage.content && /pedido.*(recibido|confirmado|enviado|registrado)|orden.*(recibida|enviada|registrada)|avisamos al chef/i.test(assistantMessage.content);
+    const isAiFalselyConfirming = isSummaryPending && assistantMessage.content && /pedido.*(recibido|confirmado|enviado|registrado)|orden.*(recibida|enviada|registrada)|avisamos al chef/i.test(assistantMessage.content);
 
     if ((isSummaryPending && isUserConfirming) || isAiFalselyConfirming) {
       log(`[agentService] ⚠️ INTERCEPTOR: Cliente confirmó resumen pero el LLM respondió con texto sin invocar guardar_pedido. Forzando llamada a guardar_pedido...`);
-      const forcedPrompt = `${systemPrompt}\n\n[INSTRUCCIÓN CRÍTICA DE SISTEMA]: El cliente acaba de confirmar su pedido diciendo: "${message}". Es OBLIGATORIO que invoques la herramienta guardar_pedido AHORA MISMO con los datos del pedido resumido anteriormente. NO respondas con texto plano sin invocar guardar_pedido.`;
+      const forcedPrompt = `${systemPrompt}\n\n[INSTRUCCIÓN CRÍTICA DE SISTEMA]: El cliente acaba de confirmar su pedido diciendo: "${message}". Es OBLIGATORIO que invoques la herramienta guardar_pedido AHORA MISMO con los datos del pedido resumido anteriormente${contactName ? ` (Nombre del cliente: "${contactName}")` : ''}. NO respondas con texto plano sin invocar guardar_pedido.`;
       try {
         const forcedMessage = await chatCompletion({
           systemPrompt: forcedPrompt,
@@ -204,17 +226,34 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       let toolResult;
       let savedOrder = null;
       let esNuevo = false;
+      let clienteFinal = '';
+      let orderArgs = {};
 
       log(`[PEDIDO] >>> Iniciando guardar_pedido con args: ${toolCall.function.arguments}`);
 
       try {
-        const orderArgs = JSON.parse(toolCall.function.arguments);
+        orderArgs = JSON.parse(toolCall.function.arguments);
         const prevOrderId = getLastOrderId(sessionId, remoteJid);
-        const rawTelefono = orderArgs.telefono || telefono || null;
-        const telefonoFinal = cleanPhoneNumber(rawTelefono, telefono);
+        let rawTelefono = orderArgs.telefono || (!isAdminOrOwnerPhone(telefono) ? telefono : null);
+        if (rawTelefono && isAdminOrOwnerPhone(rawTelefono)) {
+          log(`[PEDIDO] ⚠️ Teléfono ${rawTelefono} rechazado por ser número de administrador/dueño`);
+          rawTelefono = null;
+        }
+        const telefonoFinal = cleanPhoneNumber(rawTelefono);
+
+        // Si el cliente no especificó nombre o el modelo devolvió un nombre genérico ("Cliente Urbano", "amigo"),
+        // usar contactName si está disponible
+        clienteFinal = (orderArgs.cliente || '').trim();
+        const esGenerico = !clienteFinal || /^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(clienteFinal);
+        if (esGenerico && contactName && String(contactName).trim() && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(String(contactName).trim())) {
+          clienteFinal = String(contactName).trim();
+        } else if (!clienteFinal || esGenerico) {
+          clienteFinal = 'Cliente';
+        }
 
         savedOrder = await saveOrder({
           ...orderArgs,
+          cliente: clienteFinal,
           telefono: telefonoFinal,
           restauranteId,
           sessionId,
@@ -222,7 +261,7 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           jid: remoteJid, // JID real para notificaciones WhatsApp
         });
 
-        esNuevo = !prevOrderId || prevOrderId !== savedOrder.id;
+        esNuevo = !savedOrder.esDuplicado && (!prevOrderId || prevOrderId !== savedOrder.id);
         setLastOrderId(sessionId, savedOrder.id);
         log(`[PEDIDO] ✅ Pedido guardado exitosamente id=${savedOrder.id} telefono=${telefonoFinal} esNuevo=${esNuevo} total=${savedOrder.total}`);
         toolResult = JSON.stringify({ exito: true, pedidoId: savedOrder.id, esNuevo });
@@ -243,7 +282,10 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       if (!savedOrder) {
         log(`[PEDIDO] 🚨 CRÍTICO: savedOrder es null tras fallo. No se enviará confirmación falsa.`);
         const orderArgs = JSON.parse(toolCall.function.arguments || '{}');
-        const nombre = orderArgs.cliente || 'amigo';
+        const rawNombre = (orderArgs.cliente || '').trim();
+        const nombre = (rawNombre && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(rawNombre))
+          ? rawNombre
+          : (contactName ? String(contactName).trim() : 'amigo');
         let errorReply;
         try {
           const errorHistory = sanitizeMessages(getSession(sessionId));
@@ -259,7 +301,13 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       // Pedido ya existía — el cliente confirmó de nuevo. No enviar otra "¡Pedido recibido!".
       if (!esNuevo) {
         log(`[PEDIDO] Pedido no es nuevo (id=${savedOrder.id}). No se duplica notificación.`);
-        return { reply: null, order: savedOrder };
+        const rawNombre = (savedOrder.cliente || '').trim();
+        const nombreCliente = (rawNombre && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(rawNombre))
+          ? rawNombre
+          : (contactName ? String(contactName).trim() : 'amigo');
+        const reminderReply = `Tu orden ya fue enviada al chef y está en preparación. 🍔 En cuanto esté lista te avisaremos. ¡Gracias por tu paciencia, ${nombreCliente}!`;
+        addMessage(sessionId, { role: 'assistant', content: reminderReply });
+        return { reply: reminderReply, order: savedOrder };
       }
 
       let confirmReply = null;
@@ -269,21 +317,29 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         confirmReply = confirmMessage.content;
       } catch (err) {
         log(`[agentService] Fallback en confirmación de pedido: ${err.message}`);
-        const orderArgs = JSON.parse(toolCall.function.arguments);
-        const nombre = orderArgs.cliente || 'amigo';
-        if (orderArgs.tipo_entrega === 'delivery') {
-          if (orderArgs.metodo_pago === 'transferencia') {
-            confirmReply = `✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸.\n\n¡Gracias, ${nombre}! 🍔`;
-          } else {
-            confirmReply = `✅ *¡Pedido recibido!* Tu orden fue enviada al chef. En cuanto sea confirmada te avisamos. ¡Gracias por ordenar con nosotros, ${nombre}! 🍔`;
-          }
+        if (orderArgs.metodo_pago === 'transferencia') {
+          const cuentas = await getCuentasBancariasText(restauranteId);
+          confirmReply = `✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸.\n\n🏦 *Datos para transferencia:*\n${cuentas}`;
         } else {
-          if (orderArgs.metodo_pago === 'transferencia') {
-            confirmReply = `✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸.\n\n¡Gracias, ${nombre}! 🍔`;
-          } else {
-            confirmReply = `✅ *¡Pedido recibido!* Tu orden fue enviada al chef. Te avisaremos por aquí cuando esté listo para que pases a retirarlo. ¡Gracias, ${nombre}! 🍔`;
-          }
+          confirmReply = '✅ *¡Pedido recibido!* 🍔';
         }
+      }
+
+      // Si el método de pago es efectivo (delivery o retiro), asegurar que la confirmación sea estrictamente
+      // concisa ("✅ *¡Pedido recibido!* 🍔") evitando textos largos redundantes con la confirmación posterior de cocina.
+      if (orderArgs.metodo_pago === 'efectivo') {
+        confirmReply = '✅ *¡Pedido recibido!* 🍔';
+      }
+
+      // Limpieza defensiva de "Cliente Urbano" en la respuesta final de confirmación
+      if (confirmReply && /cliente\s*urbano/i.test(confirmReply)) {
+        const nombreReemplazo = (clienteFinal && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(clienteFinal))
+          ? clienteFinal
+          : (contactName && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(String(contactName).trim()) ? String(contactName).trim() : '');
+        confirmReply = confirmReply
+          .replace(/,\s*Cliente\s*Urbano!/gi, nombreReemplazo ? `, ${nombreReemplazo}!` : '!')
+          .replace(/,\s*Cliente\s*Urbano/gi, nombreReemplazo ? `, ${nombreReemplazo}` : '')
+          .replace(/Cliente\s*Urbano/gi, nombreReemplazo || '');
       }
 
       addMessage(sessionId, { role: 'assistant', content: confirmReply });

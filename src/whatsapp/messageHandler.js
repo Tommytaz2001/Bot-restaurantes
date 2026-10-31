@@ -4,6 +4,7 @@ const { log } = require('../utils/logger');
 const { estaActivo, estaIgnorandoHorario } = require('../services/botStateService');
 const { getRestauranteConfig } = require('../services/menuService');
 const { isBlacklisted } = require('../services/blacklistService');
+const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 
 const DEBOUNCE_MS = 2_000; // 2 segundos — suficiente para acumular mensajes enviados en ráfaga
 
@@ -139,8 +140,9 @@ async function enviarMensajeFueraDeHorario(telefono, estadoHorario, sendReply) {
   await sendReply(mensaje);
 }
 
-const _timers = new Map();  // telefono -> timeoutId
-const _buffers = new Map(); // telefono -> string[]
+const _timers = new Map();       // telefono -> timeoutId
+const _buffers = new Map();      // telefono -> string[]
+const _contactNames = new Map(); // telefono -> string (pushName de WhatsApp)
 
 function debeIgnorar(texto) {
   if (!texto || texto.trim().length === 0) return true;
@@ -191,9 +193,12 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
   // 3. Filtrar mensajes vacíos o muy cortos
   if (debeIgnorar(texto)) return;
 
-  // 4. Acumular en buffer por teléfono
+  // 4. Acumular en buffer por teléfono y registrar nombre de contacto si existe
   if (!_buffers.has(telefono)) _buffers.set(telefono, []);
   _buffers.get(telefono).push(texto.trim());
+  if (contactName && String(contactName).trim()) {
+    _contactNames.set(telefono, String(contactName).trim());
+  }
 
   // 5. Reiniciar debounce con cada mensaje nuevo
   if (_timers.has(telefono)) clearTimeout(_timers.get(telefono));
@@ -202,6 +207,8 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
     const mensajesAcumulados = _buffers.get(telefono).join(' ');
     _buffers.delete(telefono);
     _timers.delete(telefono);
+    const resolvedContactName = _contactNames.get(telefono) || contactName || null;
+    _contactNames.delete(telefono);
 
     // Re-intentar resolución del teléfono: tras el debounce los contactos suelen estar en caché
     const telefonoFinal = resolverFn ? resolverFn() : telefono;
@@ -215,15 +222,18 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
       return;
     }
 
-    // Si el @lid no pudo resolverse al número real, pasamos null para que el agente
-    // le pida al cliente su número durante el pedido (así queda guardado correctamente)
-    const esLidNoResuelto = remoteJid?.endsWith('@lid') && telefonoFinal === telefono;
+    // Si el @lid no pudo resolverse al número real o si el número resuelto coincide con el administrador/dueño,
+    // pasamos null para que el agente le pida al cliente su número durante el pedido (así queda guardado correctamente)
+    const esAdmin = isAdminOrOwnerPhone(telefonoFinal);
+    const esLidNoResuelto = (remoteJid?.endsWith('@lid') && telefonoFinal === telefono) || esAdmin;
     const telefonoParaPedido = esLidNoResuelto ? null : telefonoFinal;
-    if (esLidNoResuelto) {
+    if (esAdmin) {
+      log(`[messageHandler] Teléfono ${telefonoFinal} coincide con administrador/dueño — forzando null para que el agente pida el número al cliente`);
+    } else if (esLidNoResuelto) {
       log(`[messageHandler] @lid sin resolver — el agente pedirá el número al cliente`);
     }
 
-    log(`[messageHandler] Procesando de ${telefonoFinal}: "${mensajesAcumulados.substring(0, 60)}"`);
+    log(`[messageHandler] Procesando de ${telefonoFinal}: "${mensajesAcumulados.substring(0, 60)}" (contacto="${resolvedContactName || ''}")`);
     log(`[WA_IN] telefono=${telefonoFinal} chars=${mensajesAcumulados.length}`);
 
     // Indicador de "escribiendo..." mientras IA procesa
@@ -236,6 +246,7 @@ async function recibirMensaje({ telefono, remoteJid, texto, restauranteId, conta
         restauranteId,
         telefono: telefonoParaPedido,  // null si @lid no resuelto → agente pide al cliente
         remoteJid,
+        contactName: resolvedContactName,
       });
       if (result.reply) {
         await sendReply(result.reply);

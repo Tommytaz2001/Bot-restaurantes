@@ -26,7 +26,7 @@ jest.mock('../src/services/openaiService', () => ({
 const { processMessage } = require('../src/agent/agentService');
 const { chatCompletion } = require('../src/services/openaiService');
 const { saveOrder } = require('../src/orders/orderService');
-const { addMessage, clearSession } = require('../src/agent/sessionStore');
+const { addMessage, clearSession, setLastOrderId } = require('../src/agent/sessionStore');
 
 describe('agentService - Confirmation and Error Handling', () => {
   const sessionId = 'test-confirm-session-1';
@@ -276,7 +276,304 @@ describe('agentService - Confirmation and Error Handling', () => {
     expect(callArgs.systemPrompt).toContain('del que vale 220');
     expect(result.reply).toContain('Combo');
   });
+
+  test('incluye en systemPrompt la regla de tiempo de preparación y corte de dirección en retiro', async () => {
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: 'Una vez terminemos de completar tus datos y el pedido se te dará el tiempo aproximado. 🍔 ¿Qué te gustaría ordenar?',
+      tool_calls: null,
+    });
+
+    const result = await processMessage({
+      message: '¿En cuánto tiempo está?',
+      sessionId,
+      restauranteId,
+      telefono: '88888888',
+    });
+
+    expect(chatCompletion).toHaveBeenCalledTimes(1);
+    const callArgs = chatCompletion.mock.calls[0][0];
+    expect(callArgs.systemPrompt).toContain('Una vez terminemos de completar tus datos y el pedido se te dará el tiempo aproximado');
+    expect(result.reply).toContain('Una vez terminemos de completar tus datos y el pedido se te dará el tiempo aproximado');
+  });
+
+  test('confirmación para pago en efectivo responde de forma estrictamente concisa ("¡Pedido recibido!")', async () => {
+    const mockOrder = {
+      id: 'order-pickup-1',
+      cliente: 'Vincell',
+      total: 180,
+      estado: 'pendiente',
+    };
+    saveOrder.mockResolvedValueOnce(mockOrder);
+
+    chatCompletion
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_pickup',
+            type: 'function',
+            function: {
+              name: 'guardar_pedido',
+              arguments: JSON.stringify({
+                cliente: 'Vincell',
+                tipo_entrega: 'retiro',
+                direccion: 'Retiro en local',
+                metodo_pago: 'efectivo',
+                productos: [{ nombre: 'Cheeseburguer', cantidad: 1, precio_unitario: 180 }],
+              }),
+            },
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('Simulated LLM error for fallback'));
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId,
+      restauranteId,
+      telefono: '88888888',
+    });
+
+    expect(saveOrder).toHaveBeenCalledTimes(1);
+    expect(result.reply).toBe('✅ *¡Pedido recibido!* 🍔');
+    expect(result.reply).not.toContain('De rest Mi Rancho');
+    expect(result.reply).not.toContain('a nuestro local');
+  });
+
+  test('inyecta contactName en systemPrompt y reemplaza nombres genéricos como "Cliente Urbano"', async () => {
+    const mockOrder = {
+      id: 'order-martin-1',
+      cliente: 'Martin Espinoza',
+      total: 240,
+      estado: 'pendiente',
+    };
+    saveOrder.mockResolvedValueOnce(mockOrder);
+
+    chatCompletion
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_martin',
+            type: 'function',
+            function: {
+              name: 'guardar_pedido',
+              arguments: JSON.stringify({
+                cliente: 'Cliente Urbano', // modelo alucina nombre genérico
+                tipo_entrega: 'delivery',
+                direccion: 'De donde fue el club social cuadra y media al norte',
+                metodo_pago: 'efectivo',
+                telefono: '86224206',
+                productos: [{ nombre: 'Chuletona', cantidad: 1, precio_unitario: 200 }],
+              }),
+            },
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('Simulated LLM error for fallback'));
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId: '50586224206',
+      restauranteId,
+      telefono: '86224206',
+      remoteJid: '50586224206@s.whatsapp.net',
+      contactName: 'Martin Espinoza',
+    });
+
+    expect(chatCompletion).toHaveBeenCalled();
+    const firstCallArgs = chatCompletion.mock.calls[0][0];
+    expect(firstCallArgs.systemPrompt).toContain('Martin Espinoza');
+    expect(firstCallArgs.systemPrompt).toContain('DISTINCIÓN CRÍTICA — DIRECCIÓN DE ENTREGA A DOMICILIO VS UBICACIÓN DEL RESTAURANTE');
+    expect(firstCallArgs.systemPrompt).toContain('👤 *Cliente:* [Nombre completo]');
+
+    // saveOrder DEBE haber recibido 'Martin Espinoza' en lugar de 'Cliente Urbano'
+    expect(saveOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cliente: 'Martin Espinoza',
+        jid: '50586224206@s.whatsapp.net',
+      })
+    );
+
+    // El mensaje de confirmación para efectivo es conciso y no contiene Cliente Urbano
+    expect(result.reply).toBe('✅ *¡Pedido recibido!* 🍔');
+    expect(result.reply).not.toContain('Cliente Urbano');
+  });
+
+  test('no duplica pedido ni ejecuta interceptor si el cliente ya tiene una orden activa en cocina y envía cortesía', async () => {
+    // Simulamos que el cliente ya tiene un pedido guardado en esta sesión
+    setLastOrderId(sessionId, 'order-existente-123');
+
+    // El cliente dice "ok gracias" después de haber ordenado
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Con gusto! Tu orden ya fue recibida y enviada al chef. En cuanto esté lista te avisaremos. 🍔',
+      tool_calls: null,
+    });
+
+    const result = await processMessage({
+      message: 'ok gracias',
+      sessionId,
+      restauranteId,
+      telefono: '89071419',
+    });
+
+    // Chat completion solo se debe llamar 1 vez (el interceptor NO debe forzar un segundo llamado con guardar_pedido)
+    expect(chatCompletion).toHaveBeenCalledTimes(1);
+    expect(saveOrder).not.toHaveBeenCalled();
+    expect(result.reply).toContain('Tu orden ya fue recibida');
+  });
+
+  test('cuando guardar_pedido devuelve pedido existente (!esNuevo), responde con recordatorio amigable', async () => {
+    setLastOrderId(sessionId, 'order-cristian-existente');
+
+    // Simulamos que saveOrder retorna el pedido existente (mismo id o esDuplicado)
+    saveOrder.mockResolvedValueOnce({
+      id: 'order-cristian-existente',
+      cliente: 'Cristian',
+      total: 260,
+      estado: 'pendiente',
+      esDuplicado: true,
+    });
+
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        {
+          id: 'call_duplicate',
+          type: 'function',
+          function: {
+            name: 'guardar_pedido',
+            arguments: JSON.stringify({
+              cliente: 'Cristian',
+              tipo_entrega: 'delivery',
+              direccion: 'Callejón frente a casa mía',
+              metodo_pago: 'efectivo',
+              telefono: '89071419',
+              productos: [{ nombre: 'Papas Nivel 100', cantidad: 1, precio_unitario: 220 }],
+            }),
+          },
+        },
+      ],
+    });
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId,
+      restauranteId,
+      telefono: '89071419',
+    });
+
+    expect(saveOrder).toHaveBeenCalledTimes(1);
+    // Debe responder con mensaje de recordatorio y NO con duplicate confirmation
+    expect(result.reply).toContain('Tu orden ya fue enviada al chef y está en preparación');
+    expect(result.reply).toContain('Cristian');
+  });
+
+  test('rechaza número del administrador/dueño en telefono y evita que se guarde en saveOrder', async () => {
+    process.env.NOTIFICAR_DESPLIEGUE_TELEFONO = '50588888888';
+    const mockOrder = {
+      id: 'order-admin-safe',
+      cliente: 'María Angeles',
+      total: 240,
+      estado: 'pendiente',
+    };
+    saveOrder.mockResolvedValueOnce(mockOrder);
+
+    chatCompletion
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_admin_phone',
+            type: 'function',
+            function: {
+              name: 'guardar_pedido',
+              arguments: JSON.stringify({
+                cliente: 'María Angeles',
+                tipo_entrega: 'delivery',
+                direccion: 'Del tip top 1c al sur',
+                metodo_pago: 'efectivo',
+                telefono: '50588888888', // El LLM intentó usar el del admin
+                productos: [{ nombre: 'Nachos Pollo', cantidad: 1, precio_unitario: 200 }],
+              }),
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: '✅ ¡Pedido recibido! Tu orden fue enviada al chef.',
+      });
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId: '229712898017378@lid',
+      restauranteId,
+      telefono: '50588888888', // El webhook traía el del admin
+    });
+
+    expect(saveOrder).toHaveBeenCalledTimes(1);
+    // Verificar que saveOrder recibió telefono: null y NUNCA el del admin
+    expect(saveOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telefono: null,
+      })
+    );
+  });
+
+  test('limpia "Cliente Urbano" si el LLM lo incluye en la confirmación', async () => {
+    const mockOrder = {
+      id: 'order-urbano-clean',
+      cliente: 'Carlos',
+      total: 190,
+      estado: 'pendiente',
+    };
+    saveOrder.mockResolvedValueOnce(mockOrder);
+
+    chatCompletion
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_clean_urbano',
+            type: 'function',
+            function: {
+              name: 'guardar_pedido',
+              arguments: JSON.stringify({
+                cliente: 'Carlos',
+                tipo_entrega: 'delivery',
+                direccion: 'Barrio Central',
+                metodo_pago: 'transferencia',
+                productos: [{ nombre: 'Clásica', cantidad: 1, precio_unitario: 150 }],
+              }),
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: '✅ *¡Pedido recibido!* Para completarlo, por favor envíanos el comprobante de pago por este chat 📸. ¡Gracias, Cliente Urbano! 🍔',
+      });
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+    });
+
+    expect(result.reply).not.toContain('Cliente Urbano');
+    expect(result.reply).toContain('Carlos');
+  });
 });
+
 
 
 

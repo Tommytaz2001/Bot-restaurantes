@@ -163,8 +163,47 @@ function cleanPhoneNumber(rawPhone, fallbackPhone = null) {
   return cleanSinglePhone(str, fallbackDigits) || fallbackDigits || null;
 }
 
+/**
+ * Verifica si un número telefónico pertenece al administrador / dueño del restaurante / instancia local
+ * a partir de las variables de entorno configuradas (NOTIFICAR_DESPLIEGUE_TELEFONO).
+ * Un número de administrador NUNCA debe asignarse como teléfono de contacto de un cliente.
+ *
+ * @param {string|number|null} phone - Número a verificar
+ * @returns {boolean} true si coincide con el número del dueño/administrador
+ */
+function isAdminOrOwnerPhone(phone) {
+  if (!phone) return false;
+  const digits = extractDigits(phone);
+  if (!digits || digits.length < 7) return false;
+
+  const adminEnv = process.env.NOTIFICAR_DESPLIEGUE_TELEFONO || '';
+  if (!adminEnv.trim()) return false;
+
+  const adminList = adminEnv.split(',').map(s => extractDigits(s)).filter(Boolean);
+
+  for (const admin of adminList) {
+    if (!admin) continue;
+    // Coincidencia exacta
+    if (admin === digits) return true;
+
+    // Comparar los últimos 8 dígitos (formato estándar de Nicaragua)
+    const adminLast8 = admin.length >= 8 ? admin.slice(-8) : admin;
+    const digitsLast8 = digits.length >= 8 ? digits.slice(-8) : digits;
+    if (adminLast8 === digitsLast8 && adminLast8.length === 8) {
+      return true;
+    }
+
+    // Prefijo 505
+    if (admin.startsWith('505') && admin.slice(3) === digits) return true;
+    if (digits.startsWith('505') && digits.slice(3) === admin) return true;
+  }
+
+  return false;
+}
+
 module.exports = {
   cleanPhoneNumber,
   deduplicateDigits,
   extractDigits,
+  isAdminOrOwnerPhone,
 };

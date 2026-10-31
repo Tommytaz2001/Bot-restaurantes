@@ -33,32 +33,33 @@ describe('lidResolver', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('resolveLid resuelve vía endpoint /contact/profile', async () => {
+  test('resolveLid resuelve vía endpoint /chat/findContacts', async () => {
     const mockFetch = jest.fn().mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ number: '50566666666' }),
+      json: async () => [{ id: '50555555555@s.whatsapp.net', lid: '999888777666555@lid' }],
     });
-
-    const phone = await resolveLid('234823841974299@lid', mockFetch);
-    expect(phone).toBe('50566666666');
-    expect(getPhoneForLid('234823841974299@lid')).toBe('50566666666');
-  });
-
-  test('resolveLid resuelve vía endpoint /chat/findContacts si profile falla', async () => {
-    const mockFetch = jest
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ id: '50555555555@s.whatsapp.net', lid: '999888777666555@lid' }],
-      });
 
     const phone = await resolveLid('999888777666555@lid', mockFetch);
     expect(phone).toBe('50555555555');
     expect(getPhoneForLid('999888777666555@lid')).toBe('50555555555');
+  });
+
+  test('resolveLid rechaza números de administrador configurados', async () => {
+    process.env.NOTIFICAR_DESPLIEGUE_TELEFONO = '50588888888';
+    const mockFetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: '50588888888@s.whatsapp.net', lid: '234823841974299@lid' }],
+    });
+
+    const phone = await resolveLid('234823841974299@lid', mockFetch);
+    expect(phone).toBeNull();
+    expect(getPhoneForLid('234823841974299@lid')).toBeNull();
+  });
+
+  test('cacheLidMapping no almacena números del administrador/dueño', () => {
+    process.env.NOTIFICAR_DESPLIEGUE_TELEFONO = '50588888888';
+    cacheLidMapping('229712898017378@lid', '50588888888');
+    expect(getPhoneForLid('229712898017378@lid')).toBeNull();
   });
 
   test('resolveLid retorna null si no encuentra coincidencias', async () => {
@@ -74,7 +75,6 @@ describe('lidResolver', () => {
   test('resolveLid resuelve vía endpoint /chat/findMessages cuando tiene key.senderPn', async () => {
     const mockFetch = jest
       .fn()
-      .mockResolvedValueOnce({ ok: false, status: 404 }) // profile falla
       .mockResolvedValueOnce({ ok: false, status: 404 }) // findContacts falla
       .mockResolvedValueOnce({
         ok: true,

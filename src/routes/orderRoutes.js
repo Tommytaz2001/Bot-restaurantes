@@ -28,7 +28,23 @@ const MENSAJES_NOTIFICACION = {
 };
 
 async function enviarNotificacion(order, mensaje) {
-  const destino = order.jid || order.telefono;
+  let destino = order.jid;
+  if (!destino || typeof destino !== 'string' || !destino.includes('@')) {
+    if (order.sessionId && typeof order.sessionId === 'string' && order.sessionId.includes('@')) {
+      destino = order.sessionId;
+    } else if (order.telefono) {
+      const clean = String(order.telefono).replace(/\D/g, '');
+      if (clean.length === 8) {
+        destino = `505${clean}@s.whatsapp.net`;
+      } else if (clean.length >= 10) {
+        destino = `${clean}@s.whatsapp.net`;
+      } else {
+        destino = order.telefono;
+      }
+    } else {
+      destino = order.telefono;
+    }
+  }
   await sendWhatsAppMessage(destino, mensaje);
 }
 
@@ -47,13 +63,14 @@ router.post('/:id/notificar', async (req, res) => {
       await query('UPDATE pedidos SET tiempo_estimado_min = $1 WHERE id = $2', [mins, order.id]);
     }
 
+    // Enviar primero a WhatsApp: solo actualizar base de datos si el envío es exitoso
+    await enviarNotificacion(order, mensaje);
+
     const notifObj = { ...order.notificaciones_enviadas, [tipo]: true };
     await query('UPDATE pedidos SET notificaciones_enviadas = $1 WHERE id = $2', [
       JSON.stringify(notifObj),
       order.id,
     ]);
-
-    await enviarNotificacion(order, mensaje);
     console.log(`[orderRoutes] Notificación "${tipo}" enviada a ${order.telefono}`);
     return res.json({ ok: true });
   } catch (err) {

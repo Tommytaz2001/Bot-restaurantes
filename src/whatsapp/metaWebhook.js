@@ -8,6 +8,7 @@
 const { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario } = require('./messageHandler');
 const { sendWhatsAppMessage } = require('./metaSender');
 const { cacheLidMapping, resolveLid } = require('./lidResolver');
+const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 const { log } = require('../utils/logger');
 const { estaActivo } = require('../services/botStateService');
@@ -131,35 +132,45 @@ async function _processMessage(data) {
 
   // Si incomingJid viene con @lid, resolver su número telefónico real EXCLUSIVAMENTE
   // para base de datos (pedidos.telefono), cocina (KDS) y Lista Negra.
+  // NOTA: NUNCA usar participantPn ni participantAlt en chats 1-a-1, ya que representan
+  // al usuario local de la instancia (el teléfono del dueño/bot).
   const altCandidate = key.senderPn 
     || (data.key && data.key.senderPn)
     || key.remoteJidAlt 
-    || key.participantAlt 
-    || key.participantPn 
     || data.senderPn 
-    || data.cleanedSenderPn 
-    || data.participantPn;
+    || data.cleanedSenderPn;
 
   if (incomingJid.endsWith('@lid') && altCandidate) {
     const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0].replace(/\D/g, '') : '';
-    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid')) {
+    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid') && !isAdminOrOwnerPhone(rawAlt)) {
       cacheLidMapping(incomingJid, rawAlt);
       telefono = rawAlt;
       log(`[Webhook] @lid resuelto desde senderPn / payload alternativo (${altCandidate}) → ${rawAlt}`);
+    } else if (isAdminOrOwnerPhone(rawAlt)) {
+      log(`[Webhook] Candidato alternativo ${rawAlt} descartado porque coincide con número de administrador/dueño`);
     }
   }
 
   // Si sigue siendo @lid o un identificador numérico de 15 dígitos sin resolver, intentar resolver vía API o BD
   if (incomingJid.endsWith('@lid') || /^\d{14,16}$/.test(telefono)) {
     const resolved = await resolveLid(incomingJid);
-    if (resolved) {
+    if (resolved && !isAdminOrOwnerPhone(resolved)) {
       log(`[Webhook] @lid ${incomingJid} resuelto vía API/BD → ${resolved}`);
       telefono = resolved;
+    } else if (resolved && isAdminOrOwnerPhone(resolved)) {
+      log(`[Webhook] @lid ${incomingJid} descartó número resuelto ${resolved} por pertenecer al administrador/dueño`);
     }
   }
 
   const messageId = key.id;
-  const contactName = data?.pushName || null;
+  const contactName = data?.pushName 
+    || data?.pushname 
+    || data?.verifiedBizName 
+    || key?.pushName 
+    || data?.key?.pushName 
+    || data?.sender?.name 
+    || data?.sender?.pushName 
+    || null;
 
   // Deduplicar
   if (_processedIds.has(messageId)) return;

@@ -22,7 +22,32 @@ function iniciarListenerNotificaciones() {
       // Al marcar como entregado, NUNCA enviar mensaje a WhatsApp al cliente (solo mover de apartado en la app de cocina)
       if (estado === 'entregado') return;
 
-      const destino = jid || telefono;
+      // Prioridad de resolución de destino:
+      // 1. JID explícito (sea @lid o @s.whatsapp.net)
+      // 2. Si no hay jid o no tiene @, pero sessionId contiene @ (como @lid o @s.whatsapp.net), usar sessionId
+      // 3. Fallback a teléfono o dígitos de sessionId con prefijo 505
+      let destino = jid;
+      if (!destino || typeof destino !== 'string' || !destino.includes('@')) {
+        if (pedido.sessionId && typeof pedido.sessionId === 'string' && pedido.sessionId.includes('@')) {
+          destino = pedido.sessionId;
+        } else if (telefono) {
+          const clean = String(telefono).replace(/\D/g, '');
+          if (clean.length === 8) {
+            destino = `505${clean}@s.whatsapp.net`;
+          } else if (clean.length >= 10) {
+            destino = `${clean}@s.whatsapp.net`;
+          } else {
+            destino = telefono;
+          }
+        } else if (pedido.sessionId) {
+          const clean = String(pedido.sessionId).replace(/\D/g, '');
+          if (clean.length === 8) {
+            destino = `505${clean}@s.whatsapp.net`;
+          } else {
+            destino = pedido.sessionId;
+          }
+        }
+      }
       if (!destino) return;
 
 
@@ -63,14 +88,16 @@ function iniciarListenerNotificaciones() {
       }
 
       for (const { clave, mensaje } of pendientes) {
+        // Enviar primero a WhatsApp: solo si el envío es exitoso se marca como enviada en BD.
+        // Si falla el envío (error de red o API), no se marca como enviada, permitiendo reintentos.
+        await sendWhatsAppMessage(destino, mensaje);
+        console.log(`[Notificaciones] Mensaje "${clave}" enviado exitosamente a WhatsApp (${destino})`);
+
         const notifObj = { ...notificaciones_enviadas, [clave]: true };
         await query(
           'UPDATE pedidos SET notificaciones_enviadas = $1 WHERE id = $2',
           [JSON.stringify(notifObj), id]
         );
-
-        await sendWhatsAppMessage(destino, mensaje);
-        console.log(`[Notificaciones] Mensaje "${clave}" enviado a WhatsApp (${destino})`);
 
         // Registrar mensaje saliente en la sesión para mantener contexto
         if (telefono) {

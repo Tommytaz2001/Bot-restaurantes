@@ -4,7 +4,7 @@ const { randomUUID } = require('crypto');
 const { query, pool } = require('../db/connection');
 const { validateOrder } = require('./orderValidator');
 const { orderEvents } = require('../services/orderEvents');
-const { cleanPhoneNumber } = require('../utils/phoneUtils');
+const { cleanPhoneNumber, isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 
 const COSTO_ENVIO = 40;
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
@@ -48,35 +48,118 @@ function mapRowToOrder(row, items = []) {
   };
 }
 
-async function findExistingOrder(sessionId) {
-  if (!sessionId) return null;
-  // Solo deduplica pedidos creados en los últimos 60 segundos (ventana de idempotencia / doble mensaje)
-  const res = await query(
-    `SELECT * FROM pedidos 
-     WHERE session_id = $1 
-       AND estado IN ('pendiente', 'pendiente_pago')
-       AND created_at >= NOW() - INTERVAL '60 seconds'
-     ORDER BY created_at DESC LIMIT 1`,
-    [sessionId]
-  );
-  if (res.rows.length === 0) return null;
-  const itemsRes = await query(
-    `SELECT * FROM pedido_items WHERE pedido_id = $1`,
-    [res.rows[0].id]
-  );
-  const existing = mapRowToOrder(res.rows[0], itemsRes.rows);
-  console.log(`[orderService] [IDEMPOTENCIA] Pedido existente reciente detectado id=${existing.id} (<60s)`);
-  return existing;
+function sameOrderProducts(existingItems, incomingProducts) {
+  if (!Array.isArray(existingItems) || !Array.isArray(incomingProducts)) return false;
+  if (existingItems.length !== incomingProducts.length) return false;
+
+  const normalizeItem = (item) => ({
+    nombre: String(item.nombre || '').toLowerCase().trim(),
+    cantidad: Number(item.cantidad || 1),
+    opcion: item.opcion ? String(item.opcion).toLowerCase().trim() : null,
+  });
+
+  const sortedA = existingItems.map(normalizeItem).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const sortedB = incomingProducts.map(normalizeItem).sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  return sortedA.every((itemA, idx) => {
+    const itemB = sortedB[idx];
+    return (
+      itemA.nombre === itemB.nombre &&
+      itemA.cantidad === itemB.cantidad &&
+      itemA.opcion === itemB.opcion
+    );
+  });
 }
 
-async function findActiveOrderByPhone(telefono) {
-  if (!telefono) return null;
+async function findExistingOrder(sessionIdOrOrderData) {
+  if (!sessionIdOrOrderData) return null;
+
+  let sessionId = null;
+  let telefono = null;
+  let incomingProducts = null;
+  let incomingTotal = null;
+
+  if (typeof sessionIdOrOrderData === 'string') {
+    sessionId = sessionIdOrOrderData;
+  } else if (typeof sessionIdOrOrderData === 'object') {
+    sessionId = sessionIdOrOrderData.sessionId || null;
+    telefono = sessionIdOrOrderData.telefono || null;
+    incomingProducts = sessionIdOrOrderData.productos || null;
+    incomingTotal = sessionIdOrOrderData.total != null ? parseFloat(sessionIdOrOrderData.total) : null;
+  }
+
+  const cleanTel = telefono ? cleanPhoneNumber(telefono) : (sessionId ? cleanPhoneNumber(sessionId) : null);
+  const rawSession = sessionId ? String(sessionId).trim() : null;
+  const rawTel = telefono ? String(telefono).trim() : null;
+
+  const identifiers = [...new Set([rawSession, rawTel, cleanTel].filter(Boolean))];
+  if (identifiers.length === 0) return null;
+
+  const placeholders = identifiers.map((_, i) => `$${i + 1}`).join(', ');
+
+  // 1. Deduplicación por ventana de idempotencia inmediata (últimos 5 minutos = 300 segundos)
+  // Cualquier intento de guardar pedido para el mismo cliente en < 5 minutos se considera duplicado
+  const resRecent = await query(
+    `SELECT * FROM pedidos 
+     WHERE (session_id IN (${placeholders}) OR telefono IN (${placeholders}))
+       AND estado IN ('pendiente', 'pendiente_pago')
+       AND created_at >= NOW() - INTERVAL '5 minutes'
+     ORDER BY created_at DESC LIMIT 1`,
+    identifiers
+  );
+
+  if (resRecent.rows.length > 0) {
+    const row = resRecent.rows[0];
+    const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [row.id]);
+    const existing = mapRowToOrder(row, itemsRes.rows);
+    console.log(`[orderService] [IDEMPOTENCIA 5M] Pedido reciente existente id=${existing.id} detectado (${existing.cliente}, total=${existing.total}). Evitando duplicado.`);
+    return existing;
+  }
+
+  // 2. Deduplicación por coincidencia de productos y total en pedidos pendientes más antiguos (hasta 30 minutos)
+  if (incomingProducts && incomingProducts.length > 0) {
+    const resPending = await query(
+      `SELECT * FROM pedidos 
+       WHERE (session_id IN (${placeholders}) OR telefono IN (${placeholders}))
+         AND estado IN ('pendiente', 'pendiente_pago')
+         AND created_at >= NOW() - INTERVAL '30 minutes'
+       ORDER BY created_at DESC LIMIT 5`,
+      identifiers
+    );
+
+    for (const row of resPending.rows) {
+      const itemsRes = await query('SELECT * FROM pedido_items WHERE pedido_id = $1', [row.id]);
+      const existing = mapRowToOrder(row, itemsRes.rows);
+      const totalsMatch = incomingTotal == null || Math.abs(parseFloat(row.total) - incomingTotal) < 0.01;
+      const productsMatch = sameOrderProducts(existing.productos, incomingProducts);
+
+      if (totalsMatch && productsMatch) {
+        console.log(`[orderService] [IDEMPOTENCIA PRODUCTOS 30M] Pedido id=${existing.id} con productos y total idénticos detectado. Evitando duplicado.`);
+        return existing;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function findActiveOrderByPhone(telefono, sessionId = null) {
+  if (!telefono && !sessionId) return null;
+  const cleanTel = telefono ? cleanPhoneNumber(telefono) : null;
+  const cleanSession = sessionId ? cleanPhoneNumber(sessionId) : null;
+  const rawTel = telefono ? String(telefono).trim() : null;
+  const rawSession = sessionId ? String(sessionId).trim() : null;
+
+  const identifiers = [...new Set([rawTel, cleanTel, rawSession, cleanSession].filter(Boolean))];
+  if (identifiers.length === 0) return null;
+
+  const placeholders = identifiers.map((_, i) => `$${i + 1}`).join(', ');
   const res = await query(
     `SELECT * FROM pedidos 
-     WHERE (session_id = $1 OR telefono = $1)
+     WHERE (session_id IN (${placeholders}) OR telefono IN (${placeholders}))
        AND estado IN ('pendiente', 'pendiente_pago', 'confirmado', 'en_camino')
      ORDER BY created_at DESC LIMIT 1`,
-    [telefono]
+    identifiers
   );
   if (res.rows.length === 0) return null;
   const itemsRes = await query(
@@ -137,9 +220,14 @@ async function saveOrder(orderData) {
   orderData.metodo_pago = metodoPago;
 
   // 4. Normalización defensiva de cliente
-  if (!orderData.cliente || String(orderData.cliente).trim() === '') {
-    orderData.cliente = 'Cliente';
+  let clienteLimpio = String(orderData.cliente || '').trim();
+  const esGenerico = !clienteLimpio || /^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(clienteLimpio);
+  if (esGenerico && orderData.contactName && String(orderData.contactName).trim()) {
+    clienteLimpio = String(orderData.contactName).trim();
+  } else if (esGenerico) {
+    clienteLimpio = 'Cliente';
   }
+  orderData.cliente = clienteLimpio;
 
   // 5. Normalización defensiva de productos
   if (Array.isArray(orderData.productos)) {
@@ -157,13 +245,17 @@ async function saveOrder(orderData) {
 
   // 6. Normalización y deduplicación defensiva de teléfono
   let tel = orderData.telefono || null;
-  if (!tel && orderData.sessionId) {
+  if (tel && isAdminOrOwnerPhone(tel)) {
+    console.warn(`[orderService] ⚠️ Teléfono ${tel} descartado por pertenecer al administrador/dueño`);
+    tel = null;
+  }
+  if (!tel && orderData.sessionId && !isAdminOrOwnerPhone(orderData.sessionId)) {
     tel = cleanPhoneNumber(orderData.sessionId);
   }
-  if (!tel && orderData.jid) {
+  if (!tel && orderData.jid && !isAdminOrOwnerPhone(orderData.jid.split('@')[0])) {
     tel = cleanPhoneNumber(orderData.jid.split('@')[0]);
   }
-  orderData.telefono = tel ? cleanPhoneNumber(tel, orderData.sessionId) : null;
+  orderData.telefono = (tel && !isAdminOrOwnerPhone(tel)) ? cleanPhoneNumber(tel, orderData.sessionId) : null;
 
   // 7. Calcular costo_envio y total ANTES de validar
   const costoEnvio = orderData.tipo_entrega === 'delivery' ? COSTO_ENVIO : 0;
@@ -176,11 +268,11 @@ async function saveOrder(orderData) {
 
   console.log(`[orderService] Datos normalizados: cliente="${orderData.cliente}", telefono="${orderData.telefono}", tipo="${orderData.tipo_entrega}", pago="${orderData.metodo_pago}", total=${orderData.total}, items=${orderData.productos?.length}`);
 
-  // Verificar idempotencia (solo ventana de 60s)
-  const existing = await findExistingOrder(orderData.sessionId);
+  // Verificar idempotencia y evitar pedidos duplicados
+  const existing = await findExistingOrder(orderData);
   if (existing) {
     console.log(`[orderService] Pedido deduplicado retornado: id=${existing.id}`);
-    return existing;
+    return { ...existing, esDuplicado: true };
   }
 
   // Validación estricta
@@ -440,4 +532,6 @@ module.exports = {
   estadoLegible,
   findActiveOrderByPhone,
   findLastDeliveryAddress,
+  findExistingOrder,
+  sameOrderProducts,
 };

@@ -1,4 +1,5 @@
 const { log } = require('../utils/logger');
+const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 
 // Caché en memoria: lid -> telefono (ej: '229712898017378@lid' -> '50512345678')
 const _lidToPhone = new Map();
@@ -10,8 +11,9 @@ function cacheLidMapping(lid, phone) {
   const canonicalPhone = phone.includes('@') ? phone.split('@')[0] : phone;
   const cleanPhone = String(canonicalPhone).replace(/\D/g, '');
 
-  // Evitar almacenar LIDs como si fueran teléfonos
+  // Evitar almacenar LIDs como si fueran teléfonos, y NUNCA almacenar números del administrador/dueño
   if (cleanPhone.length > 15 || canonicalPhone.endsWith('@lid')) return;
+  if (isAdminOrOwnerPhone(cleanPhone || canonicalPhone)) return;
 
   _lidToPhone.set(canonicalLid, cleanPhone || canonicalPhone);
   _lidToPhone.set(canonicalLid.split('@')[0], cleanPhone || canonicalPhone);
@@ -58,24 +60,7 @@ async function resolveLid(lidJid, overrideFetch) {
   const fetchFn = overrideFetch || globalThis.fetch;
 
   try {
-    // 3. Intentar GET /contact/profile/:remoteJid
-    let resProfile = null;
-    try {
-      resProfile = await fetchFn(`${apiUrl}/contact/profile/${lidKey}`, {
-        headers: { apikey: apiKey },
-      });
-    } catch {}
-
-    if (resProfile && resProfile.ok) {
-      const data = await resProfile.json().catch(() => ({}));
-      const candidate = data.number || data.phone || (data.id && !data.id.endsWith('@lid') ? data.id.split('@')[0] : null);
-      if (candidate && !candidate.endsWith('@lid') && candidate.length <= 14) {
-        cacheLidMapping(lidKey, candidate);
-        return candidate;
-      }
-    }
-
-    // 4. Intentar POST /chat/findContacts/:instance con filtro
+    // 2. Intentar POST /chat/findContacts/:instance con filtro
     let resContacts = null;
     try {
       resContacts = await fetchFn(`${apiUrl}/chat/findContacts/${instance}`, {
@@ -90,14 +75,14 @@ async function resolveLid(lidJid, overrideFetch) {
       const list = Array.isArray(data) ? data : (data.data ?? []);
       for (const c of list) {
         const cPhone = (c.id && !c.id.endsWith('@lid')) ? c.id.split('@')[0] : (c.number || c.phone);
-        if (cPhone && !cPhone.endsWith('@lid') && cPhone.length <= 14) {
+        if (cPhone && !cPhone.endsWith('@lid') && cPhone.length <= 14 && !isAdminOrOwnerPhone(cPhone)) {
           cacheLidMapping(lidKey, cPhone);
           return cPhone;
         }
       }
     }
 
-    // 5. Intentar POST /chat/findMessages para ver si mensajes previos tienen key.senderPn
+    // 3. Intentar POST /chat/findMessages para ver si mensajes previos tienen key.senderPn
     let resMessages = null;
     try {
       resMessages = await fetchFn(`${apiUrl}/chat/findMessages/${instance}`, {
@@ -117,7 +102,7 @@ async function resolveLid(lidJid, overrideFetch) {
         const senderPn = m.key?.senderPn || m.senderPn;
         if (senderPn) {
           const rawPn = String(senderPn).split('@')[0].replace(/\D/g, '');
-          if (rawPn.length >= 7 && rawPn.length <= 15) {
+          if (rawPn.length >= 7 && rawPn.length <= 15 && !isAdminOrOwnerPhone(rawPn)) {
             log(`[LidResolver] @lid ${lidKey} resuelto desde findMessages de Evolution API → ${rawPn}`);
             cacheLidMapping(lidKey, rawPn);
             return rawPn;

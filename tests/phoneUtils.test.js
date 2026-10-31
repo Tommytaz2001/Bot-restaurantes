@@ -1,4 +1,4 @@
-const { cleanPhoneNumber, deduplicateDigits, extractDigits } = require('../src/utils/phoneUtils');
+const { cleanPhoneNumber, deduplicateDigits, extractDigits, isAdminOrOwnerPhone } = require('../src/utils/phoneUtils');
 
 describe('phoneUtils', () => {
   describe('extractDigits', () => {
@@ -74,6 +74,34 @@ describe('phoneUtils', () => {
     test('soporta números internacionales no nicaragüenses conservando formato', () => {
       expect(cleanPhoneNumber('+1 305 555 1234')).toBe('+13055551234');
       expect(cleanPhoneNumber('+506 8765 4321')).toBe('+50687654321');
+    });
+  });
+
+  describe('isAdminOrOwnerPhone', () => {
+    const originalEnv = process.env.NOTIFICAR_DESPLIEGUE_TELEFONO;
+
+    beforeEach(() => {
+      process.env.NOTIFICAR_DESPLIEGUE_TELEFONO = '50588888888,50577777777';
+    });
+
+    afterAll(() => {
+      process.env.NOTIFICAR_DESPLIEGUE_TELEFONO = originalEnv;
+    });
+
+    test('detecta números de administrador en diversos formatos', () => {
+      expect(isAdminOrOwnerPhone('50588888888')).toBe(true);
+      expect(isAdminOrOwnerPhone('+505 8888-8888')).toBe(true);
+      expect(isAdminOrOwnerPhone('88888888')).toBe(true);
+      expect(isAdminOrOwnerPhone('50577777777')).toBe(true);
+      expect(isAdminOrOwnerPhone('77777777')).toBe(true);
+    });
+
+    test('no detecta números legítimos de clientes como de administrador', () => {
+      expect(isAdminOrOwnerPhone('50586224206')).toBe(false);
+      expect(isAdminOrOwnerPhone('86224206')).toBe(false);
+      expect(isAdminOrOwnerPhone('58544518')).toBe(false);
+      expect(isAdminOrOwnerPhone(null)).toBe(false);
+      expect(isAdminOrOwnerPhone('')).toBe(false);
     });
   });
 });

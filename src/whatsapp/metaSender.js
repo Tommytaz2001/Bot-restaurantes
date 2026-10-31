@@ -22,8 +22,20 @@ async function sendWhatsAppMessage(to, text) {
     throw new Error('EVOLUTION_API_URL, EVOLUTION_API_KEY y EVOLUTION_INSTANCE son requeridos');
   }
 
-  // Preservar el destino original sin mutar identificadores de sesión
-  const destination = to;
+  // Preservar el destino original sin mutar identificadores de sesión (@lid o @s.whatsapp.net).
+  // Si es un número sin JID de 8 dígitos (Nicaragua), asegurar prefijo internacional 505.
+  let destination = to;
+  if (typeof destination === 'string') {
+    const trimmed = destination.trim();
+    if (!trimmed.includes('@')) {
+      const digits = trimmed.replace(/\D/g, '');
+      if (digits.length === 8) {
+        destination = `505${digits}`;
+      } else if (digits.length > 8) {
+        destination = digits;
+      }
+    }
+  }
 
   const url = `${apiUrl}/message/sendText/${instance}`;
 

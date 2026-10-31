@@ -66,5 +66,33 @@ describe('metaSender and LID destination preservation', () => {
     await sendWhatsAppMessage('50577777777', 'Mensaje directo');
     expect(capturedBody.number).toBe('50577777777');
   });
+
+  test('antepone prefijo 505 a números de 8 dígitos de Nicaragua', async () => {
+    let capturedBody = null;
+    globalThis.fetch = jest.fn().mockImplementation(async (url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({ status: 'SUCCESS' }),
+      };
+    });
+
+    await sendWhatsAppMessage('86224206', 'Mensaje a número local');
+    expect(capturedBody.number).toBe('50586224206');
+  });
+
+  test('limpia prefijo + y caracteres no numéricos en números sin JID', async () => {
+    let capturedBody = null;
+    globalThis.fetch = jest.fn().mockImplementation(async (url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({ status: 'SUCCESS' }),
+      };
+    });
+
+    await sendWhatsAppMessage('+505 8622-4206', 'Mensaje formateado');
+    expect(capturedBody.number).toBe('50586224206');
+  });
 });
 
