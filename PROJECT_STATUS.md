@@ -2,7 +2,7 @@
 
 **Última actualización:** 4 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `1727939 fix(whatsapp): isolate owner phone, enforce customer name, prevent duplicate orders and simplify confirmation reply` 
+**Último commit:** `c03970f fix(logs, whatsapp): add persistent error log file, UI download/copy, resilient send retries and lid fallback` 
 
 ---
 
