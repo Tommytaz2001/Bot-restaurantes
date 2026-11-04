@@ -62,6 +62,8 @@ async function downloadMediaEvolution(messagePayload) {
   return { buffer: Buffer.from(base64, 'base64'), mimeType: mimetype };
 }
 
+let _lastLoggedConnectionState = null;
+
 // ── POST /whatsapp/webhook ────────────────────────────────────────────────────
 // Recibe eventos de Evolution API (messages.upsert, etc.)
 // Evolution responde inmediatamente, no hay verificación GET.
@@ -71,21 +73,30 @@ async function handleWebhook(req, res) {
   const body = req.body || {};
   const event = (body.event || '').toLowerCase();
 
-  log(`[Webhook] Evento recibido: "${body.event}"`);
-
-  // Si llega evento de conexión abierta, disparar notificación de despliegue si estaba pendiente
+  // Si llega evento de conexión abierta o cambio de estado, verificar aviso de despliegue
   if (event === 'connection.update') {
     const state = body.data?.state || body.data?.connection || '';
-    if (state === 'open') {
-      log('[Webhook] Conexión WhatsApp abierta ("open"). Verificando aviso de despliegue...');
-      const { notificarDespliegue } = require('../services/deployNotificationService');
-      notificarDespliegue().catch(() => {});
+    if (state && state !== _lastLoggedConnectionState) {
+      _lastLoggedConnectionState = state;
+      log(`[Webhook] Conexión WhatsApp estado: "${state}"`);
+      if (state === 'open') {
+        log('[Webhook] Conexión WhatsApp abierta ("open"). Verificando aviso de despliegue...');
+        const { notificarDespliegue } = require('../services/deployNotificationService');
+        notificarDespliegue().catch(() => {});
+      }
     }
     return;
   }
 
-  // Solo procesar eventos de mensajes (v1: messages.upsert, posible variante en mayúsculas)
-  if (event !== 'messages.upsert') return;
+  // Solo procesar y registrar eventos de mensajes para no saturar el visor de logs
+  if (event !== 'messages.upsert') {
+    if (process.env.DEBUG_WEBHOOK === 'true') {
+      log(`[Webhook] Evento secundario ignorado: "${body.event}"`);
+    }
+    return;
+  }
+
+  log(`[Webhook] Evento recibido: "${body.event}"`);
 
   // v1 puede enviar data como array o como objeto
   const messages = Array.isArray(body.data) ? body.data : [body.data];
@@ -240,7 +251,7 @@ async function _processMessage(data) {
               await sendWhatsAppMessage(replyTo, reply);
               log(`[Webhook] → ${telefono}: ${reply.substring(0, 80)}`);
             } catch (err) {
-              log(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`);
+              console.error(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`, err);
             }
           },
         });
@@ -305,7 +316,7 @@ async function _processMessage(data) {
         await sendWhatsAppMessage(replyTo, reply);
         log(`[Webhook] → ${telefono}: ${reply.substring(0, 80)}`);
       } catch (err) {
-        log(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`);
+        console.error(`[Webhook] Error enviando respuesta a ${telefono}: ${err.message}`, err);
       }
     },
   });

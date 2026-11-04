@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const { getErrorLogs, ERROR_LOG_FILE, LOG_FILE } = require('../utils/logger');
 
 const router = express.Router();
-const LOG_FILE = path.join(__dirname, '../../data/logs.ndjson');
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ function requireLogs(req, res, next) {
   const session = req.signedCookies?.logs_session;
   if (session && session === validUser) return next();
 
-  if (req.path === '/data') {
+  if (req.path === '/data' || req.path === '/errors/data') {
     return res.status(401).json({ error: 'No autorizado' });
   }
   res.redirect('/logs/login');
@@ -165,6 +165,58 @@ router.get('/data', requireLogs, (req, res) => {
   if (filter) lines = lines.filter(e => e.msg.toLowerCase().includes(filter));
 
   res.json(lines.slice(-limit));
+});
+
+// ── Error endpoints ────────────────────────────────────────────────────────────
+
+// GET /logs/errors/data?limit=500&filter=<texto>&after=<isoTimestamp>
+router.get('/errors/data', requireLogs, (req, res) => {
+  const limit  = Math.min(parseInt(req.query.limit) || 300, 1000);
+  const filter = (req.query.filter || '').toLowerCase();
+  const after  = req.query.after || null;
+
+  let errors = getErrorLogs(limit, after);
+  if (filter) {
+    errors = errors.filter(e =>
+      (e.msg && e.msg.toLowerCase().includes(filter)) ||
+      (e.stack && e.stack.toLowerCase().includes(filter))
+    );
+  }
+  res.json(errors);
+});
+
+// GET /logs/errors/download
+router.get('/errors/download', requireLogs, (req, res) => {
+  try {
+    let content = '';
+    if (fs.existsSync(ERROR_LOG_FILE)) {
+      const raw = fs.readFileSync(ERROR_LOG_FILE, 'utf8');
+      const lines = raw
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map(line => {
+          try { return JSON.parse(line); } catch { return null; }
+        })
+        .filter(Boolean);
+
+      content = lines.map(e => {
+        let block = `[${e.ts}] ${e.msg}`;
+        if (e.stack) block += `\n  Stack trace:\n  ${e.stack.split('\n').join('\n  ')}`;
+        return block;
+      }).join('\n\n' + '-'.repeat(70) + '\n\n');
+    }
+
+    if (!content) {
+      content = 'No hay errores registrados hasta el momento.';
+    }
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="errores-bot-restaurantes.txt"');
+    res.send(content);
+  } catch (err) {
+    res.status(500).send(`Error generando archivo de errores: ${err.message}`);
+  }
 });
 
 // ── Logs viewer (HTML) ─────────────────────────────────────────────────────────
@@ -433,6 +485,21 @@ router.get('/', requireLogs, (req, res) => {
       color: #60a5fa;
     }
 
+    .error-stack {
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: rgba(15, 23, 42, 0.85);
+      border-left: 3px solid var(--err);
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      color: #fca5a5;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
     /* ── Logs Stream Table ── */
     .stream-container {
       flex: 1;
@@ -629,6 +696,14 @@ router.get('/', requireLogs, (req, res) => {
       <button class="btn" onclick="copyLogs()">
         📋 Copiar
       </button>
+
+      <button class="btn" onclick="copyErrors()" title="Copiar historial completo de errores persistentes">
+        ⚠️ Copiar Errores
+      </button>
+
+      <a href="/logs/errors/download" class="btn" download style="text-decoration:none;" title="Descargar archivo de texto con todos los errores">
+        📥 Descargar Errores
+      </a>
     </div>
   </div>
 
@@ -652,12 +727,13 @@ router.get('/', requireLogs, (req, res) => {
 
   <script>
     let allLogs = [];
+    let dedicatedErrors = [];
     let currentCategory = 'all';
     let autoScroll = true;
     let clearedTs = localStorage.getItem('logs_cleared_ts') || null;
 
     function classifyLog(msg) {
-      const lower = msg.toLowerCase();
+      const lower = String(msg || '').toLowerCase();
       if (lower.includes('[error]') || lower.includes('error') || lower.includes('fail') || lower.includes('exception')) {
         return { cat: 'err', label: 'ERROR', cls: 'tag-err' };
       }
@@ -681,12 +757,13 @@ router.get('/', requireLogs, (req, res) => {
 
     function formatTime(iso) {
       const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso || '--:--:--';
       return d.toLocaleTimeString('es-NI', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
     }
 
     function escapeHtml(str) {
       const div = document.createElement('div');
-      div.textContent = str;
+      div.textContent = String(str || '');
       return div.innerHTML;
     }
 
@@ -694,16 +771,21 @@ router.get('/', requireLogs, (req, res) => {
       const tbody = document.getElementById('logsTbody');
       const search = document.getElementById('searchInput').value.trim().toLowerCase();
 
+      // Si la categoría activa es 'err' y tenemos errores dedicados en errors.ndjson, mostrar esos errores
       let filtered = allLogs;
-
-      // Filtro por categoría
-      if (currentCategory !== 'all') {
+      if (currentCategory === 'err') {
+        filtered = dedicatedErrors.length > 0 ? dedicatedErrors : allLogs.filter(l => classifyLog(l.msg).cat === 'err');
+      } else if (currentCategory !== 'all') {
         filtered = filtered.filter(l => classifyLog(l.msg).cat === currentCategory);
       }
 
-      // Filtro por búsqueda
+      // Filtro por búsqueda (busca en msg y en stack trace)
       if (search) {
-        filtered = filtered.filter(l => l.msg.toLowerCase().includes(search));
+        filtered = filtered.filter(l => {
+          const msgMatch = (l.msg && l.msg.toLowerCase().includes(search));
+          const stackMatch = (l.stack && l.stack.toLowerCase().includes(search));
+          return msgMatch || stackMatch;
+        });
       }
 
       // Actualizar contadores
@@ -719,7 +801,7 @@ router.get('/', requireLogs, (req, res) => {
       document.getElementById('statWA').textContent = countWA;
       document.getElementById('statAI').textContent = countAI;
       document.getElementById('statOrders').textContent = countOrder;
-      document.getElementById('statErrors').textContent = countErr;
+      document.getElementById('statErrors').textContent = Math.max(countErr, dedicatedErrors.length);
 
       if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 40px; color:#64748b;">No hay eventos para este filtro</td></tr>';
@@ -727,18 +809,28 @@ router.get('/', requireLogs, (req, res) => {
       }
 
       tbody.innerHTML = filtered.map(l => {
-        const info = classifyLog(l.msg);
+        const info = (currentCategory === 'err' || l.stack) ? { cat: 'err', label: 'ERROR', cls: 'tag-err' } : classifyLog(l.msg);
         let safeMsg = escapeHtml(l.msg);
         if (search) {
           const regex = new RegExp('(' + search.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\\\$&') + ')', 'gi');
           safeMsg = safeMsg.replace(regex, '<span class="highlight-search">$1</span>');
         }
 
+        let stackHtml = '';
+        if (l.stack) {
+          let safeStack = escapeHtml(l.stack);
+          if (search) {
+            const regex = new RegExp('(' + search.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\\\$&') + ')', 'gi');
+            safeStack = safeStack.replace(regex, '<span class="highlight-search">$1</span>');
+          }
+          stackHtml = \`<pre class="error-stack">\${safeStack}</pre>\`;
+        }
+
         return \`
           <tr>
             <td class="col-time">\${formatTime(l.ts)}</td>
             <td class="col-tag"><span class="badge-tag \${info.cls}">\${info.label}</span></td>
-            <td class="col-msg">\${safeMsg}</td>
+            <td class="col-msg">\${safeMsg}\${stackHtml}</td>
           </tr>
         \`;
       }).join('');
@@ -777,18 +869,48 @@ router.get('/', requireLogs, (req, res) => {
       });
     }
 
+    function copyErrors() {
+      const list = dedicatedErrors.length > 0 ? dedicatedErrors : allLogs.filter(l => classifyLog(l.msg).cat === 'err');
+      if (list.length === 0) {
+        alert('No hay errores registrados para copiar.');
+        return;
+      }
+      const text = list.map(l => {
+        let block = \`[\${l.ts}] \${l.msg}\`;
+        if (l.stack) block += \`\\n  Stack: \${l.stack}\`;
+        return block;
+      }).join('\\n\\n------------------------------------------------------------\\n\\n');
+
+      navigator.clipboard.writeText(text).then(() => {
+        alert(\`✓ \${list.length} errores copiados al portapapeles\`);
+      }).catch(() => {
+        prompt('Copia los errores manualmente:', text);
+      });
+    }
+
     async function fetchLogs() {
       try {
-        const url = clearedTs
+        const urlLogs = clearedTs
           ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedTs)}\`
           : '/logs/data?limit=500';
-        const res = await fetch(url);
-        if (res.status === 401) {
+
+        const [resLogs, resErr] = await Promise.all([
+          fetch(urlLogs),
+          fetch('/logs/errors/data?limit=300').catch(() => null)
+        ]);
+
+        if (resLogs.status === 401) {
           window.location.href = '/logs/login';
           return;
         }
-        const data = await res.json();
-        allLogs = data;
+
+        if (resLogs.ok) {
+          allLogs = await resLogs.json();
+        }
+        if (resErr && resErr.ok) {
+          dedicatedErrors = await resErr.json();
+        }
+
         render();
         document.getElementById('connStatus').textContent = 'En vivo (cada 2s)';
       } catch (err) {

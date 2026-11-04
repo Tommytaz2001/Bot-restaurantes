@@ -1,6 +1,6 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 31 de Octubre de 2026  
+**Última actualización:** 4 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
 **Último commit:** `1727939 fix(whatsapp): isolate owner phone, enforce customer name, prevent duplicate orders and simplify confirmation reply` 
 
@@ -113,6 +113,23 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 33. **Confirmación Inmediata Concisa en Efectivo ("¡Pedido recibido!") (`prompts/agent.txt`, `src/agent/agentService.js`, `tests/agentConfirmation.test.js`):**
     - **Optimización de Mensajes y Eliminación de Texto Redundante:** Tras enviar el resumen, cuando el cliente confirma con "ok" (para pedidos en efectivo, sea delivery o retiro), el bot responde únicamente con: `✅ *¡Pedido recibido!* 🍔`.
     - **Alineación con el Flujo de Cocina (KDS):** Se erradicaron las parrafadas intermedias que repetían la dirección del local o despedidas extensas, ya que inmediatamente después el chef acepta la comanda en la app de cocina y el sistema despacha el mensaje oficial con el tiempo estimado de preparación (ETA). Para pagos con transferencia, se solicita de forma concisa el comprobante junto a las cuentas bancarias autorizadas.
+34. **Registro Persistente de Errores (`data/errors.ndjson`), Descarga/Copia en `/logs` y Reintentos Resilientes en Despacho WhatsApp (`src/utils/logger.js`, `src/routes/logRoutes.js`, `src/whatsapp/metaSender.js`, `src/whatsapp/metaWebhook.js`, `tests/metaSender.test.js`, `tests/loggerErrors.test.js`):**
+    - **Causa Raíz Diagnosticada:**
+      1. Caída o flapping transitorio de socket en Baileys / Evolution API (`connection.update` open/close/open). Al enviar durante esos milisegundos, Evolution retornaba `400: Connection Closed` o `500: Internal Server Error`. Al carecer `metaSender.js` de reintentos, las respuestas se perdían irrevocablemente.
+      2. Errores `400: not-acceptable` al enviar a identificadores `@lid` cuyas sesiones Signal en Baileys carecían de claves o estaban desincronizadas, sin fallback al número de teléfono real.
+      3. Pérdida de historial de errores en el monitor web (`/logs`): el visor sólo mantenía 500 líneas en memoria, y tormentas de eventos repetitivos (`connection.update`, `presence.update`, etc.) desplazaban y eliminaban los registros de error en segundos.
+    - **Solución Implementada:**
+      1. **Archivo Persistente Dedicado de Errores (`data/errors.ndjson`):** Intercepción de `console.error` y método `logError` para registrar de forma atómica cada error con timestamp ISO, mensaje y stack trace en un archivo independiente.
+      2. **Rotación Inteligente sin Pérdida:** Función defensiva `trimFileIfNeeded` que, al alcanzar el límite de 5MB, conserva los últimos 2.5MB en lugar de truncar el archivo a cero bytes.
+      3. **Endpoints de Errores y UI en `/logs`:**
+         - `GET /logs/errors/data`: Retorna el historial estructurado de errores en JSON.
+         - `GET /logs/errors/download`: Descarga directa como archivo adjunto `errores-bot-restaurantes.txt`.
+         - Botones "📥 Descargar Errores" y "⚠️ Copiar Errores" en la barra de acciones del monitor web.
+         - Pestaña "⚠️ Errores" vinculada a `errors.ndjson`, garantizando que nunca se pierdan los errores aunque pasen miles de eventos normales.
+      4. **Reintentos Exponenciales y Fallback en `metaSender.js`:**
+         - Reintentos automáticos (hasta 3 intentos con demoras de 1.5s y 2.5s) ante fallas de socket/conexión (`Connection Closed`, 500, `ECONNRESET`, `ETIMEDOUT`, `fetch failed`).
+         - Fallback automático: Si el envío hacia un destino `@lid` es rechazado con `not-acceptable` o 400, consulta la caché / BD de resolución de LID y redirige el envío de inmediato a `${telefono}@s.whatsapp.net`.
+      5. **Filtrado de Ruido en Webhook (`metaWebhook.js`):** Desactivado el spam de `[Webhook] Evento recibido: ...` para eventos secundarios repetitivos (`presence.update`, `chats.update`), registrando `connection.update` únicamente ante transiciones de estado reales.
 
 
 

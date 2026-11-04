@@ -2,28 +2,42 @@
  * Wrapper para enviar mensajes via Evolution API.
  * Evolution API envuelve Baileys y lo expone como REST API.
  */
+const { getPhoneForLid, resolveLid } = require('./lidResolver');
+const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function isTransientError(status, errorMsg) {
+  if (status === 500 || status === 502 || status === 503 || status === 504 || status === 429) {
+    return true;
+  }
+  const msg = String(errorMsg || '').toLowerCase();
+  return (
+    msg.includes('connection closed') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('fetch failed') ||
+    msg.includes('socket hang up') ||
+    msg.includes('network')
+  );
+}
+
+function isLidRejection(status, errorMsg) {
+  const msg = String(errorMsg || '').toLowerCase();
+  return (
+    msg.includes('not-acceptable') ||
+    msg.includes('no session') ||
+    msg.includes('session error') ||
+    msg.includes('bad-request') ||
+    status === 406
+  );
+}
 
 /**
- * Envía un mensaje de texto a un número de WhatsApp.
- * IMPORTANTE: 'to' debe preservar el JID original (@lid o @s.whatsapp.net).
- * Nunca debe forzarse la conversión de un @lid a @s.whatsapp.net al enviar mensajes,
- * ya que WhatsApp desincroniza las claves de cifrado E2EE y muestra "Esperando el mensaje".
- *
- * @param {string} to   - Número de teléfono limpio o JID completo, ej: "50512345678" o "229712...@lid"
- * @param {string} text - Texto del mensaje
- * @returns {Promise<object>} Respuesta de la API de Evolution
+ * Normaliza el destino conservando JIDs (@lid o @s.whatsapp.net).
+ * Si es un número sin JID de 8 dígitos (Nicaragua), asegura prefijo internacional 505.
  */
-async function sendWhatsAppMessage(to, text) {
-  const apiUrl = process.env.EVOLUTION_API_URL;
-  const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = process.env.EVOLUTION_INSTANCE;
-
-  if (!apiUrl || !apiKey || !instance) {
-    throw new Error('EVOLUTION_API_URL, EVOLUTION_API_KEY y EVOLUTION_INSTANCE son requeridos');
-  }
-
-  // Preservar el destino original sin mutar identificadores de sesión (@lid o @s.whatsapp.net).
-  // Si es un número sin JID de 8 dígitos (Nicaragua), asegurar prefijo internacional 505.
+function normalizeDestination(to) {
   let destination = to;
   if (typeof destination === 'string') {
     const trimmed = destination.trim();
@@ -36,9 +50,14 @@ async function sendWhatsAppMessage(to, text) {
       }
     }
   }
+  return destination;
+}
 
+/**
+ * Realiza una llamada HTTP única para enviar el mensaje.
+ */
+async function _dispatchSingle(apiUrl, apiKey, instance, destination, text) {
   const url = `${apiUrl}/message/sendText/${instance}`;
-
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -52,11 +71,95 @@ async function sendWhatsAppMessage(to, text) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`Evolution API error ${response.status}: ${JSON.stringify(error)}`);
+    const errorBody = await response.json().catch(() => ({}));
+    const errText = JSON.stringify(errorBody);
+    const err = new Error(`Evolution API error ${response.status}: ${errText}`);
+    err.status = response.status;
+    err.errorBody = errorBody;
+    throw err;
   }
 
   return response.json();
 }
 
-module.exports = { sendWhatsAppMessage };
+/**
+ * Envía un mensaje de texto a un número de WhatsApp con reintentos para errores transitorios
+ * y fallback automático de @lid a teléfono si WhatsApp rechaza la sesión del LID.
+ *
+ * @param {string} to   - Número de teléfono limpio o JID completo, ej: "50512345678" o "229712...@lid"
+ * @param {string} text - Texto del mensaje
+ * @param {object} [options] - Opciones de configuración (reintentos, demoras)
+ * @returns {Promise<object>} Respuesta de la API de Evolution
+ */
+async function sendWhatsAppMessage(to, text, options = {}) {
+  const apiUrl = process.env.EVOLUTION_API_URL;
+  const apiKey = process.env.EVOLUTION_API_KEY;
+  const instance = process.env.EVOLUTION_INSTANCE;
+
+  if (!apiUrl || !apiKey || !instance) {
+    throw new Error('EVOLUTION_API_URL, EVOLUTION_API_KEY y EVOLUTION_INSTANCE son requeridos');
+  }
+
+  const destination = normalizeDestination(to);
+  const maxAttempts = options.maxAttempts ?? 3;
+  const retryDelays = options.retryDelays ?? [1500, 2500];
+
+  let lastError = null;
+
+  // Intento de envío al destino solicitado (preservando @lid si es el caso)
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await _dispatchSingle(apiUrl, apiKey, instance, destination, text);
+    } catch (err) {
+      lastError = err;
+      const isTransient = isTransientError(err.status, err.message);
+
+      // Si es un rechazo específico de @lid (ej: not-acceptable), no tiene sentido insistir con el mismo @lid
+      if (isLidRejection(err.status, err.message) && (destination.includes('@lid') || /^\d{14,16}$/.test(destination))) {
+        break;
+      }
+
+      if (isTransient && attempt < maxAttempts) {
+        const delay = retryDelays[attempt - 1] || 2000;
+        console.warn(`[metaSender] Error transitorio al enviar a ${destination} (${err.message}). Reintentando en ${delay}ms (intento ${attempt + 1}/${maxAttempts})...`);
+        await sleep(delay);
+        continue;
+      }
+
+      // Si no es transitorio o se agotaron los reintentos, romper el bucle
+      break;
+    }
+  }
+
+  // Fallback para @lid: si el envío a @lid falló (por "not-acceptable" o conexión rota),
+  // intentar enviar al número de teléfono real resuelto si existe.
+  const isLidTarget = destination.includes('@lid') || /^\d{14,16}$/.test(destination);
+  if (isLidTarget && lastError) {
+    let resolvedPhone = getPhoneForLid(destination);
+    if (!resolvedPhone) {
+      resolvedPhone = await resolveLid(destination).catch(() => null);
+    }
+
+    if (resolvedPhone && !isAdminOrOwnerPhone(resolvedPhone)) {
+      const cleanDigits = String(resolvedPhone).replace(/\D/g, '');
+      const phoneDest = cleanDigits.length === 8 ? `505${cleanDigits}@s.whatsapp.net` : `${cleanDigits}@s.whatsapp.net`;
+
+      console.warn(`[metaSender] Envío a LID ${destination} falló (${lastError.message}). Intentando fallback a número telefónico: ${phoneDest}...`);
+      try {
+        return await _dispatchSingle(apiUrl, apiKey, instance, phoneDest, text);
+      } catch (fallbackErr) {
+        console.error(`[metaSender] Fallback a teléfono ${phoneDest} también falló: ${fallbackErr.message}`, fallbackErr);
+        lastError = fallbackErr;
+      }
+    }
+  }
+
+  console.error(`[metaSender] Error definitivo enviando mensaje a ${destination}: ${lastError.message}`, lastError);
+  throw lastError;
+}
+
+module.exports = {
+  sendWhatsAppMessage,
+  isTransientError,
+  isLidRejection,
+};
