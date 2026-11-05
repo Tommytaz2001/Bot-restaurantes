@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `5d67c94 test: format loggerErrors test suite (c03970f fix(logs, whatsapp): add persistent error log file, UI download/copy, resilient send retries and lid fallback)` 
+**Último commit:** `6b48ae7 fix(whatsapp): map @lid to @s.whatsapp.net transport to prevent Baileys socket closure and allow owner test replies` 
 
 ---
 
