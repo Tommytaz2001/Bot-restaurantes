@@ -2,7 +2,7 @@
 
 **Última actualización:** 4 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `c03970f fix(logs, whatsapp): add persistent error log file, UI download/copy, resilient send retries and lid fallback` 
+**Último commit:** `5d67c94 test: format loggerErrors test suite (c03970f fix(logs, whatsapp): add persistent error log file, UI download/copy, resilient send retries and lid fallback)` 
 
 ---
 
