@@ -1,6 +1,6 @@
 # Estado del Proyecto — Bot Restaurantes Urbano
 
-**Última actualización:** 4 de Noviembre de 2026  
+**Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
 **Último commit:** `5d67c94 test: format loggerErrors test suite (c03970f fix(logs, whatsapp): add persistent error log file, UI download/copy, resilient send retries and lid fallback)` 
 
@@ -130,6 +130,16 @@ El sistema superó su fase de MVP inicial y ha incorporado:
          - Reintentos automáticos (hasta 3 intentos con demoras de 1.5s y 2.5s) ante fallas de socket/conexión (`Connection Closed`, 500, `ECONNRESET`, `ETIMEDOUT`, `fetch failed`).
          - Fallback automático: Si el envío hacia un destino `@lid` es rechazado con `not-acceptable` o 400, consulta la caché / BD de resolución de LID y redirige el envío de inmediato a `${telefono}@s.whatsapp.net`.
       5. **Filtrado de Ruido en Webhook (`metaWebhook.js`):** Desactivado el spam de `[Webhook] Evento recibido: ...` para eventos secundarios repetitivos (`presence.update`, `chats.update`), registrando `connection.update` únicamente ante transiciones de estado reales.
+35. **Resolución de Caída de Socket Baileys por `@lid` ('Connection Closed'), Flapping de Conexión y Mapeo Proactivo de Transporte (`src/whatsapp/lidResolver.js`, `src/whatsapp/metaSender.js`, `src/whatsapp/metaWebhook.js`, `tests/metaSender.test.js`):**
+    - **Causa Raíz Diagnosticada ("el bot responde una vez y luego ya no responde"):**
+      1. Con `WPP_LID_MODE=false` en Evolution API v1.8.7, despachar `POST /message/sendText` hacia identificadores raw `@lid` (ej: `267692510605433@lid` o `229712098817378@lid`) hace que Baileys aborte el WebSocket a los servidores de WhatsApp arrojando `400/500 Connection Closed`.
+      2. Al cerrarse el socket, Evolution API entra en un bucle de reconexión intermitente ("flapping"): `close` -> `connecting` -> `open` (por 100ms) -> `close` -> `connecting`. Cualquier mensaje subsiguiente recibido o respuesta enviada durante ese estado falla con `Connection Closed` o `Fetch failed`.
+      3. Además, el filtro estricto `isAdminOrOwnerPhone` en `metaWebhook.js` y `lidResolver.js` descartaba el teléfono del dueño (`593961699586`) al asociar su `@lid`. Por ende, cuando el administrador chateaba con el bot para probar, su LID nunca se mapeaba a un número de teléfono, forzando respuestas al `@lid` y disparando la caída del socket en cada mensaje.
+    - **Solución Implementada:**
+      1. **Mapeo Proactivo a `@s.whatsapp.net` en `metaSender.js`:** Antes del despacho, si el destino es `@lid` o tiene 14-16 dígitos, se consulta la caché de `lidResolver` o la API de Evolution (`resolveLid`) y se reorienta directamente a `${telefono}@s.whatsapp.net`. Si falla un envío a `@lid` no resuelto, se efectúa una resolución de emergencia antes de reintentar.
+      2. **Normalización Temprana en `metaWebhook.js`:** Si el mensaje entrante proviene de un `@lid` y se conoce su teléfono (ej. vía `key.senderPn`), `replyTo` y `remoteJid` se establecen directamente como `${cleanPhone}@s.whatsapp.net`.
+      3. **Opción `allowAdmin` en `lidResolver.js`:** Permite almacenar en caché el JID de transporte de administradores autenticados desde mensajes entrantes (`{ allowAdmin: true }`), manteniendo intacto el bloqueo de `isAdminOrOwnerPhone` en `orderService.js` y `messageHandler.js` para proteger la base de datos contra pedidos con el número del dueño.
+      4. **Pruebas Unitarias Actualizadas (`tests/metaSender.test.js`):** Pruebas de despacho verifican que los destinos `@lid` conocidos se traduzcan limpiamente a `@s.whatsapp.net` evitando caídas de socket. Todas las pruebas pasan (PASS).
 
 
 
@@ -198,7 +208,8 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/sessionStore.test.js` | Unitaria | **PASS** (4/4) | Valida gestión de sesiones en memoria y TTL de mensajes. |
 | `tests/blacklistService.test.js` | Unitaria | **PASS** (8/8) | Valida bloqueo internacional, formato local de 8 dígitos, eliminación inmediata, validación de longitud y detección de contactos bajo formato @lid asociados a números en lista negra. |
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (7/7) | Valida resolución y caché bidireccional de @lid a número telefónico, extracción de senderPn en findMessages, consulta en findContacts y rechazo estricto de números del administrador/dueño. |
-| `tests/metaSender.test.js`  | Unitaria | **PASS** (5/5) | Valida preservación estricta de destinos @lid y @s.whatsapp.net sin mutaciones destructivas de JID, anteposición automática de prefijo 505 para números de 8 dígitos de Nicaragua y saneamiento de prefijo +. |
+| `tests/metaSender.test.js`  | Unitaria | **PASS** (6/6) | Valida mapeo proactivo de @lid a @s.whatsapp.net para prevenir caídas de socket en Baileys, despacho a @lid no resuelto, resolución previa con API, anteposición de prefijo 505 para números locales de Nicaragua y reintentos automáticos ante errores transitorios. |
+| `tests/loggerErrors.test.js`| Unitaria | **PASS** (1/1) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error y truncado defensivo de 5MB. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite (1949 módulos), cap sync y gradle assembleDebug exitoso (9s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/ y raíz. |

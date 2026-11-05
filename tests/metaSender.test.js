@@ -16,7 +16,7 @@ describe('metaSender and LID destination preservation', () => {
     globalThis.fetch = originalFetch;
   });
 
-  test('preserva el JID con formato @lid al enviar y NO lo muta a @s.whatsapp.net aunque esté en caché', async () => {
+  test('mapea JID con formato @lid al número de teléfono @s.whatsapp.net si está en caché para evitar desconexiones en Baileys', async () => {
     // Simulamos que el @lid está asociado a un teléfono en caché
     cacheLidMapping('229712898017378@lid', '50558544518');
 
@@ -33,9 +33,52 @@ describe('metaSender and LID destination preservation', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(capturedBody).toBeDefined();
-    // Destino DEBE ser el @lid exacto para no romper el cifrado E2EE en el cliente
-    expect(capturedBody.number).toBe('229712898017378@lid');
-    expect(capturedBody.number).not.toContain('@s.whatsapp.net');
+    // Destino debe mapearse a @s.whatsapp.net para evitar 'Connection Closed' en Baileys
+    expect(capturedBody.number).toBe('50558544518@s.whatsapp.net');
+    expect(res).toEqual({ status: 'SUCCESS' });
+  });
+
+  test('intenta enviar al @lid si no se encuentra mapeado en caché ni en API', async () => {
+    let capturedBody = null;
+    globalThis.fetch = jest.fn().mockImplementation(async (url, opts) => {
+      if (url.includes('/chat/findContacts') || url.includes('/chat/findMessages')) {
+        return { ok: false, status: 404, json: async () => [] };
+      }
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({ status: 'SUCCESS' }),
+      };
+    });
+
+    const res = await sendWhatsAppMessage('999999999999999@lid', 'Hola LID desconocido');
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.number).toBe('999999999999999@lid');
+    expect(res).toEqual({ status: 'SUCCESS' });
+  });
+
+  test('resuelve automáticamente @lid a número telefónico antes del despacho si la API lo conoce', async () => {
+    let capturedBody = null;
+    globalThis.fetch = jest.fn().mockImplementation(async (url, opts) => {
+      if (url.includes('/chat/findContacts') || url.includes('/chat/findMessages')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ key: { remoteJid: '229712098817378@lid', senderPn: '50558544518@s.whatsapp.net' } }],
+        };
+      }
+      capturedBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({ status: 'SUCCESS' }),
+      };
+    });
+
+    const res = await sendWhatsAppMessage('229712098817378@lid', 'Hola cliente resuelto');
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.number).toBe('50558544518@s.whatsapp.net');
     expect(res).toEqual({ status: 'SUCCESS' });
   });
 
@@ -127,42 +170,6 @@ describe('metaSender and LID destination preservation', () => {
     expect(capturedBodies[1].number).toBe('50588888888@s.whatsapp.net');
   });
 
-  test('realiza fallback automático a número telefónico si envío a @lid falla con not-acceptable', async () => {
-    cacheLidMapping('229712898017378@lid', '50558544518');
-
-    let callCount = 0;
-    const destinations = [];
-
-    globalThis.fetch = jest.fn().mockImplementation(async (url, opts) => {
-      callCount++;
-      const body = JSON.parse(opts.body);
-      destinations.push(body.number);
-
-      if (callCount === 1) {
-        return {
-          ok: false,
-          status: 400,
-          json: async () => ({ status: 400, error: 'Bad Request', response: { message: ['Error: not-acceptable'] } }),
-        };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ status: 'SUCCESS_FALLBACK' }),
-      };
-    });
-
-    const res = await sendWhatsAppMessage('229712898017378@lid', 'Hola cliente', {
-      maxAttempts: 3,
-      retryDelays: [10, 20],
-    });
-
-    expect(callCount).toBe(2);
-    expect(destinations[0]).toBe('229712898017378@lid'); // Primero intentó @lid
-    expect(destinations[1]).toBe('50558544518@s.whatsapp.net'); // Fallback a número resuelto
-    expect(res).toEqual({ status: 'SUCCESS_FALLBACK' });
-  });
-
   test('lanza el error si se agotan todos los reintentos en fallas transitorias', async () => {
     globalThis.fetch = jest.fn().mockImplementation(async () => {
       return {
@@ -180,4 +187,3 @@ describe('metaSender and LID destination preservation', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });
-

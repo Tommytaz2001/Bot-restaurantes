@@ -134,17 +134,7 @@ async function _processMessage(data) {
 
   if (!telefono) return;
 
-  // REGLA CRÍTICA DE CIFRADO E2EE: replyTo y remoteJid para el transporte de WhatsApp
-  // DEBEN ser SIEMPRE el incomingJid exacto (sea @lid o @s.whatsapp.net).
-  // Si respondemos a @s.whatsapp.net cuando el cliente chatea por @lid, su teléfono
-  // no puede descifrar el mensaje y muestra "Esperando el mensaje. Esto puede tomar tiempo".
-  const replyTo = incomingJid;
-  const remoteJid = incomingJid;
-
-  // Si incomingJid viene con @lid, resolver su número telefónico real EXCLUSIVAMENTE
-  // para base de datos (pedidos.telefono), cocina (KDS) y Lista Negra.
-  // NOTA: NUNCA usar participantPn ni participantAlt en chats 1-a-1, ya que representan
-  // al usuario local de la instancia (el teléfono del dueño/bot).
+  // Extraer posible número telefónico real del remitente si viene por @lid
   const altCandidate = key.senderPn 
     || (data.key && data.key.senderPn)
     || key.remoteJidAlt 
@@ -153,12 +143,15 @@ async function _processMessage(data) {
 
   if (incomingJid.endsWith('@lid') && altCandidate) {
     const rawAlt = typeof altCandidate === 'string' ? altCandidate.split('@')[0].replace(/\D/g, '') : '';
-    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid') && !isAdminOrOwnerPhone(rawAlt)) {
-      cacheLidMapping(incomingJid, rawAlt);
+    if (rawAlt && rawAlt.length >= 8 && rawAlt.length <= 15 && !rawAlt.endsWith('@lid')) {
+      const isOwner = isAdminOrOwnerPhone(rawAlt);
+      cacheLidMapping(incomingJid, rawAlt, { allowAdmin: true });
       telefono = rawAlt;
-      log(`[Webhook] @lid resuelto desde senderPn / payload alternativo (${altCandidate}) → ${rawAlt}`);
-    } else if (isAdminOrOwnerPhone(rawAlt)) {
-      log(`[Webhook] Candidato alternativo ${rawAlt} descartado porque coincide con número de administrador/dueño`);
+      if (isOwner) {
+        log(`[Webhook] Remitente administrador/dueño autenticado (${rawAlt}) en chat @lid ${incomingJid}`);
+      } else {
+        log(`[Webhook] @lid resuelto desde senderPn / payload alternativo (${altCandidate}) → ${rawAlt}`);
+      }
     }
   }
 
@@ -168,10 +161,20 @@ async function _processMessage(data) {
     if (resolved && !isAdminOrOwnerPhone(resolved)) {
       log(`[Webhook] @lid ${incomingJid} resuelto vía API/BD → ${resolved}`);
       telefono = resolved;
-    } else if (resolved && isAdminOrOwnerPhone(resolved)) {
-      log(`[Webhook] @lid ${incomingJid} descartó número resuelto ${resolved} por pertenecer al administrador/dueño`);
     }
   }
+
+  // Destino de transporte (replyTo y remoteJid):
+  // En Evolution API (con WPP_LID_MODE=false), enviar directamente a un @lid provoca 'Connection Closed'
+  // y reinicios cíclicos del socket Baileys. Por tanto, si se conoce el número de teléfono real del contacto
+  // (por senderPn o caché), enviamos a ${phone}@s.whatsapp.net. Si no se conoce, se usa incomingJid.
+  let replyTo = incomingJid;
+  const knownPhone = getPhoneForLid(incomingJid) || (telefono && !telefono.endsWith('@lid') && telefono.length <= 15 ? telefono : null);
+  if (knownPhone) {
+    const clean = String(knownPhone).replace(/\D/g, '');
+    replyTo = clean.length === 8 ? `505${clean}@s.whatsapp.net` : `${clean}@s.whatsapp.net`;
+  }
+  const remoteJid = replyTo;
 
   const messageId = key.id;
   const contactName = data?.pushName 

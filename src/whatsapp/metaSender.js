@@ -100,13 +100,31 @@ async function sendWhatsAppMessage(to, text, options = {}) {
     throw new Error('EVOLUTION_API_URL, EVOLUTION_API_KEY y EVOLUTION_INSTANCE son requeridos');
   }
 
-  const destination = normalizeDestination(to);
+  let destination = normalizeDestination(to);
+
+  // En Evolution API (con WPP_LID_MODE=false), enviar mensajes directamente a @lid
+  // provoca 'Connection Closed' y reinicios en cascada del socket Baileys.
+  // Si destination es @lid o un identificador de 14-16 dígitos, mapeamos proactivamente
+  // al número de teléfono real (@s.whatsapp.net) si está en caché o se resuelve vía API.
+  const isLidTarget = typeof destination === 'string' && (destination.includes('@lid') || /^\d{14,16}$/.test(destination));
+  if (isLidTarget) {
+    let phone = getPhoneForLid(destination);
+    if (!phone) {
+      phone = await resolveLid(destination).catch(() => null);
+    }
+    if (phone) {
+      const clean = String(phone).replace(/\D/g, '');
+      destination = clean.length === 8 ? `505${clean}@s.whatsapp.net` : `${clean}@s.whatsapp.net`;
+      console.log(`[metaSender] Destino LID ${to} mapeado a teléfono de transporte: ${destination}`);
+    }
+  }
+
   const maxAttempts = options.maxAttempts ?? 3;
   const retryDelays = options.retryDelays ?? [1500, 2500];
 
   let lastError = null;
 
-  // Intento de envío al destino solicitado (preservando @lid si es el caso)
+  // Intento de envío al destino normalizado
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await _dispatchSingle(apiUrl, apiKey, instance, destination, text);
@@ -114,9 +132,20 @@ async function sendWhatsAppMessage(to, text, options = {}) {
       lastError = err;
       const isTransient = isTransientError(err.status, err.message);
 
-      // Si es un rechazo específico de @lid (ej: not-acceptable), no tiene sentido insistir con el mismo @lid
-      if (isLidRejection(err.status, err.message) && (destination.includes('@lid') || /^\d{14,16}$/.test(destination))) {
-        break;
+      // Si aún estamos intentando enviar a un @lid no resuelto y falla,
+      // intentar resolución de emergencia por si se resolvió concurrentemente
+      if (typeof destination === 'string' && destination.includes('@lid')) {
+        const emergencyPhone = await resolveLid(destination).catch(() => null);
+        if (emergencyPhone) {
+          const clean = String(emergencyPhone).replace(/\D/g, '');
+          destination = clean.length === 8 ? `505${clean}@s.whatsapp.net` : `${clean}@s.whatsapp.net`;
+          console.warn(`[metaSender] Reorientando envío fallido de @lid a teléfono: ${destination}`);
+          try {
+            return await _dispatchSingle(apiUrl, apiKey, instance, destination, text);
+          } catch (fallbackErr) {
+            lastError = fallbackErr;
+          }
+        }
       }
 
       if (isTransient && attempt < maxAttempts) {
@@ -128,29 +157,6 @@ async function sendWhatsAppMessage(to, text, options = {}) {
 
       // Si no es transitorio o se agotaron los reintentos, romper el bucle
       break;
-    }
-  }
-
-  // Fallback para @lid: si el envío a @lid falló (por "not-acceptable" o conexión rota),
-  // intentar enviar al número de teléfono real resuelto si existe.
-  const isLidTarget = destination.includes('@lid') || /^\d{14,16}$/.test(destination);
-  if (isLidTarget && lastError) {
-    let resolvedPhone = getPhoneForLid(destination);
-    if (!resolvedPhone) {
-      resolvedPhone = await resolveLid(destination).catch(() => null);
-    }
-
-    if (resolvedPhone && !isAdminOrOwnerPhone(resolvedPhone)) {
-      const cleanDigits = String(resolvedPhone).replace(/\D/g, '');
-      const phoneDest = cleanDigits.length === 8 ? `505${cleanDigits}@s.whatsapp.net` : `${cleanDigits}@s.whatsapp.net`;
-
-      console.warn(`[metaSender] Envío a LID ${destination} falló (${lastError.message}). Intentando fallback a número telefónico: ${phoneDest}...`);
-      try {
-        return await _dispatchSingle(apiUrl, apiKey, instance, phoneDest, text);
-      } catch (fallbackErr) {
-        console.error(`[metaSender] Fallback a teléfono ${phoneDest} también falló: ${fallbackErr.message}`, fallbackErr);
-        lastError = fallbackErr;
-      }
     }
   }
 

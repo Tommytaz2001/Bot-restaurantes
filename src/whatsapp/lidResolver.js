@@ -5,15 +5,16 @@ const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 const _lidToPhone = new Map();
 const _phoneToLid = new Map();
 
-function cacheLidMapping(lid, phone) {
+function cacheLidMapping(lid, phone, options = {}) {
   if (!lid || !phone) return;
   const canonicalLid = lid.includes('@') ? lid : `${lid}@lid`;
   const canonicalPhone = phone.includes('@') ? phone.split('@')[0] : phone;
   const cleanPhone = String(canonicalPhone).replace(/\D/g, '');
 
-  // Evitar almacenar LIDs como si fueran teléfonos, y NUNCA almacenar números del administrador/dueño
+  // Evitar almacenar LIDs como si fueran teléfonos
   if (cleanPhone.length > 15 || canonicalPhone.endsWith('@lid')) return;
-  if (isAdminOrOwnerPhone(cleanPhone || canonicalPhone)) return;
+  // Solo permitir almacenar números de administrador si es explícito (ej: remitente autenticado del mensaje)
+  if (!options.allowAdmin && isAdminOrOwnerPhone(cleanPhone || canonicalPhone)) return;
 
   _lidToPhone.set(canonicalLid, cleanPhone || canonicalPhone);
   _lidToPhone.set(canonicalLid.split('@')[0], cleanPhone || canonicalPhone);
