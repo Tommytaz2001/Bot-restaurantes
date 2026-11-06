@@ -68,8 +68,20 @@ describe('whatsappRoutes - Pairing Code & Connection State (Evolution API v2)', 
 
     const res = await request(app).post('/whatsapp/setup-webhook');
     expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
+    expect(res.body.result.ok).toBe(true);
     expect(res.body.webhookUrl).toContain('/whatsapp/webhook');
+  });
+
+  test('GET /whatsapp/check-webhook consulta estado en Evolution API', async () => {
+    globalThis.fetch = jest.fn().mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => ({ enabled: true, url: 'http://backend:3001/whatsapp/webhook' }),
+    });
+
+    const res = await request(app).get('/whatsapp/check-webhook');
+    expect(res.status).toBe(200);
+    expect(res.body.info.data.enabled).toBe(true);
   });
 });
 

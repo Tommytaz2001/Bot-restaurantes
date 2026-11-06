@@ -88,7 +88,7 @@ router.get('/write-stats', (req, res) => {
   res.json({ database: 'postgresql', status: 'connected' });
 });
 
-const { setupEvolution, setWebhook } = require('../services/evolutionSetup');
+const { setupEvolution, setWebhook, getWebhookStatus } = require('../services/evolutionSetup');
 
 // POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API
 router.post('/webhook', handleWebhook);
@@ -96,16 +96,27 @@ router.post('/webhook', handleWebhook);
 // POST o GET /whatsapp/setup-webhook — Configura o refresca manualmente el webhook en Evolution API
 router.all('/setup-webhook', async (req, res) => {
   const instance = req.query.instance || req.body?.instance || process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
-  const containerName = process.env.BOT_CONTAINER_NAME || 'bot-restaurantes';
   const port = process.env.PORT || 3001;
-  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || `http://${containerName}:${port}/whatsapp/webhook`;
+  const defaultHost = process.env.BOT_CONTAINER_NAME || 'backend';
+  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || `http://${defaultHost}:${port}/whatsapp/webhook`;
 
   try {
-    const ok = await setWebhook(instance, webhookUrl);
-    console.log(`[WhatsApp] Registro manual de webhook en "${instance}" (${webhookUrl}) → ${ok ? 'OK' : 'FALLÓ'}`);
-    return res.json({ ok, instance, webhookUrl });
+    const result = await setWebhook(instance, webhookUrl);
+    console.log(`[WhatsApp] Registro manual de webhook en "${instance}" (${webhookUrl}) →`, JSON.stringify(result));
+    return res.json({ instance, webhookUrl, result });
   } catch (err) {
     console.error(`[WhatsApp] Error configurando webhook:`, err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /whatsapp/check-webhook — Consulta el webhook configurado actualmente en Evolution API
+router.get('/check-webhook', async (req, res) => {
+  const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
+  try {
+    const info = await getWebhookStatus(instance);
+    return res.json({ instance, info });
+  } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
 });

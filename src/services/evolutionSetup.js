@@ -17,11 +17,11 @@ function getConfig(overrideInstance) {
   const instance = overrideInstance || process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
 
   // URL interna del webhook: usa EVOLUTION_WEBHOOK_URL si está definida,
-  // si no, construye desde el nombre del contenedor del backend
-  const containerName = process.env.BOT_CONTAINER_NAME || 'bot-restaurantes';
-  const port          = process.env.PORT || 3001;
-  const webhookUrl    = process.env.EVOLUTION_WEBHOOK_URL
-    || `http://${containerName}:${port}/whatsapp/webhook`;
+  // o el hostname del servicio backend en la red Docker
+  const port       = process.env.PORT || 3001;
+  const defaultHost = process.env.BOT_CONTAINER_NAME || 'backend';
+  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL
+    || `http://${defaultHost}:${port}/whatsapp/webhook`;
 
   return { apiUrl, apiKey, instance, webhookUrl };
 }
@@ -97,11 +97,20 @@ async function webhookIsConfigured(instance) {
     const res = await evFetch(`/webhook/find/${instance}`, {}, instance);
     if (!res.ok) return false;
     const data = await res.json();
-    // Devuelve false si la url está vacía o no existe
     const url = data?.url || data?.webhook?.url || '';
     return url.length > 0;
   } catch {
     return false;
+  }
+}
+
+async function getWebhookStatus(instance) {
+  try {
+    const res = await evFetch(`/webhook/find/${instance}`, {}, instance);
+    const data = await res.json().catch(() => null);
+    return { status: res.status, data };
+  } catch (err) {
+    return { error: err.message };
   }
 }
 
@@ -112,24 +121,63 @@ async function setWebhook(instance, webhookUrl) {
     'MESSAGES_UPDATE',
     'SEND_MESSAGE',
   ];
-  const payload = {
-    url: webhookUrl,
-    enabled: true,
-    webhook_by_events: false,
-    events,
+
+  // Intento 1: Formato Evolution API v2 anidado ({ webhook: { ... } })
+  const payloadV2 = {
     webhook: {
-      url: webhookUrl,
       enabled: true,
+      url: webhookUrl,
       byEvents: false,
-      base64: true,
+      base64: false,
       events,
     },
   };
-  const res = await evFetch(`/webhook/set/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }, instance);
-  return res.ok;
+
+  try {
+    const resV2 = await evFetch(`/webhook/set/${instance}`, {
+      method: 'POST',
+      body: JSON.stringify(payloadV2),
+    }, instance);
+
+    const dataV2 = await resV2.json().catch(() => ({}));
+    if (resV2.ok) {
+      log(`[Evolution] ✓ Webhook (v2) configurado exitosamente en "${instance}" → ${webhookUrl}`);
+      return { ok: true, version: 'v2', data: dataV2 };
+    }
+
+    log(`[Evolution] ⚠️ Intento v2 falló (HTTP ${resV2.status}): ${JSON.stringify(dataV2)}. Probando formato plano v1...`);
+  } catch (err) {
+    log(`[Evolution] ⚠️ Error en intento v2: ${err.message}. Probando v1...`);
+  }
+
+  // Intento 2: Formato Evolution API v1 plano
+  const payloadV1 = {
+    enabled: true,
+    url: webhookUrl,
+    webhook_by_events: false,
+    byEvents: false,
+    base64: false,
+    events,
+  };
+
+  try {
+    const resV1 = await evFetch(`/webhook/set/${instance}`, {
+      method: 'POST',
+      body: JSON.stringify(payloadV1),
+    }, instance);
+
+    const dataV1 = await resV1.json().catch(() => ({}));
+    if (resV1.ok) {
+      log(`[Evolution] ✓ Webhook (v1) configurado exitosamente en "${instance}" → ${webhookUrl}`);
+      return { ok: true, version: 'v1', data: dataV1 };
+    }
+
+    log(`[Evolution] ❌ Error configurando webhook en "${instance}" (HTTP ${resV1.status}): ${JSON.stringify(dataV1)}`);
+    return { ok: false, status: resV1.status, error: dataV1 };
+  } catch (err) {
+    log(`[Evolution] ❌ Excepción al configurar webhook: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
 }
 
 async function doSetupEvolution(overrideInstance) {
@@ -166,11 +214,11 @@ async function doSetupEvolution(overrideInstance) {
 
   // 2. Configurar o refrescar webhook en Evolution API
   log(`[Init] Configurando webhook en Evolution API → ${webhookUrl}`);
-  const ok = await setWebhook(instance, webhookUrl);
-  if (ok) {
+  const result = await setWebhook(instance, webhookUrl);
+  if (result?.ok) {
     log(`[Init] ✓ Webhook configurado correctamente para eventos MESSAGES_UPSERT y CONNECTION_UPDATE`);
   } else {
-    log(`[Init] ⚠️  Error al configurar webhook en Evolution API`);
+    log(`[Init] ⚠️  No se pudo configurar el webhook en Evolution API automáticamente`);
   }
 
   log(`[Init] Evolution API lista. QR en /whatsapp/qr`);
@@ -192,5 +240,6 @@ async function setupEvolution(overrideInstance) {
 module.exports = {
   setupEvolution,
   setWebhook,
+  getWebhookStatus,
   getConfig,
 };

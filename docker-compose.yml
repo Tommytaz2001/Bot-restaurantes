@@ -13,7 +13,12 @@ services:
       - DB_HOST=postgres
       - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}
       - NOTIFICAR_DESPLIEGUE_TELEFONO=${NOTIFICAR_DESPLIEGUE_TELEFONO:-}
+      - EVOLUTION_WEBHOOK_URL=http://backend:3001/whatsapp/webhook
     volumes:
+      # Montaje en vivo del código para aplicar cambios de git sin requerir rebuild
+      - ./src:/app/src:ro
+      - ./prompts:/app/prompts:ro
+      - ./index.js:/app/index.js:ro
       # Datos internos del backend (cache, archivos temporales)
       - backend_data:/app/data
       # Comprobantes de pago subidos por clientes (imágenes)
@@ -114,6 +119,17 @@ services:
       - CACHE_REDIS_PREFIX_KEY=evolution
       - CACHE_REDIS_SAVE_INSTANCES=true
       - DEL_INSTANCE=false
+      # Global Webhook para despacho automático e ininterrumpido de eventos al backend
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://backend:3001/whatsapp/webhook
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      - WEBHOOK_EVENTS_APPLICATION_STARTUP=false
+      - WEBHOOK_EVENTS_QRCODE_UPDATED=false
+      - WEBHOOK_EVENTS_MESSAGES_SET=false
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+      - WEBHOOK_EVENTS_SEND_MESSAGE=false
     volumes:
       # Sesiones y claves de instancias de WhatsApp (QR, autenticación Baileys)
       - evolution_instances:/evolution/instances
