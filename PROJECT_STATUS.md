@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `4a12094 fix(evolution): define DATABASE_PROVIDER=postgresql and complete Prisma config in v2` 
+**Último commit:** `f9359f1 fix(evolution): isolate Evolution API in schema=evolution with db-init-evolution service to resolve P3005` 
 
 ---
 
