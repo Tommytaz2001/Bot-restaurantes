@@ -60,3 +60,4 @@ describe('whatsappRoutes - Pairing Code & Connection State (Evolution API v2)', 
     expect(res.body.state).toBe('open');
   });
 });
+

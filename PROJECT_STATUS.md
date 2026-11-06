@@ -98,6 +98,15 @@ El sistema superó su fase de MVP inicial y ha incorporado:
     - **Solución Multi-Capa Implementada:**
       1. **Guardia en Interceptor:** Si ya existe un pedido activo en cocina (`activeOrder` o `lastOrderId`), o si el último mensaje del asistente ya es una confirmación (`¡Pedido recibido!`), el interceptor queda estrictamente desactivado.
       2. **Deduplicación Ampliada a 5 Minutos:** En `findExistingOrder`, cualquier intento de guardar pedido para el mismo cliente (`sessionId` o `telefono`) dentro de los últimos 5 minutos (300s) se detecta como duplicado.
+32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`):**
+    - **Causa Raíz del Error `fetch failed`:**
+      1. Prisma ORM (motor interno de Evolution API v2 para PostgreSQL) exige el parámetro `?schema=public` en la URI de conexión (`DATABASE_CONNECTION_URI`). Al omitirse, Prisma fallaba la inicialización en arranque provocando el reinicio del contenedor.
+      2. Evolution API v2 requiere una capa de caché Redis para gestión de estados de sesión e instancias de WhatsApp. Al marcar `CACHE_REDIS_ENABLED=false` sin servicio de Redis activo, la inicialización de socket quedaba truncada.
+    - **Solución Implementada:**
+      1. Incorporación del servicio ligero `redis` (`redis:alpine`, en RAM con `--appendonly no`) al `docker-compose.yml`.
+      2. Adición de `?schema=public` a `DATABASE_CONNECTION_URI`.
+      3. Configuración de `CACHE_REDIS_ENABLED=true` y `CACHE_REDIS_URI=redis://redis:6379/0`.
+      4. Declaración explícita de `SERVER_TYPE=http`, `SERVER_PORT=8080`, `DOCKER_ENV=true` y acoplamiento en `depends_on`.
       3. **Comparación Profunda de Productos (30 Minutos):** En una ventana de 30 minutos, la función `sameOrderProducts` compara determinísticamente la lista de productos y totales; si son idénticos a una orden pendiente en cocina, se reutiliza el pedido existente evitando una nueva inserción.
       4. **Bandera `esDuplicado` y Mensaje de Tranquilidad:** `saveOrder` marca `esDuplicado: true` en el pedido retornado. `agentService.js` responde al cliente con un recordatorio amable (*"Tu orden ya fue enviada al chef y está en preparación..."*) y no emite ningún evento SSE ni notificación a cocina.
 32. **Aislamiento Estricto del Teléfono del Dueño/Administrador y Validación Obligatoria de Nombre del Cliente (`src/utils/phoneUtils.js`, `src/whatsapp/metaWebhook.js`, `src/whatsapp/lidResolver.js`, `src/whatsapp/messageHandler.js`, `src/agent/agentService.js`, `src/orders/orderService.js`, `prompts/agent.txt`, `tests/phoneUtils.test.js`, `tests/lidResolver.test.js`, `tests/agentConfirmation.test.js`):**
@@ -242,9 +251,12 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 
 ## 7. Próximo Paso Recomendado
 
-1. **Ajustar la configuración de pruebas (`.env.test` y mocks en Jest):**
-   - Incorporar configuración de PostgreSQL para tests o aislar las dependencias de base de datos en `menuService` y `agentService` mediante mocks en Jest para que las pruebas unitarias pasen sin depender de un contenedor Docker externo.
-   - Corregir el script `"test:unit"` en `package.json` para que sea multiplataforma (evitando el uso de comillas simples y pipes no escapados para Windows).
+1. **Desplegar en Synology NAS:**
+   - Ejecutar `git pull origin feature/evolution-api` en el servidor Synology.
+   - Levantar los contenedores con `docker compose up -d`.
+   - Verificar que todos los servicios estén en estado `Up` con `docker ps`.
+   - Inspeccionar los logs de Evolution API v2 con `docker logs evolution-api --tail 50`.
+   - Abrir `/whatsapp/qr` y emparejar la cuenta de WhatsApp mediante el nuevo Código de 8 Dígitos (Pairing Code) o Código QR.
 
 ---
 
