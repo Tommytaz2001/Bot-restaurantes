@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `5a850d4 fix(evolution): remove external dns, pass env_file and DATABASE_URL for Prisma in v2` 
+**Último commit:** `6449171 fix(evolution): set DATABASE_ENABLED=false to bypass Prisma migration hang and boot immediately` 
 
 ---
 
