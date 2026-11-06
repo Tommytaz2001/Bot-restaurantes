@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `6449171 fix(evolution): set DATABASE_ENABLED=false to bypass Prisma migration hang and boot immediately` 
+**Último commit:** `4a12094 fix(evolution): define DATABASE_PROVIDER=postgresql and complete Prisma config in v2` 
 
 ---
 
