@@ -83,16 +83,7 @@ services:
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
       - QRCODE_LIMIT=30
-      - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}?schema=public
-      - DATABASE_CONNECTION_URI=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}?schema=public
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
-      - DATABASE_SAVE_DATA_INSTANCE=true
-      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
-      - DATABASE_SAVE_MESSAGE_UPDATE=true
-      - DATABASE_SAVE_DATA_CONTACTS=true
-      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_ENABLED=false
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis:6379/0
       - CACHE_REDIS_PREFIX_KEY=evolution
@@ -102,8 +93,6 @@ services:
       # Sesiones y claves de instancias de WhatsApp (QR, autenticación Baileys)
       - evolution_instances:/evolution/instances
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_started
     networks:

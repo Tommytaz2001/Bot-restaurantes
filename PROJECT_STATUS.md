@@ -99,18 +99,15 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       1. **Guardia en Interceptor:** Si ya existe un pedido activo en cocina (`activeOrder` o `lastOrderId`), o si el último mensaje del asistente ya es una confirmación (`¡Pedido recibido!`), el interceptor queda estrictamente desactivado.
       2. **Deduplicación Ampliada a 5 Minutos:** En `findExistingOrder`, cualquier intento de guardar pedido para el mismo cliente (`sessionId` o `telefono`) dentro de los últimos 5 minutos (300s) se detecta como duplicado.
 32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`, `src/routes/whatsappRoutes.js`):**
-    - **Causa Raíz del Error `fetch failed`:**
-      1. Prisma ORM (motor interno de Evolution API v2 para PostgreSQL) exige el parámetro `?schema=public` en la URI de conexión (`DATABASE_CONNECTION_URI` y `DATABASE_URL`). Al omitirse, Prisma fallaba la inicialización en arranque provocando el reinicio del contenedor.
-      2. Evolution API v2 requiere una capa de caché Redis para gestión de estados de sesión e instancias de WhatsApp. Al marcar `CACHE_REDIS_ENABLED=false` sin servicio de Redis activo, la inicialización de socket quedaba truncada.
-      3. La directiva `dns: [8.8.8.8, 8.8.4.4]` en el servicio `evolution-api` provocaba que las peticiones de resolución interna de nombres hacia `postgres` y `redis` en Synology consultaran a Google DNS en lugar del resolver interno de Docker (`127.0.0.11`), causando demoras de 4 a 7 segundos y fallos de resolución.
-      4. `evolution-api` carecía de `env_file: - .env` y de la variable nativa de Prisma `DATABASE_URL`, lo que impedía que `npx prisma migrate deploy` leyera la cadena de conexión.
+    - **Causa Raíz del Error `UND_ERR_CONNECT_TIMEOUT`:**
+      1. En Evolution API v2, habilitar `DATABASE_ENABLED=true` ejecuta el script de inicio `deploy_database.sh` (`npx prisma migrate deploy`). Debido a advisory locks huérfanos en PostgreSQL (`72707369`) o bloqueos internos de la migración de Prisma, el proceso se colgaba indefinidamente en el arranque impidiendo que el servidor HTTP abriera el puerto 8080.
+      2. El bot backend no requiere las tablas internas de Evolution API (los pedidos, menú y configuraciones residen directamente en el pool relacional del backend).
     - **Solución Implementada:**
-      1. Incorporación del servicio ligero `redis` (`redis:alpine`, en RAM con `--appendonly no`) al `docker-compose.yml`.
-      2. Adición de `?schema=public`, `DATABASE_URL` y `env_file: - .env` a `evolution-api`.
-      3. Retiro de `dns:` externo para permitir la resolución instantánea en la red Docker bridge.
-      4. Configuración de `CACHE_REDIS_ENABLED=true` y `CACHE_REDIS_URI=redis://redis:6379/0`.
-      5. Declaración explícita de `SERVER_TYPE=http`, `SERVER_PORT=8080`, `DOCKER_ENV=true` y acoplamiento en `depends_on`.
-      6. Telemetría enriquecida en `src/routes/whatsappRoutes.js` para capturar `err.cause` (ej: `ECONNREFUSED`) en los endpoints de conexión y QR.
+      1. Configuración de `DATABASE_ENABLED=false` en `evolution-api`, omitiendo por completo las migraciones Prisma y arrancando Node.js de inmediato en 2 segundos.
+      2. Persistencia local de sesiones Baileys garantizada en el volumen `/evolution/instances` (`./volumes/evolution`).
+      3. Caché de alta velocidad habilitada mediante el servicio `redis` (`redis:alpine`).
+      4. Retiro de `dns:` externo para permitir la resolución interna directa en Docker bridge.
+      5. Telemetría enriquecida en `src/routes/whatsappRoutes.js` con captura de códigos de error de red (`UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, `ECONNREFUSED`).
       3. **Comparación Profunda de Productos (30 Minutos):** En una ventana de 30 minutos, la función `sameOrderProducts` compara determinísticamente la lista de productos y totales; si son idénticos a una orden pendiente en cocina, se reutiliza el pedido existente evitando una nueva inserción.
       4. **Bandera `esDuplicado` y Mensaje de Tranquilidad:** `saveOrder` marca `esDuplicado: true` en el pedido retornado. `agentService.js` responde al cliente con un recordatorio amable (*"Tu orden ya fue enviada al chef y está en preparación..."*) y no emite ningún evento SSE ni notificación a cocina.
 32. **Aislamiento Estricto del Teléfono del Dueño/Administrador y Validación Obligatoria de Nombre del Cliente (`src/utils/phoneUtils.js`, `src/whatsapp/metaWebhook.js`, `src/whatsapp/lidResolver.js`, `src/whatsapp/messageHandler.js`, `src/agent/agentService.js`, `src/orders/orderService.js`, `prompts/agent.txt`, `tests/phoneUtils.test.js`, `tests/lidResolver.test.js`, `tests/agentConfirmation.test.js`):**
