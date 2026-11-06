@@ -98,16 +98,17 @@ El sistema superó su fase de MVP inicial y ha incorporado:
     - **Solución Multi-Capa Implementada:**
       1. **Guardia en Interceptor:** Si ya existe un pedido activo en cocina (`activeOrder` o `lastOrderId`), o si el último mensaje del asistente ya es una confirmación (`¡Pedido recibido!`), el interceptor queda estrictamente desactivado.
       2. **Deduplicación Ampliada a 5 Minutos:** En `findExistingOrder`, cualquier intento de guardar pedido para el mismo cliente (`sessionId` o `telefono`) dentro de los últimos 5 minutos (300s) se detecta como duplicado.
-32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`, `src/routes/whatsappRoutes.js`):**
-    - **Causa Raíz de los Errores (`Error: Database provider  invalid.` y `UND_ERR_CONNECT_TIMEOUT`):**
-      1. El script de entrada (`entrypoint.sh` / `deploy_database.sh`) de Evolution API v2 verifica estrictamente la presencia de `DATABASE_PROVIDER=postgresql` en las variables de entorno. Al omitirse o estar vacío, aborta la ejecución con `Error: Database provider  invalid.` y el contenedor entra en bucle de reinicios.
-      2. Al estar el contenedor reiniciándose continuamente, las llamadas del backend arrojaban `ENOTFOUND` o `UND_ERR_CONNECT_TIMEOUT`.
+32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`, `src/routes/whatsappRoutes.js`, `src/db/initDb.js`, `src/db/schema.sql`):**
+    - **Causa Raíz de los Errores (`Error: P3005 The database schema is not empty` y `Database provider invalid`):**
+      1. Evolution API v2 exige `DATABASE_PROVIDER=postgresql`.
+      2. Al apuntar `DATABASE_CONNECTION_URI` hacia `?schema=public`, Prisma encontraba las tablas existentes del restaurante (`pedidos`, `productos`, `categorias`, etc.) sin tabla de control `_prisma_migrations`, arrojando `Error: P3005: The database schema is not empty` y abortando la migración.
     - **Solución Implementada:**
-      1. Definición explícita de `DATABASE_PROVIDER=postgresql`, `DATABASE_CONNECTION_URI`, `DATABASE_URL` con `?schema=public` y `DATABASE_CONNECTION_CLIENT_NAME=evolution_v2_client`.
-      2. Configuración de persistencia de instancias de WhatsApp en volumen de disco `/evolution/instances` (`./volumes/evolution`).
-      3. Caché de alta velocidad habilitada mediante el servicio `redis` (`redis:alpine`).
-      4. Retiro de `dns:` externo para permitir la resolución interna directa en Docker bridge.
-      5. Telemetría enriquecida en `src/routes/whatsappRoutes.js` con captura de códigos de error de red (`UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, `ECONNREFUSED`).
+      1. Aislamiento de Evolution API v2 en su propio esquema de PostgreSQL: `?schema=evolution`.
+      2. Creación del servicio inicializador `db-init-evolution` en `docker-compose.yml` (`postgres:16-alpine`) que asegura `CREATE SCHEMA IF NOT EXISTS evolution;` antes de que `evolution-api` ejecute sus migraciones.
+      3. Adición de `CREATE SCHEMA IF NOT EXISTS evolution;` en `src/db/initDb.js` y `src/db/schema.sql`.
+      4. Configuración de persistencia de instancias de WhatsApp en volumen de disco `/evolution/instances` (`./volumes/evolution`).
+      5. Caché de alta velocidad habilitada mediante el servicio `redis` (`redis:alpine`).
+      6. Telemetría enriquecida en `src/routes/whatsappRoutes.js` con captura de códigos de error de red (`UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, `ECONNREFUSED`).
       3. **Comparación Profunda de Productos (30 Minutos):** En una ventana de 30 minutos, la función `sameOrderProducts` compara determinísticamente la lista de productos y totales; si son idénticos a una orden pendiente en cocina, se reutiliza el pedido existente evitando una nueva inserción.
       4. **Bandera `esDuplicado` y Mensaje de Tranquilidad:** `saveOrder` marca `esDuplicado: true` en el pedido retornado. `agentService.js` responde al cliente con un recordatorio amable (*"Tu orden ya fue enviada al chef y está en preparación..."*) y no emite ningún evento SSE ni notificación a cocina.
 32. **Aislamiento Estricto del Teléfono del Dueño/Administrador y Validación Obligatoria de Nombre del Cliente (`src/utils/phoneUtils.js`, `src/whatsapp/metaWebhook.js`, `src/whatsapp/lidResolver.js`, `src/whatsapp/messageHandler.js`, `src/agent/agentService.js`, `src/orders/orderService.js`, `prompts/agent.txt`, `tests/phoneUtils.test.js`, `tests/lidResolver.test.js`, `tests/agentConfirmation.test.js`):**

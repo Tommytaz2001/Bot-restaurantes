@@ -1,5 +1,7 @@
 -- Esquema Relacional de PostgreSQL para Bot Restaurantes
 
+CREATE SCHEMA IF NOT EXISTS evolution;
+
 CREATE TABLE IF NOT EXISTS restaurantes (
     id VARCHAR(64) PRIMARY KEY,
     nombre VARCHAR(255) NOT NULL,

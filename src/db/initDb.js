@@ -130,6 +130,7 @@ const INITIAL_MENU = [
 async function initDb() {
   console.log('[Database] Verificando conexión a PostgreSQL e inicializando tablas...');
   try {
+    await query('CREATE SCHEMA IF NOT EXISTS evolution;');
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
     await query(schemaSql);
     console.log('[Database] Tablas del esquema verificadas exitosamente.');
