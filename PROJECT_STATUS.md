@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `92c414b fix(docker): configure Redis and schema=public in PostgreSQL for Evolution API v2` 
+**Último commit:** `5a850d4 fix(evolution): remove external dns, pass env_file and DATABASE_URL for Prisma in v2` 
 
 ---
 
