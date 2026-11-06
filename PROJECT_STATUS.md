@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `4382554 fix(webhook): normalize Evolution v2 events, ensure webhook setup, and implement permanent log purge` 
+**Último commit:** `11328c4 fix(webhook): configure global webhook in compose, live code volumes, and robust v2 fallback` 
 
 ---
 
