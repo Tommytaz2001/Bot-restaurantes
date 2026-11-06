@@ -140,6 +140,17 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       2. **Normalización Temprana en `metaWebhook.js`:** Si el mensaje entrante proviene de un `@lid` y se conoce su teléfono (ej. vía `key.senderPn`), `replyTo` y `remoteJid` se establecen directamente como `${cleanPhone}@s.whatsapp.net`.
       3. **Opción `allowAdmin` en `lidResolver.js`:** Permite almacenar en caché el JID de transporte de administradores autenticados desde mensajes entrantes (`{ allowAdmin: true }`), manteniendo intacto el bloqueo de `isAdminOrOwnerPhone` en `orderService.js` y `messageHandler.js` para proteger la base de datos contra pedidos con el número del dueño.
       4. **Pruebas Unitarias Actualizadas (`tests/metaSender.test.js`):** Pruebas de despacho verifican que los destinos `@lid` conocidos se traduzcan limpiamente a `@s.whatsapp.net` evitando caídas de socket. Todas las pruebas pasan (PASS).
+36. **Corrección de Referencia `getPhoneForLid`, Blindaje contra Unhandled Rejections en Webhook y Telemetría de Desconexión (`src/whatsapp/metaWebhook.js`, `tests/metaWebhook.test.js`):**
+    - **Causa Raíz Diagnosticada (`ReferenceError: getPhoneForLid is not defined`):**
+      1. En `src/whatsapp/metaWebhook.js`, se invocaba `getPhoneForLid(incomingJid)` para resolver el teléfono antes del despacho, pero no se había importado dicha función desde `./lidResolver`.
+      2. Al ingresar cualquier mensaje entrante, Node.js arrojaba `ReferenceError: getPhoneForLid is not defined`, abortando `_processMessage` inmediatamente antes de invocar a Gemini, guardar pedidos o enviar respuestas.
+      3. Adicionalmente, `handleWebhook` carecía de bloque `try...catch` en el bucle de mensajes tras el `res.sendStatus(200)`, lo que provocaba rechazos no controlados (unhandled promise rejections) hacia Express.
+      4. Los eventos `connection.update` solo registraban la palabra `"close"` o `"connecting"` sin exponer la causa real de desconexión emitida por Baileys (`statusReason` o `lastDisconnect.error.output.statusCode`), impidiendo diagnosticar si la desconexión se debía a sesión cerrada en el teléfono (401), sesión reemplazada (440) o reinicio necesario (515).
+    - **Solución Implementada:**
+      1. **Importación de `getPhoneForLid`:** Añadida a los módulos importados de `./lidResolver` en `src/whatsapp/metaWebhook.js`.
+      2. **Manejo Defensivo de Errores por Mensaje:** Cada comanda o mensaje procesado en el array `messages` se encapsula en un `try...catch` atómico, evitando que un error interno interrumpa el ciclo del webhook o Express.
+      3. **Telemetría Completa de Desconexión:** En `connection.update`, se extraen y registran `statusReason` y códigos de estado de `lastDisconnect`, mostrando en logs el motivo exacto (ej: `[motivo: 401]`).
+      4. **Suite de Pruebas Unitarias (`tests/metaWebhook.test.js`):** Valida mensajes estándar, resolución `@lid` con `senderPn`, manejo de `connection.update` y tolerancia a fallos en `_processMessage` (4/4 PASS).
 
 
 
@@ -209,6 +220,7 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/blacklistService.test.js` | Unitaria | **PASS** (8/8) | Valida bloqueo internacional, formato local de 8 dígitos, eliminación inmediata, validación de longitud y detección de contactos bajo formato @lid asociados a números en lista negra. |
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (7/7) | Valida resolución y caché bidireccional de @lid a número telefónico, extracción de senderPn en findMessages, consulta en findContacts y rechazo estricto de números del administrador/dueño. |
 | `tests/metaSender.test.js`  | Unitaria | **PASS** (6/6) | Valida mapeo proactivo de @lid a @s.whatsapp.net para prevenir caídas de socket en Baileys, despacho a @lid no resuelto, resolución previa con API, anteposición de prefijo 505 para números locales de Nicaragua y reintentos automáticos ante errores transitorios. |
+| `tests/metaWebhook.test.js` | Unitaria | **PASS** (4/4) | Valida recepción de mensajes normales, resolución @lid con senderPn sin ReferenceError de getPhoneForLid, telemetría de connection.update y captura de fallos internos. |
 | `tests/loggerErrors.test.js`| Unitaria | **PASS** (1/1) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error y truncado defensivo de 5MB. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |

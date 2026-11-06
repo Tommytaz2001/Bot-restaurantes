@@ -7,7 +7,7 @@
 
 const { recibirMensaje, verificarHorario, enviarMensajeFueraDeHorario } = require('./messageHandler');
 const { sendWhatsAppMessage } = require('./metaSender');
-const { cacheLidMapping, resolveLid } = require('./lidResolver');
+const { cacheLidMapping, resolveLid, getPhoneForLid } = require('./lidResolver');
 const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
 const { findPedidoPendientePago, attachComprobante } = require('../orders/orderService');
 const { log } = require('../utils/logger');
@@ -76,9 +76,16 @@ async function handleWebhook(req, res) {
   // Si llega evento de conexión abierta o cambio de estado, verificar aviso de despliegue
   if (event === 'connection.update') {
     const state = body.data?.state || body.data?.connection || '';
-    if (state && state !== _lastLoggedConnectionState) {
+    const statusReason = body.data?.statusReason;
+    const disconnectError = body.data?.lastDisconnect?.error?.output?.statusCode
+      || body.data?.lastDisconnect?.error?.message
+      || body.data?.lastDisconnect?.error;
+    const reasonInfo = statusReason || disconnectError;
+
+    if (state && (state !== _lastLoggedConnectionState || reasonInfo)) {
       _lastLoggedConnectionState = state;
-      log(`[Webhook] Conexión WhatsApp estado: "${state}"`);
+      const reasonStr = reasonInfo ? ` [motivo: ${typeof reasonInfo === 'object' ? JSON.stringify(reasonInfo) : reasonInfo}]` : '';
+      log(`[Webhook] Conexión WhatsApp estado: "${state}"${reasonStr}`);
       if (state === 'open') {
         log('[Webhook] Conexión WhatsApp abierta ("open"). Verificando aviso de despliegue...');
         const { notificarDespliegue } = require('../services/deployNotificationService');
@@ -102,7 +109,11 @@ async function handleWebhook(req, res) {
   const messages = Array.isArray(body.data) ? body.data : [body.data];
 
   for (const data of messages) {
-    await _processMessage(data);
+    try {
+      await _processMessage(data);
+    } catch (err) {
+      console.error(`[Webhook] Error procesando mensaje entrante:`, err);
+    }
   }
 }
 
