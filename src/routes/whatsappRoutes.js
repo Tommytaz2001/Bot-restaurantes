@@ -179,6 +179,40 @@ router.get('/get-qr', async (req, res) => {
   }
 });
 
+// GET /whatsapp/pairing-code — Solicita código de 8 dígitos para emparejar por número de teléfono
+router.get('/pairing-code', async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  const apiUrl = process.env.EVOLUTION_API_URL;
+  const apiKey = process.env.EVOLUTION_API_KEY;
+  const instance = process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
+
+  const rawPhone = req.query.number || req.query.phone;
+  if (!rawPhone) {
+    return res.status(400).json({ error: 'Parámetro "number" requerido (ej: 50586224206)' });
+  }
+
+  const cleanDigits = String(rawPhone).replace(/\D/g, '');
+  const phone = cleanDigits.length === 8 ? `505${cleanDigits}` : cleanDigits;
+
+  try {
+    const pairUrl = `${apiUrl}/instance/connect/${instance}?number=${phone}`;
+    const pairRes = await fetch(pairUrl, {
+      headers: { apikey: apiKey },
+    });
+    const pairData = await pairRes.json().catch(() => ({}));
+    const pairingCode = pairData?.pairingCode || pairData?.qrcode?.pairingCode || pairData?.code || null;
+    return res.json({
+      ok: !!pairingCode,
+      pairingCode,
+      status: pairRes.status,
+      raw: pairData,
+    });
+  } catch (err) {
+    console.error('[WhatsApp] Error solicitando pairing code:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /whatsapp/restart-instance — Reinicia la instancia si la sesión quedó trabada
 router.post('/restart-instance', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -375,6 +409,22 @@ router.get('/qr', (req, res) => {
       animation: spin 1s linear infinite;
       margin: 0 auto;
     }
+    .tab-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #334155;
+      color: #ffffff;
+    }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
@@ -382,32 +432,64 @@ router.get('/qr', (req, res) => {
   <div class="card" id="mainCard">
     <div id="badgeStatus" class="badge waiting">⏳ Comprobando estado...</div>
     <h1 id="titleHeader">Vinculación de WhatsApp</h1>
-    <p class="subtitle" id="subtitleText">Abre WhatsApp en tu teléfono y escanea este código QR:</p>
+    <p class="subtitle" id="subtitleText">Elige el método de emparejamiento que prefieras:</p>
 
-    <div class="qr-container" id="qrWrapper">
-      <div class="spinner"></div>
+    <!-- Pestañas de selección -->
+    <div id="tabsWrapper" style="display:flex; gap:6px; margin-bottom:1.25rem; background:#1e293b; padding:4px; border-radius:10px;">
+      <button id="tabQr" class="tab-btn active" onclick="switchTab('qr')">📷 Código QR</button>
+      <button id="tabPair" class="tab-btn" onclick="switchTab('pair')">🔢 Código de 8 Dígitos</button>
     </div>
 
-    <div class="timer-bar-wrap" id="timerWrap">
-      <div class="timer-bar" id="timerBar"></div>
-    </div>
-    <div class="timer-label" id="timerLabel">Código QR válido por <span id="secsLeft">35</span>s</div>
+    <!-- Sección QR -->
+    <div id="sectionQr">
+      <div class="qr-container" id="qrWrapper">
+        <div class="spinner"></div>
+      </div>
 
-    <div style="display:flex; justify-content:center; gap:8px; margin-bottom:1rem;">
-      <button class="btn-renew" id="btnRenew" onclick="loadNewQR()">🔄 Renovar código QR</button>
-      <button class="btn-renew" id="btnRestart" style="background:#334155;" onclick="restartInstance()">⚡ Reiniciar sesión</button>
+      <div class="timer-bar-wrap" id="timerWrap">
+        <div class="timer-bar" id="timerBar"></div>
+      </div>
+      <div class="timer-label" id="timerLabel">Código QR válido por <span id="secsLeft">35</span>s</div>
+
+      <div style="display:flex; justify-content:center; gap:8px; margin-bottom:1rem;">
+        <button class="btn-renew" id="btnRenew" onclick="loadNewQR()">🔄 Renovar código QR</button>
+        <button class="btn-renew" id="btnRestart" style="background:#334155;" onclick="restartInstance()">⚡ Reiniciar sesión</button>
+      </div>
+
+      <div class="steps" id="stepsGuide">
+        <ol>
+          <li>Abre <strong>WhatsApp</strong> en tu teléfono</li>
+          <li>Toca los tres puntos ⋮ o Ajustes ⚙️</li>
+          <li>Selecciona <strong>Dispositivos vinculados</strong></li>
+          <li>Toca <strong>Vincular un dispositivo</strong> y apunta al QR</li>
+        </ol>
+      </div>
     </div>
 
-    <div class="steps" id="stepsGuide">
-      <ol>
-        <li>Abre <strong>WhatsApp</strong> en tu teléfono</li>
-        <li>Toca los tres puntos ⋮ o Ajustes ⚙️</li>
-        <li>Selecciona <strong>Dispositivos vinculados</strong></li>
-        <li>Toca <strong>Vincular un dispositivo</strong> y apunta al QR</li>
-      </ol>
+    <!-- Sección Pairing Code (vincular con número) -->
+    <div id="sectionPair" style="display:none;">
+      <div style="background:#1a2234; border:1px solid #283548; border-radius:12px; padding:1.25rem; margin-bottom:1rem; text-align:left;">
+        <label style="display:block; font-size:0.85rem; color:#cbd5e1; margin-bottom:6px; font-weight:600;">Número de WhatsApp del bot:</label>
+        <input type="tel" id="inputPhone" placeholder="Ej: 50586224206 o 593961699586" style="width:100%; padding:10px 14px; border-radius:8px; background:#0b0f17; color:#f8fafc; border:1px solid #334155; font-size:1rem; margin-bottom:10px; box-sizing:border-box;">
+        <button id="btnGetPair" onclick="requestPairingCode()" class="btn-action" style="width:100%; border:none; cursor:pointer; text-align:center; padding:12px;">Solicitar Código de 8 Dígitos</button>
+      </div>
+
+      <div id="pairingCodeDisplay" style="display:none; background:#0f172a; border:2px dashed #22c55e; border-radius:12px; padding:16px; margin-bottom:1rem;">
+        <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:6px;">Ingresa este código en WhatsApp:</div>
+        <div id="codeValue" style="font-size:2.2rem; font-weight:800; letter-spacing:4px; color:#4ade80;">---- ----</div>
+      </div>
+
+      <div class="steps">
+        <ol>
+          <li>Abre <strong>WhatsApp</strong> ➔ Ajustes ⚙️ ➔ <strong>Dispositivos vinculados</strong></li>
+          <li>Toca <strong>Vincular un dispositivo</strong></li>
+          <li>Toca <strong>"Vincular con el número de teléfono"</strong> (abajo)</li>
+          <li>Escribe el código de 8 dígitos mostrado arriba</li>
+        </ol>
+      </div>
     </div>
 
-    <p class="footer-hint" id="footerHint">Instancia: <code>${instance}</code> • Estado en tiempo real</p>
+    <p class="footer-hint" id="footerHint">Instancia: <code>${instance}</code> • Evolution API v2</p>
   </div>
 
   <script>
@@ -502,6 +584,12 @@ router.get('/qr', (req, res) => {
             badgeStatus.innerHTML = '● Conectado a WhatsApp';
             titleHeader.innerHTML = '🎉 ¡WhatsApp Vinculado con éxito!';
             subtitleText.innerHTML = 'El bot ya está atendiendo pedidos en tiempo real con Gemini.';
+            const tabsWrapper = document.getElementById('tabsWrapper');
+            if (tabsWrapper) tabsWrapper.style.display = 'none';
+            const sectionQr = document.getElementById('sectionQr');
+            if (sectionQr) sectionQr.style.display = 'none';
+            const sectionPair = document.getElementById('sectionPair');
+            if (sectionPair) sectionPair.style.display = 'none';
             qrWrapper.style.display = 'none';
             timerWrap.style.display = 'none';
             timerLabel.style.display = 'none';
@@ -518,14 +606,66 @@ router.get('/qr', (req, res) => {
             isConnected = false;
             badgeStatus.className = 'badge waiting';
             badgeStatus.innerHTML = '● Desconectado';
+            const tabsWrapper = document.getElementById('tabsWrapper');
+            if (tabsWrapper) tabsWrapper.style.display = 'flex';
             loadNewQR();
           } else {
             badgeStatus.className = 'badge waiting';
-            badgeStatus.innerHTML = '● Esperando escaneo';
+            badgeStatus.innerHTML = '● Esperando vinculación';
           }
         }
       } catch (e) {
         // Red temporal
+      }
+    }
+
+    function switchTab(tab) {
+      const tabQr = document.getElementById('tabQr');
+      const tabPair = document.getElementById('tabPair');
+      const sectionQr = document.getElementById('sectionQr');
+      const sectionPair = document.getElementById('sectionPair');
+      if (tab === 'qr') {
+        tabQr.classList.add('active');
+        tabPair.classList.remove('active');
+        sectionQr.style.display = 'block';
+        sectionPair.style.display = 'none';
+      } else {
+        tabQr.classList.remove('active');
+        tabPair.classList.add('active');
+        sectionQr.style.display = 'none';
+        sectionPair.style.display = 'block';
+      }
+    }
+
+    async function requestPairingCode() {
+      const input = document.getElementById('inputPhone');
+      const phone = (input.value || '').trim();
+      if (!phone) {
+        alert('Por favor escribe tu número de teléfono con código de país (ej: 50586224206 o 593961699586)');
+        return;
+      }
+      const btn = document.getElementById('btnGetPair');
+      const display = document.getElementById('pairingCodeDisplay');
+      const codeVal = document.getElementById('codeValue');
+
+      btn.disabled = true;
+      btn.textContent = 'Solicitando código...';
+
+      try {
+        const res = await fetch('/whatsapp/pairing-code?number=' + encodeURIComponent(phone), { cache: 'no-store' });
+        const data = await res.json();
+        if (data.ok && data.pairingCode) {
+          codeVal.textContent = data.pairingCode;
+          display.style.display = 'block';
+        } else {
+          const msg = data.error || data.raw?.message || 'No se pudo generar el código. Si la instancia está ocupada, intenta reiniciar sesión en la pestaña QR primero.';
+          alert('Aviso: ' + msg);
+        }
+      } catch (e) {
+        alert('Error conectando: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Solicitar Código de 8 Dígitos';
       }
     }
 

@@ -151,6 +151,13 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       2. **Manejo Defensivo de Errores por Mensaje:** Cada comanda o mensaje procesado en el array `messages` se encapsula en un `try...catch` atómico, evitando que un error interno interrumpa el ciclo del webhook o Express.
       3. **Telemetría Completa de Desconexión:** En `connection.update`, se extraen y registran `statusReason` y códigos de estado de `lastDisconnect`, mostrando en logs el motivo exacto (ej: `[motivo: 401]`).
       4. **Suite de Pruebas Unitarias (`tests/metaWebhook.test.js`):** Valida mensajes estándar, resolución `@lid` con `senderPn`, manejo de `connection.update` y tolerancia a fallos en `_processMessage` (4/4 PASS).
+37. **Actualización a Evolution API v2 (v2.3.7) con Baileys v7, Persistencia PostgreSQL y Pairing Code (`docker-compose.yml`, `evolution-api/Dockerfile`, `src/routes/whatsappRoutes.js`, `src/whatsapp/metaSender.js`, `tests/whatsappRoutes.test.js`):**
+    - **Motivación y Beneficios de la Actualización:**
+      1. **Motor Baileys v7 Nativo:** Evolution API v2 incluye Baileys v7 con soporte oficial para protocolos recientes de WhatsApp (2026), resolviendo definitivamente la inestabilidad con identificadores `@lid` sin necesidad de parches frágiles en el Dockerfile.
+      2. **Persistencia Robusta en PostgreSQL:** Se activó `DATABASE_ENABLED=true` y `DATABASE_PROVIDER=postgresql` apuntando al servicio existente `postgres:5432/botrestaurantes` (`bot-network`). Las sesiones, credenciales criptográficas e instancias se gestionan vía Prisma ORM evitando la corrupción de sesiones en disco.
+      3. **Soporte de Vinculación por "Pairing Code" (Código de 8 dígitos):** Se incorporó el endpoint `GET /whatsapp/pairing-code?number=...` y una pestaña interactiva en `/whatsapp/qr` para permitir emparejar el bot escribiendo el número de teléfono sin depender de la cámara ni de códigos QR que expiran rápidamente.
+      4. **Payload Unificado en `metaSender.js`:** Despacho dual con `text` y `textMessage: { text }` para compatibilidad transparente entre Evolution API v1 y v2.
+      5. **Suite de Pruebas Unitarias (`tests/whatsappRoutes.test.js`):** 3 pruebas unitarias añadidas y aprobadas validando solicitud de pairing code, manejo de errores de validación de número y consulta de estado de conexión (3/3 PASS).
 
 
 
@@ -221,6 +228,7 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (7/7) | Valida resolución y caché bidireccional de @lid a número telefónico, extracción de senderPn en findMessages, consulta en findContacts y rechazo estricto de números del administrador/dueño. |
 | `tests/metaSender.test.js`  | Unitaria | **PASS** (6/6) | Valida mapeo proactivo de @lid a @s.whatsapp.net para prevenir caídas de socket en Baileys, despacho a @lid no resuelto, resolución previa con API, anteposición de prefijo 505 para números locales de Nicaragua y reintentos automáticos ante errores transitorios. |
 | `tests/metaWebhook.test.js` | Unitaria | **PASS** (4/4) | Valida recepción de mensajes normales, resolución @lid con senderPn sin ReferenceError de getPhoneForLid, telemetría de connection.update y captura de fallos internos. |
+| `tests/whatsappRoutes.test.js`| Unitaria| **PASS** (3/3) | Valida solicitud de pairing code numérico, validación de parámetro number y reporte de estado de conexión en Evolution API v2. |
 | `tests/loggerErrors.test.js`| Unitaria | **PASS** (1/1) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error y truncado defensivo de 5MB. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |

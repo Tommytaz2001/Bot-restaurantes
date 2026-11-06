@@ -66,6 +66,7 @@ async function _dispatchSingle(apiUrl, apiKey, instance, destination, text) {
     },
     body: JSON.stringify({
       number: destination,
+      text,
       textMessage: { text },
     }),
   });
