@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `b271ff2 feat(evolution): upgrade to Evolution API v2 with PostgreSQL session storage and pairing code support` 
+**Último commit:** `92c414b fix(docker): configure Redis and schema=public in PostgreSQL for Evolution API v2` 
 
 ---
 
