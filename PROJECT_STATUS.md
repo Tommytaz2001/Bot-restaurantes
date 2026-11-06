@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `3711692 fix(webhook): import getPhoneForLid, add try-catch error boundary and enrich connection status logging` 
+**Último commit:** `b271ff2 feat(evolution): upgrade to Evolution API v2 with PostgreSQL session storage and pairing code support` 
 
 ---
 
