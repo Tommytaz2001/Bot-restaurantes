@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `f9359f1 fix(evolution): isolate Evolution API in schema=evolution with db-init-evolution service to resolve P3005` 
+**Último commit:** `4382554 fix(webhook): normalize Evolution v2 events, ensure webhook setup, and implement permanent log purge` 
 
 ---
 
