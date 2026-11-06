@@ -164,10 +164,31 @@ function logError(message, err) {
   console.error(message, err);
 }
 
+/**
+ * Vacía por completo los archivos de logs (logs.ndjson y errors.ndjson) en disco.
+ * Usado por la interfaz administrativa para limpiar el historial de eventos.
+ */
+function clearAllLogs() {
+  try {
+    const dataDir = path.dirname(LOG_FILE);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(LOG_FILE, '', 'utf8');
+    fs.writeFileSync(ERROR_LOG_FILE, '', 'utf8');
+    origLog('[Logger] Archivos de logs y errores vaciados por el usuario.');
+    return true;
+  } catch (err) {
+    origError('[Logger] Error vaciando archivos de logs:', err);
+    return false;
+  }
+}
+
 module.exports = {
   log,
   logError,
   getErrorLogs,
+  clearAllLogs,
   LOG_FILE,
   ERROR_LOG_FILE,
   trimFileIfNeeded,

@@ -6,8 +6,8 @@
 
 const { log } = require('../utils/logger');
 
-const MAX_WAIT_MS  = 30_000; // esperar hasta 30s a que Evolution API arranque
-const RETRY_DELAY  = 3_000;  // reintentar cada 3s
+const MAX_WAIT_MS  = 60_000; // esperar hasta 60s a que Evolution API arranque
+const RETRY_DELAY  = 2_000;  // reintentar cada 2s
 
 let setupPromise = null;
 
@@ -106,14 +106,28 @@ async function webhookIsConfigured(instance) {
 }
 
 async function setWebhook(instance, webhookUrl) {
-  const res = await evFetch(`/webhook/set/${instance}`, {
-    method: 'POST',
-    body: JSON.stringify({
+  const events = [
+    'MESSAGES_UPSERT',
+    'CONNECTION_UPDATE',
+    'MESSAGES_UPDATE',
+    'SEND_MESSAGE',
+  ];
+  const payload = {
+    url: webhookUrl,
+    enabled: true,
+    webhook_by_events: false,
+    events,
+    webhook: {
       url: webhookUrl,
       enabled: true,
-      webhook_by_events: false,
-      events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
-    }),
+      byEvents: false,
+      base64: true,
+      events,
+    },
+  };
+  const res = await evFetch(`/webhook/set/${instance}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   }, instance);
   return res.ok;
 }
@@ -129,7 +143,7 @@ async function doSetupEvolution(overrideInstance) {
   log(`[Init] Esperando Evolution API en ${apiUrl}...`);
   const ready = await waitForEvolution();
   if (!ready) {
-    log('[Init] ⚠️  Evolution API no respondió en 30s — setup omitido');
+    log('[Init] ⚠️  Evolution API no respondió en 60s — setup omitido');
     return null;
   }
 
@@ -150,18 +164,13 @@ async function doSetupEvolution(overrideInstance) {
     log(`[Init] Instancia "${instance}" encontrada`);
   }
 
-  // 2. Configurar webhook si falta o está vacío
-  const hasWebhook = await webhookIsConfigured(instance);
-  if (!hasWebhook) {
-    log(`[Init] Configurando webhook → ${webhookUrl}`);
-    const ok = await setWebhook(instance, webhookUrl);
-    if (ok) {
-      log(`[Init] ✓ Webhook configurado correctamente`);
-    } else {
-      log(`[Init] ⚠️  Error al configurar webhook`);
-    }
+  // 2. Configurar o refrescar webhook en Evolution API
+  log(`[Init] Configurando webhook en Evolution API → ${webhookUrl}`);
+  const ok = await setWebhook(instance, webhookUrl);
+  if (ok) {
+    log(`[Init] ✓ Webhook configurado correctamente para eventos MESSAGES_UPSERT y CONNECTION_UPDATE`);
   } else {
-    log(`[Init] ✓ Webhook ya configurado`);
+    log(`[Init] ⚠️  Error al configurar webhook en Evolution API`);
   }
 
   log(`[Init] Evolution API lista. QR en /whatsapp/qr`);
@@ -180,4 +189,8 @@ async function setupEvolution(overrideInstance) {
   return setupPromise;
 }
 
-module.exports = { setupEvolution };
+module.exports = {
+  setupEvolution,
+  setWebhook,
+  getConfig,
+};

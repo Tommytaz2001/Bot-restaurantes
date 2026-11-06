@@ -71,10 +71,12 @@ async function handleWebhook(req, res) {
   res.sendStatus(200); // Responder inmediatamente
 
   const body = req.body || {};
-  const event = (body.event || '').toLowerCase();
+  // Normalizar nombre de evento: minúsculas y reemplazar '_' por '.'
+  // Soporta tanto 'messages.upsert' / 'connection.update' como 'MESSAGES_UPSERT' / 'CONNECTION_UPDATE'
+  const rawEvent = (body.event || '').toLowerCase().replace(/_/g, '.');
 
   // Si llega evento de conexión abierta o cambio de estado, verificar aviso de despliegue
-  if (event === 'connection.update') {
+  if (rawEvent === 'connection.update') {
     const state = body.data?.state || body.data?.connection || '';
     const statusReason = body.data?.statusReason;
     const disconnectError = body.data?.lastDisconnect?.error?.output?.statusCode
@@ -96,17 +98,29 @@ async function handleWebhook(req, res) {
   }
 
   // Solo procesar y registrar eventos de mensajes para no saturar el visor de logs
-  if (event !== 'messages.upsert') {
-    if (process.env.DEBUG_WEBHOOK === 'true') {
+  const isMessageEvent = rawEvent === 'messages.upsert' || rawEvent === 'messages';
+  if (!isMessageEvent) {
+    if (process.env.DEBUG_WEBHOOK === 'true' || rawEvent.includes('message')) {
       log(`[Webhook] Evento secundario ignorado: "${body.event}"`);
     }
     return;
   }
 
-  log(`[Webhook] Evento recibido: "${body.event}"`);
+  // Soportar arrays u objetos en body.data, body.data.messages o body.messages (v1 y v2)
+  let messages = [];
+  if (Array.isArray(body.data)) {
+    messages = body.data;
+  } else if (body.data?.messages && Array.isArray(body.data.messages)) {
+    messages = body.data.messages;
+  } else if (body.data && typeof body.data === 'object' && (body.data.key || body.data.message || body.data.body)) {
+    messages = [body.data];
+  } else if (Array.isArray(body.messages)) {
+    messages = body.messages;
+  } else if (body.data) {
+    messages = [body.data];
+  }
 
-  // v1 puede enviar data como array o como objeto
-  const messages = Array.isArray(body.data) ? body.data : [body.data];
+  log(`[Webhook] Evento recibido: "${body.event}" (${messages.length} mensaje(s))`);
 
   for (const data of messages) {
     try {
@@ -291,6 +305,7 @@ async function _processMessage(data) {
   let texto = message.conversation
     || message.extendedTextMessage?.text
     || message.imageMessage?.caption
+    || data.body
     || null;
 
   if (!texto) {

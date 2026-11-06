@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { getErrorLogs, ERROR_LOG_FILE, LOG_FILE } = require('../utils/logger');
+const { getErrorLogs, clearAllLogs, ERROR_LOG_FILE, LOG_FILE } = require('../utils/logger');
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ function requireLogs(req, res, next) {
   const session = req.signedCookies?.logs_session;
   if (session && session === validUser) return next();
 
-  if (req.path === '/data' || req.path === '/errors/data') {
+  if (req.path === '/data' || req.path === '/errors/data' || req.path === '/clear') {
     return res.status(401).json({ error: 'No autorizado' });
   }
   res.redirect('/logs/login');
@@ -139,6 +139,15 @@ router.get('/logout', (req, res) => {
 });
 
 // ── Data endpoint ──────────────────────────────────────────────────────────────
+
+// POST /logs/clear — borra físicamente todos los logs y errores del servidor
+router.post('/clear', requireLogs, (req, res) => {
+  const ok = clearAllLogs();
+  if (ok) {
+    return res.json({ ok: true, message: 'Logs y errores borrados exitosamente' });
+  }
+  return res.status(500).json({ ok: false, error: 'Error al vaciar los archivos de logs' });
+});
 
 // GET /logs/data?limit=500&filter=<texto>&after=<isoTimestamp>
 router.get('/data', requireLogs, (req, res) => {
@@ -855,10 +864,21 @@ router.get('/', requireLogs, (req, res) => {
       btn.classList.toggle('active', autoScroll);
     }
 
-    function clearLogs() {
-      clearedTs = allLogs.length > 0 ? allLogs[allLogs.length - 1].ts : new Date().toISOString();
-      localStorage.setItem('logs_cleared_ts', clearedTs);
+    async function clearLogs() {
+      if (!confirm('¿Deseas vaciar permanentemente todos los logs y errores del servidor?')) return;
+      try {
+        const res = await fetch('/logs/clear', { method: 'POST' });
+        if (!res.ok && res.status === 401) {
+          window.location.href = '/logs/login';
+          return;
+        }
+      } catch (e) {
+        console.error('Error al llamar /logs/clear:', e);
+      }
+      localStorage.removeItem('logs_cleared_ts');
+      clearedTs = null;
       allLogs = [];
+      dedicatedErrors = [];
       render();
     }
 
@@ -893,10 +913,13 @@ router.get('/', requireLogs, (req, res) => {
         const urlLogs = clearedTs
           ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedTs)}\`
           : '/logs/data?limit=500';
+        const urlErrors = clearedTs
+          ? \`/logs/errors/data?limit=300&after=\${encodeURIComponent(clearedTs)}\`
+          : '/logs/errors/data?limit=300';
 
         const [resLogs, resErr] = await Promise.all([
           fetch(urlLogs),
-          fetch('/logs/errors/data?limit=300').catch(() => null)
+          fetch(urlErrors).catch(() => null)
         ]);
 
         if (resLogs.status === 401) {

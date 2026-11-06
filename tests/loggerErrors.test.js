@@ -84,6 +84,15 @@ describe('Dedicated Error Logging System', () => {
       expect(res.headers['content-disposition']).toContain('attachment; filename="errores-bot-restaurantes.txt"');
       expect(typeof res.text).toBe('string');
     });
+
+    test('POST /logs/clear vacía los archivos de logs y errores permanentemente', async () => {
+      const res = await request(app).post('/logs/clear?auth=testadmin');
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      const errorsAfter = getErrorLogs(50);
+      expect(errorsAfter.length).toBe(0);
+    });
   });
 });
 

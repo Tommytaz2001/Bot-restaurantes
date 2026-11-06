@@ -139,5 +139,66 @@ describe('metaWebhook - Procesamiento seguro y soporte @lid', () => {
     await expect(handleWebhook(req, res)).resolves.not.toThrow();
     expect(res.sendStatus).toHaveBeenCalledWith(200);
   });
+
+  test('procesa evento MESSAGES_UPSERT en mayúsculas con guión bajo (Evolution API v2)', async () => {
+    const req = {
+      body: {
+        event: 'MESSAGES_UPSERT',
+        data: {
+          key: {
+            id: 'MSG-V2-001',
+            remoteJid: '50588899999@s.whatsapp.net',
+            fromMe: false,
+          },
+          pushName: 'Cliente V2',
+          message: {
+            conversation: 'Quiero ordenar 2 hamburguesas clásicas',
+          },
+        },
+      },
+    };
+    const res = { sendStatus: jest.fn() };
+
+    await handleWebhook(req, res);
+
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+    expect(recibirMensaje).toHaveBeenCalledTimes(1);
+    const args = recibirMensaje.mock.calls[0][0];
+    expect(args.telefono).toBe('50588899999');
+    expect(args.texto).toBe('Quiero ordenar 2 hamburguesas clásicas');
+    expect(args.contactName).toBe('Cliente V2');
+  });
+
+  test('procesa evento MESSAGES_UPSERT con array en data.messages', async () => {
+    const req = {
+      body: {
+        event: 'MESSAGES_UPSERT',
+        data: {
+          messages: [
+            {
+              key: {
+                id: 'MSG-V2-NESTED-001',
+                remoteJid: '50577788899@s.whatsapp.net',
+                fromMe: false,
+              },
+              pushName: 'María',
+              message: {
+                conversation: 'Hola buenas noches',
+              },
+            },
+          ],
+        },
+      },
+    };
+    const res = { sendStatus: jest.fn() };
+
+    await handleWebhook(req, res);
+
+    expect(res.sendStatus).toHaveBeenCalledWith(200);
+    expect(recibirMensaje).toHaveBeenCalledTimes(1);
+    const args = recibirMensaje.mock.calls[0][0];
+    expect(args.telefono).toBe('50577788899');
+    expect(args.texto).toBe('Hola buenas noches');
+  });
 });
 

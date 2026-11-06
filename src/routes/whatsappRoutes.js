@@ -88,10 +88,27 @@ router.get('/write-stats', (req, res) => {
   res.json({ database: 'postgresql', status: 'connected' });
 });
 
-const { setupEvolution } = require('../services/evolutionSetup');
+const { setupEvolution, setWebhook } = require('../services/evolutionSetup');
 
 // POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API
 router.post('/webhook', handleWebhook);
+
+// POST o GET /whatsapp/setup-webhook — Configura o refresca manualmente el webhook en Evolution API
+router.all('/setup-webhook', async (req, res) => {
+  const instance = req.query.instance || req.body?.instance || process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
+  const containerName = process.env.BOT_CONTAINER_NAME || 'bot-restaurantes';
+  const port = process.env.PORT || 3001;
+  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || `http://${containerName}:${port}/whatsapp/webhook`;
+
+  try {
+    const ok = await setWebhook(instance, webhookUrl);
+    console.log(`[WhatsApp] Registro manual de webhook en "${instance}" (${webhookUrl}) → ${ok ? 'OK' : 'FALLÓ'}`);
+    return res.json({ ok, instance, webhookUrl });
+  } catch (err) {
+    console.error(`[WhatsApp] Error configurando webhook:`, err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // GET /whatsapp/connection-state — Consulta únicamente el estado de conexión sin regenerar QR
 router.get('/connection-state', async (req, res) => {
@@ -156,6 +173,9 @@ router.get('/get-qr', async (req, res) => {
         });
         qrData = await qrRes.json().catch(() => ({}));
       }
+    } else if (process.env.NODE_ENV !== 'test') {
+      // Si la instancia ya existe, asegurar que el webhook esté configurado en segundo plano
+      setupEvolution(instance).catch(e => console.warn(`[WhatsApp] Auto-setup webhook en segundo plano: ${e.message}`));
     }
 
     const rawBase64 = qrData?.base64 || qrData?.qrcode?.base64 || qrData?.data?.base64 || null;
@@ -198,6 +218,11 @@ router.get('/pairing-code', async (req, res) => {
 
   const cleanDigits = String(rawPhone).replace(/\D/g, '');
   const phone = cleanDigits.length === 8 ? `505${cleanDigits}` : cleanDigits;
+
+  // Asegurar configuración del webhook en segundo plano
+  if (process.env.NODE_ENV !== 'test') {
+    setupEvolution(instance).catch(() => {});
+  }
 
   try {
     const pairUrl = `${apiUrl}/instance/connect/${instance}?number=${phone}`;
@@ -586,6 +611,7 @@ router.get('/qr', (req, res) => {
         if (data.connected) {
           if (!isConnected) {
             isConnected = true;
+            fetch('/whatsapp/setup-webhook', { method: 'POST' }).catch(() => {});
             if (qrTimerInterval) clearInterval(qrTimerInterval);
             badgeStatus.className = 'badge connected';
             badgeStatus.innerHTML = '● Conectado a WhatsApp';

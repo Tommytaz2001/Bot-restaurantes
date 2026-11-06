@@ -98,6 +98,10 @@ El sistema superó su fase de MVP inicial y ha incorporado:
     - **Solución Multi-Capa Implementada:**
       1. **Guardia en Interceptor:** Si ya existe un pedido activo en cocina (`activeOrder` o `lastOrderId`), o si el último mensaje del asistente ya es una confirmación (`¡Pedido recibido!`), el interceptor queda estrictamente desactivado.
       2. **Deduplicación Ampliada a 5 Minutos:** En `findExistingOrder`, cualquier intento de guardar pedido para el mismo cliente (`sessionId` o `telefono`) dentro de los últimos 5 minutos (300s) se detecta como duplicado.
+32. **Normalización Universal de Webhook v1/v2 y Borrado Físico Definitivo de Logs (`src/whatsapp/metaWebhook.js`, `src/services/evolutionSetup.js`, `src/routes/whatsappRoutes.js`, `src/routes/logRoutes.js`, `src/utils/logger.js`, `tests/metaWebhook.test.js`, `tests/loggerErrors.test.js`, `tests/whatsappRoutes.test.js`):**
+    - **Recepción Ininterrumpida en Evolution API v2:** Normalización de eventos con `.toLowerCase().replace(/_/g, '.')` para aceptar indistintamente `MESSAGES_UPSERT`, `messages_upsert`, `messages.upsert`, `CONNECTION_UPDATE` y `connection.update`. Saneamiento defensivo de arrays anidados (`body.data.messages`, `body.data`, `body.messages`) y lectura de texto en `data.body`.
+    - **Registro Proactivo y Garantizado de Webhook:** Extensión de `waitForEvolution()` a 60s y registro bidireccional obligatorio (payload v1 plano y v2 anidado) en `setWebhook`. Ejecución reactiva de auto-setup al consultar `/whatsapp/get-qr` o `/whatsapp/pairing-code`, endpoint directo `POST /whatsapp/setup-webhook` y refresco automático desde el cliente web cuando la conexión pasa a `open`.
+    - **Borrado Permanente de Logs y Errores en Disco:** Incorporación de la función `clearAllLogs()` en `logger.js` y endpoint `POST /logs/clear`. Trunca a cero bytes los archivos persistentes `data/logs.ndjson` y `data/errors.ndjson`, eliminando de raíz logs y errores acumulados de sesiones previas en todos los clientes/dispositivos (móvil y escritorio) al presionar 'Limpiar'.
 32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`, `src/routes/whatsappRoutes.js`, `src/db/initDb.js`, `src/db/schema.sql`):**
     - **Causa Raíz de los Errores (`Error: P3005 The database schema is not empty` y `Database provider invalid`):**
       1. Evolution API v2 exige `DATABASE_PROVIDER=postgresql`.
@@ -238,9 +242,9 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/blacklistService.test.js` | Unitaria | **PASS** (8/8) | Valida bloqueo internacional, formato local de 8 dígitos, eliminación inmediata, validación de longitud y detección de contactos bajo formato @lid asociados a números en lista negra. |
 | `tests/lidResolver.test.js`  | Unitaria | **PASS** (7/7) | Valida resolución y caché bidireccional de @lid a número telefónico, extracción de senderPn en findMessages, consulta en findContacts y rechazo estricto de números del administrador/dueño. |
 | `tests/metaSender.test.js`  | Unitaria | **PASS** (6/6) | Valida mapeo proactivo de @lid a @s.whatsapp.net para prevenir caídas de socket en Baileys, despacho a @lid no resuelto, resolución previa con API, anteposición de prefijo 505 para números locales de Nicaragua y reintentos automáticos ante errores transitorios. |
-| `tests/metaWebhook.test.js` | Unitaria | **PASS** (4/4) | Valida recepción de mensajes normales, resolución @lid con senderPn sin ReferenceError de getPhoneForLid, telemetría de connection.update y captura de fallos internos. |
-| `tests/whatsappRoutes.test.js`| Unitaria| **PASS** (3/3) | Valida solicitud de pairing code numérico, validación de parámetro number y reporte de estado de conexión en Evolution API v2. |
-| `tests/loggerErrors.test.js`| Unitaria | **PASS** (1/1) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error y truncado defensivo de 5MB. |
+| `tests/metaWebhook.test.js` | Unitaria | **PASS** (6/6) | Valida recepción de mensajes normales, resolución @lid con senderPn sin ReferenceError de getPhoneForLid, telemetría de connection.update, captura de fallos internos, compatibilidad con MESSAGES_UPSERT v2 y payloads con data.messages anidado. |
+| `tests/whatsappRoutes.test.js`| Unitaria| **PASS** (4/4) | Valida solicitud de pairing code numérico, validación de parámetro number, reporte de estado de conexión y registro manual de webhook (/whatsapp/setup-webhook). |
+| `tests/loggerErrors.test.js`| Unitaria | **PASS** (4/4) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error, truncado defensivo de 5MB y vaciado físico permanente (POST /logs/clear). |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite (1949 módulos), cap sync y gradle assembleDebug exitoso (9s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/ y raíz. |
@@ -255,10 +259,9 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 
 1. **Desplegar en Synology NAS:**
    - Ejecutar `git pull origin feature/evolution-api` en el servidor Synology.
-   - Levantar los contenedores con `docker compose up -d`.
-   - Verificar que todos los servicios estén en estado `Up` con `docker ps`.
-   - Inspeccionar los logs de Evolution API v2 con `docker logs evolution-api --tail 50`.
-   - Abrir `/whatsapp/qr` y emparejar la cuenta de WhatsApp mediante el nuevo Código de 8 Dígitos (Pairing Code) o Código QR.
+   - Reiniciar el backend con `docker compose restart backend`.
+   - Abrir `/logs` y presionar el botón "Limpiar" para vaciar los logs y errores antiguos del disco.
+   - Enviar un mensaje de prueba desde WhatsApp para comprobar la respuesta en tiempo real de Urbi.
 
 ---
 
