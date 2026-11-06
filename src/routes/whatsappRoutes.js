@@ -112,7 +112,10 @@ router.get('/connection-state', async (req, res) => {
     const isConnected = state === 'open';
     return res.json({ connected: isConnected, state, instance });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    const causeDetail = err.cause?.code || err.cause?.message || '';
+    const fullMsg = causeDetail ? `${err.message} (${causeDetail})` : err.message;
+    console.error(`[WhatsApp] Error consultando /connection-state (${apiUrl}):`, fullMsg);
+    return res.status(500).json({ error: fullMsg });
   }
 });
 
@@ -174,8 +177,10 @@ router.get('/get-qr', async (req, res) => {
       message: !base64 ? (qrData?.message || qrData?.error || 'Esperando generación del código QR por Evolution API...') : null
     });
   } catch (err) {
-    console.error(`[WhatsApp] Error conectando con Evolution API (${apiUrl}):`, err.message);
-    return res.status(500).json({ error: err.message });
+    const causeDetail = err.cause?.code || err.cause?.message || '';
+    const fullMsg = causeDetail ? `${err.message} (${causeDetail})` : err.message;
+    console.error(`[WhatsApp] Error conectando con Evolution API (${apiUrl}):`, fullMsg);
+    return res.status(500).json({ error: fullMsg });
   }
 });
 
@@ -208,8 +213,10 @@ router.get('/pairing-code', async (req, res) => {
       raw: pairData,
     });
   } catch (err) {
-    console.error('[WhatsApp] Error solicitando pairing code:', err.message);
-    return res.status(500).json({ error: err.message });
+    const causeDetail = err.cause?.code || err.cause?.message || '';
+    const fullMsg = causeDetail ? `${err.message} (${causeDetail})` : err.message;
+    console.error(`[WhatsApp] Error solicitando pairing code (${apiUrl}):`, fullMsg);
+    return res.status(500).json({ error: fullMsg });
   }
 });
 

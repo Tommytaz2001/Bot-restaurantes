@@ -70,11 +70,10 @@ services:
     container_name: evolution-api
     restart: unless-stopped
     user: "root"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     ports:
       - "6543:8080"
+    env_file:
+      - .env
     environment:
       - SERVER_TYPE=http
       - SERVER_PORT=8080
@@ -86,6 +85,7 @@ services:
       - QRCODE_LIMIT=30
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
+      - DATABASE_URL=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}?schema=public
       - DATABASE_CONNECTION_URI=postgresql://${DB_USER:-botuser}:${DB_PASSWORD:-botpassword}@postgres:5432/${DB_NAME:-botrestaurantes}?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
       - DATABASE_SAVE_DATA_INSTANCE=true
