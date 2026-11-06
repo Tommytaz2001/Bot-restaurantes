@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `6b48ae7 fix(whatsapp): map @lid to @s.whatsapp.net transport to prevent Baileys socket closure and allow owner test replies` 
+**Último commit:** `3711692 fix(webhook): import getPhoneForLid, add try-catch error boundary and enrich connection status logging` 
 
 ---
 
