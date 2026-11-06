@@ -99,12 +99,12 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       1. **Guardia en Interceptor:** Si ya existe un pedido activo en cocina (`activeOrder` o `lastOrderId`), o si el último mensaje del asistente ya es una confirmación (`¡Pedido recibido!`), el interceptor queda estrictamente desactivado.
       2. **Deduplicación Ampliada a 5 Minutos:** En `findExistingOrder`, cualquier intento de guardar pedido para el mismo cliente (`sessionId` o `telefono`) dentro de los últimos 5 minutos (300s) se detecta como duplicado.
 32. **Estabilización de Despliegue Evolution API v2 en Docker (`docker-compose.yml`, `src/routes/whatsappRoutes.js`):**
-    - **Causa Raíz del Error `UND_ERR_CONNECT_TIMEOUT`:**
-      1. En Evolution API v2, habilitar `DATABASE_ENABLED=true` ejecuta el script de inicio `deploy_database.sh` (`npx prisma migrate deploy`). Debido a advisory locks huérfanos en PostgreSQL (`72707369`) o bloqueos internos de la migración de Prisma, el proceso se colgaba indefinidamente en el arranque impidiendo que el servidor HTTP abriera el puerto 8080.
-      2. El bot backend no requiere las tablas internas de Evolution API (los pedidos, menú y configuraciones residen directamente en el pool relacional del backend).
+    - **Causa Raíz de los Errores (`Error: Database provider  invalid.` y `UND_ERR_CONNECT_TIMEOUT`):**
+      1. El script de entrada (`entrypoint.sh` / `deploy_database.sh`) de Evolution API v2 verifica estrictamente la presencia de `DATABASE_PROVIDER=postgresql` en las variables de entorno. Al omitirse o estar vacío, aborta la ejecución con `Error: Database provider  invalid.` y el contenedor entra en bucle de reinicios.
+      2. Al estar el contenedor reiniciándose continuamente, las llamadas del backend arrojaban `ENOTFOUND` o `UND_ERR_CONNECT_TIMEOUT`.
     - **Solución Implementada:**
-      1. Configuración de `DATABASE_ENABLED=false` en `evolution-api`, omitiendo por completo las migraciones Prisma y arrancando Node.js de inmediato en 2 segundos.
-      2. Persistencia local de sesiones Baileys garantizada en el volumen `/evolution/instances` (`./volumes/evolution`).
+      1. Definición explícita de `DATABASE_PROVIDER=postgresql`, `DATABASE_CONNECTION_URI`, `DATABASE_URL` con `?schema=public` y `DATABASE_CONNECTION_CLIENT_NAME=evolution_v2_client`.
+      2. Configuración de persistencia de instancias de WhatsApp en volumen de disco `/evolution/instances` (`./volumes/evolution`).
       3. Caché de alta velocidad habilitada mediante el servicio `redis` (`redis:alpine`).
       4. Retiro de `dns:` externo para permitir la resolución interna directa en Docker bridge.
       5. Telemetría enriquecida en `src/routes/whatsappRoutes.js` con captura de códigos de error de red (`UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, `ECONNREFUSED`).
