@@ -206,6 +206,14 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       5. **Conteo Preciso de Preguntas de Nombre (`esPreguntaActivaNombre`):** Se descartan las viñetas de plantillas y solo se cuentan preguntas directas en prosa formuladas al cliente, garantizando que el bot insista 2 veces completas antes de recurrir al nombre de WhatsApp.
       6. **Diagnóstico y Alerta en `metaSender.js`:** Detección de `reading 'find'` con advertencia clara para reconectar el QR en `/whatsapp/qr` si la instancia pierde la conexión de WhatsApp.
       7. **Validación de Pruebas Unitarias:** 93 pruebas unitarias aprobadas (9 suites) sin fallos (`tests/agentConfirmation.test.js`: 19/19 PASS, `tests/orderValidator.test.js`: 18/18 PASS, `tests/phoneUtils.test.js`: 18/18 PASS, `tests/metaSender.test.js`: 7/7 PASS).
+41. **Principio Universal de No Regresión Conversacional y Erradicación del Bucle de Delivery/Retiro (`prompts/agent.txt`, `src/agent/agentService.js`, `tests/agentConfirmation.test.js`):**
+    - **Causa Raíz de Bucle Infinito (Caso Tommy):** Al indicar el cliente "A domicilio", proporcionar su dirección y luego su nombre ("A nombre de Tommy") antes de ordenar comida, el prompt carecía de reglas para el escenario donde los datos anteceden a los productos. La instrucción incondicional del Paso 1 (*"Cuando el cliente quiera pedir, PRIMERO pregunta: ¿Quieres que te enviemos el pedido a domicilio o retiro?"*) forzaba al LLM a reiniciar el flujo desde cero, repitiendo la pregunta de delivery a pesar de que ya había sido respondida y confirmada en el chat.
+    - **Solución Implementada:**
+      1. **Regla de Memoria Permanente y No Regresión en `prompts/agent.txt`:** Un dato obtenido en el chat (tipo de entrega, dirección, nombre, productos o método de pago) **NUNCA se vuelve a preguntar**.
+      2. **Gestión de Datos Previos a Productos:** Si el cliente define entrega o nombre antes de pedir platillos, el bot saluda por su nombre y pregunta directamente qué desea ordenar del menú (*"¡Mucho gusto, [Nombre]! Ya anoté tus datos y dirección de entrega 🛵. ¿Qué te gustaría ordenar hoy del menú? 🍔"*).
+      3. **Saneamiento de Ejemplos de Reconocimiento:** Se corrigieron los ejemplos hardcodeados en el prompt (líneas 107-108, 206) para que solo se pregunte si es a domicilio o retiro si el cliente no lo ha definido previamente.
+      4. **Interceptor Activo de Preguntas Circulares en `agentService.js`:** Si la IA formula redundantemente la pregunta de entrega habiéndose definido ya en el historial (`haDefinidoTipoEntregaEnHistorial`), el interceptor la sustituye automáticamente por la pregunta lógica siguiente (solicitar productos o forma de pago).
+      5. **Validación de Pruebas Unitarias:** 21/21 PASS en `tests/agentConfirmation.test.js` (70/70 en la suite core completa).
 
 
 

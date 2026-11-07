@@ -749,6 +749,57 @@ describe('agentService - Confirmation and Error Handling', () => {
     const lastCall = chatCompletion.mock.calls[0][0];
     expect(lastCall.systemPrompt).toContain('0 preguntas previas');
   });
+
+  test('interceptor elimina pregunta redundante de delivery/retiro cuando ya se definió en el historial (caso Tommy)', async () => {
+    const { addMessage } = require('../src/agent/sessionStore');
+    // Simulamos la conversación exacta reportada por el usuario
+    addMessage(sessionId, { role: 'user', content: 'A domicilio' });
+    addMessage(sessionId, { role: 'assistant', content: '¡Perfecto! Ya anoté tu pedido a domicilio 🛵. ¿A qué dirección exacta te lo enviamos?' });
+    addMessage(sessionId, { role: 'user', content: 'Envíame a la chanca de quevedo frente a la casa blanca' });
+    addMessage(sessionId, { role: 'assistant', content: '¡Perfecto! Ya anoté tu dirección para el delivery: *de la chanca de Quevedo frente a la casa blanca* 🛵.\n\nPara completar tu pedido, ¿qué te gustaría ordenar y a qué nombre completo dejamos la comanda? 🍔📝' });
+
+    // La IA comete el error de reiniciar el flujo preguntando de nuevo si delivery o retiro
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Perfecto, Tommy! 🍔 ¿Quieres que te enviemos el pedido a domicilio 🛵 o prefieres pasar a retirarlo al local 🏪?',
+    });
+
+    const result = await processMessage({
+      message: 'A nombre de Tommy',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+      contactName: 'Tommy',
+    });
+
+    // El interceptor debe corregir la respuesta para no repetir la pregunta de delivery
+    expect(result.reply).not.toContain('¿Quieres que te enviemos el pedido a domicilio');
+    expect(result.reply).toContain('Tommy');
+    expect(result.reply).toContain('¿Qué te gustaría ordenar');
+  });
+
+  test('interceptor reemplaza pregunta redundante de delivery por método de pago si el cliente ordenó producto', async () => {
+    const { addMessage } = require('../src/agent/sessionStore');
+    addMessage(sessionId, { role: 'user', content: 'A domicilio' });
+    addMessage(sessionId, { role: 'assistant', content: '¡Perfecto! Ya anoté tu dirección para el delivery: *Barrio Central* 🛵.' });
+
+    // La IA intenta preguntar si es a domicilio a pesar de que el cliente ya lo definió
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Perfecto, 1 Hamburguesa Clásica! 🍔 ¿Quieres que te enviemos el pedido a domicilio 🛵 o prefieres pasar a retirarlo al local 🏪?',
+    });
+
+    const result = await processMessage({
+      message: '1 clásica',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+      contactName: 'Tommy',
+    });
+
+    expect(result.reply).not.toContain('¿Quieres que te enviemos el pedido a domicilio');
+    expect(result.reply).toContain('¿Cómo prefieres realizar tu pago');
+  });
 });
 
 

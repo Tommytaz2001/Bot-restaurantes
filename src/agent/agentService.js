@@ -47,6 +47,46 @@ function contieneResumenConDireccionPlaceholder(content) {
   return isPlaceholderAddress(direccionExtraida);
 }
 
+const REDUNDANT_DELIVERY_QUESTION_REGEX = /(a\s*domicilio\s*🛵?\s*o\s*prefieres\s*pasar\s*a\s*retirar|pasar\s*a\s*retirar.*o.*a\s*domicilio|domicilio\s*🛵?\s*o\s*retiro)/i;
+
+function haDefinidoTipoEntregaEnHistorial(history) {
+  if (!Array.isArray(history)) return null;
+  for (const m of history) {
+    const text = (m.content || '').toLowerCase();
+    if (m.role === 'user') {
+      if (/\b(a\s*domicilio|delivery|env[ií]am[eo]|m[aá]ndam[eo]|para\s*env[ií]o|para\s*delivery)\b/i.test(text)) {
+        return 'delivery';
+      }
+      if (/\b(retiro|para\s*llevar|paso\s*a\s*recoger|lo\s*recojo|voy\s*al\s*local|para\s*retirar)\b/i.test(text)) {
+        return 'retiro';
+      }
+    } else if (m.role === 'assistant') {
+      if (/ya\s*anot[eé]\s*tu\s*(pedido\s*a\s*domicilio|direcci[oó]n\s*para\s*el\s*delivery)/i.test(text)) {
+        return 'delivery';
+      }
+      if (/ya\s*anot[eé]\s*tu\s*pedido\s*para\s*retiro/i.test(text)) {
+        return 'retiro';
+      }
+    }
+  }
+  return null;
+}
+
+function sanearPreguntaRedundanteEntrega(content, tipoEntrega) {
+  const match = (content || '').match(/^(¡[^!]+!\s*(?:🍔|🌭|🥤|🌮)?)/i);
+  const prefijo = match ? match[1].trim() : '¡Perfecto! 🍔';
+
+  // Si el prefijo contiene un producto (ej: "1 hamburguesa", "1 burrito", "2 tacos", etc.)
+  const tieneProducto = /\b(\d+\s*(?:hamburguesa|cl[aá]sica|premium|burrito|tacos?|nachos?|quesadilla|hot\s*dog|papas?|combo))\b/i.test(prefijo);
+
+  if (tieneProducto) {
+    return `${prefijo} ¿Cómo prefieres realizar tu pago: en efectivo 💵 o por transferencia bancaria 🏦?`;
+  } else {
+    const textoEntrega = tipoEntrega === 'delivery' ? ' para el delivery 🛵' : ' para retiro en el local 🏪';
+    return `${prefijo} Ya tengo registrada tu entrega${textoEntrega}. ¿Qué te gustaría ordenar hoy del menú? 🍔`;
+  }
+}
+
 async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null, contactName = null, vecesPreguntadoNombre = 0) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
@@ -551,6 +591,15 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
       addressPromptReply = '¡Perfecto! Ya anoté tu pedido a domicilio 🛵. ¿A qué dirección exacta te lo enviamos? 📍';
     }
     assistantMessage.content = addressPromptReply;
+  }
+
+  // Interceptor defensivo contra preguntas circulares redundantes: si el tipo de entrega ya se definió
+  // en la conversación (delivery o retiro) y el modelo vuelve a preguntar si quiere a domicilio o retiro,
+  // reemplazamos la pregunta redundante por el siguiente paso lógico (ordenar productos o pago).
+  const tipoEntregaPrevio = haDefinidoTipoEntregaEnHistorial([...history, { role: 'user', content: message }]);
+  if (tipoEntregaPrevio && REDUNDANT_DELIVERY_QUESTION_REGEX.test(assistantMessage.content)) {
+    log(`[agentService] ⚠️ INTERCEPTOR: La IA preguntó redundantemente "¿a domicilio o retiro?" cuando ya estaba definido como "${tipoEntregaPrevio}". Corrigiendo respuesta.`);
+    assistantMessage.content = sanearPreguntaRedundanteEntrega(assistantMessage.content, tipoEntregaPrevio);
   }
 
   // Normal response — no function call
