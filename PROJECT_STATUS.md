@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `dc4203c fix(logs): suppress HTTP poll spam, correct error classifier, set 100mb body limit, and handle payload too large` 
+**Último commit:** `0aed2d7 feat(agent): require asking customer name in chat before falling back to cleaned WhatsApp profile name` 
 
 ---
 
