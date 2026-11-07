@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `1804115 feat(agent): enforce 2-attempt insistence for customer name before using WhatsApp fallback` 
+**Último commit:** `eb81b8d fix(agent): require delivery address before summary, prevent placeholder addresses and fix name question counter` 
 
 ---
 
