@@ -73,7 +73,11 @@ async function handleWebhook(req, res) {
   const body = req.body || {};
   // Normalizar nombre de evento: minúsculas y reemplazar '_' por '.'
   // Soporta tanto 'messages.upsert' / 'connection.update' como 'MESSAGES_UPSERT' / 'CONNECTION_UPDATE'
-  const rawEvent = (body.event || '').toLowerCase().replace(/_/g, '.');
+  const rawEvent = (body.event || body.type || body.action || '').toLowerCase().replace(/_/g, '.');
+
+  // Registrar en el monitor de eventos la llegada de cualquier webhook
+  const eventLabel = body.event || body.type || 'desconocido';
+  log(`[Webhook] Petición HTTP entrante: "${eventLabel}" (path: ${req.originalUrl})`);
 
   // Si llega evento de conexión abierta o cambio de estado, verificar aviso de despliegue
   if (rawEvent === 'connection.update') {
@@ -98,7 +102,7 @@ async function handleWebhook(req, res) {
   }
 
   // Solo procesar y registrar eventos de mensajes para no saturar el visor de logs
-  const isMessageEvent = rawEvent === 'messages.upsert' || rawEvent === 'messages';
+  const isMessageEvent = rawEvent === 'messages.upsert' || rawEvent === 'messages' || rawEvent === 'messages.set' || (!rawEvent && (body.data?.key || body.key));
   if (!isMessageEvent) {
     if (process.env.DEBUG_WEBHOOK === 'true' || rawEvent.includes('message')) {
       log(`[Webhook] Evento secundario ignorado: "${body.event}"`);

@@ -34,7 +34,10 @@ services:
         max-size: "10m"
         max-file: "5"
     networks:
-      - bot-network
+      bot-network:
+        aliases:
+          - backend
+          - bot-restaurantes
 
   # ── Base de datos PostgreSQL ─────────────────────────────────────────────────
   postgres:

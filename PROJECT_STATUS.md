@@ -175,6 +175,18 @@ El sistema superó su fase de MVP inicial y ha incorporado:
       3. **Soporte de Vinculación por "Pairing Code" (Código de 8 dígitos):** Se incorporó el endpoint `GET /whatsapp/pairing-code?number=...` y una pestaña interactiva en `/whatsapp/qr` para permitir emparejar el bot escribiendo el número de teléfono sin depender de la cámara ni de códigos QR que expiran rápidamente.
       4. **Payload Unificado en `metaSender.js`:** Despacho dual con `text` y `textMessage: { text }` para compatibilidad transparente entre Evolution API v1 y v2.
       5. **Suite de Pruebas Unitarias (`tests/whatsappRoutes.test.js`):** 3 pruebas unitarias añadidas y aprobadas validando solicitud de pairing code, manejo de errores de validación de número y consulta de estado de conexión (3/3 PASS).
+38. **Resolución de PayloadTooLargeError y Depuración de Logs HTTP en Monitor Web (`index.js`, `src/middleware/requestLogger.js`, `src/routes/logRoutes.js`, `src/routes/whatsappRoutes.js`, `src/whatsapp/metaWebhook.js`, `tests/loggerErrors.test.js`):**
+    - **Causa Raíz de PayloadTooLargeError (243 errores registrados):** Al sincronizar contactos, historial de mensajes o fotos/audios en Evolution API v2, los payloads enviados al webhook excedían el límite por defecto de 100 KB de Express/body-parser.
+    - **Solución Aplicada:**
+      1. Se elevó el límite de parsing de JSON y urlencoded a 100 MB (`express.json({ limit: '100mb' })`, `express.urlencoded({ extended: true, limit: '100mb' })`).
+      2. Se incorporó un manejador centralizado de errores en Express para responder 413 JSON con `console.warn` en vez de arrojar excepciones no controladas a `console.error`.
+    - **Causa Raíz de Falsos Errores HTTP (`[HTTP] [INFO] GET /logs/errors/data... → 304`):**
+      1. El monitor web `/logs` hace polling cada 2 segundos a `/logs/errors/data`. El middleware `requestLogger` registraba cada petición como `[HTTP] [INFO]`.
+      2. La función de renderizado en el navegador `classifyLog` utilizaba `lower.includes('error')`, por lo que al detectar la palabra "errors" dentro de la URL `/logs/errors/data`, reclasificaba incorrectamente un log normal INFO como ERROR y aumentaba el contador de errores con insignia roja.
+    - **Solución Aplicada:**
+      1. En `src/middleware/requestLogger.js` se excluyeron las peticiones exitosas (< 400) de polling a `/logs/data`, `/logs/errors/data`, `/health` y `/favicon.ico`.
+      2. En `src/routes/logRoutes.js` (`classifyLog`) se priorizan los logs estructurados `[HTTP] [INFO]`, asegurando que queden clasificados como HTTP/INFO y nunca como error.
+      3. Se aseguró la inclusión de credenciales y parámetros de autenticación (`?auth=...`) en `clearLogs()` y `fetchLogs()` para garantizar el borrado permanente del disco.
 
 
 
@@ -246,7 +258,7 @@ El sistema superó su fase de MVP inicial y ha incorporado:
 | `tests/metaSender.test.js`  | Unitaria | **PASS** (6/6) | Valida mapeo proactivo de @lid a @s.whatsapp.net para prevenir caídas de socket en Baileys, despacho a @lid no resuelto, resolución previa con API, anteposición de prefijo 505 para números locales de Nicaragua y reintentos automáticos ante errores transitorios. |
 | `tests/metaWebhook.test.js` | Unitaria | **PASS** (6/6) | Valida recepción de mensajes normales, resolución @lid con senderPn sin ReferenceError de getPhoneForLid, telemetría de connection.update, captura de fallos internos, compatibilidad con MESSAGES_UPSERT v2 y payloads con data.messages anidado. |
 | `tests/whatsappRoutes.test.js`| Unitaria| **PASS** (5/5) | Valida solicitud de pairing code numérico, validación de parámetro number, reporte de estado de conexión, registro manual de webhook (/whatsapp/setup-webhook) y consulta de estado (/whatsapp/check-webhook). |
-| `tests/loggerErrors.test.js`| Unitaria | **PASS** (4/4) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error, truncado defensivo de 5MB y vaciado físico permanente (POST /logs/clear). |
+| `tests/loggerErrors.test.js`| Unitaria | **PASS** (7/7) | Valida registro persistente atómico en data/errors.ndjson, captura de console.error, truncado defensivo de 5MB, vaciado físico permanente (POST /logs/clear) y supresión de polling de logs con status < 400. |
 | `tests/deployNotification.test.js` | Unitaria | **PASS** (8/8) | Valida parseo de múltiples teléfonos, espera de estado WhatsApp open y envío de avisos de despliegue. |
 | `Compilación Vite app-chef` | Build / Frontend | **PASS** (1949 módulos) | Construcción de producción de la app React/Vite completada con éxito (código de salida 0). |
 | `Generación APK Android (npm run build:apk)` | Build / Mobile | **PASS** | Compilación Vite (1949 módulos), cap sync y gradle assembleDebug exitoso (9s). Generado UrbanoChef.apk (4.09 MB) sincronizado a uploads/ y raíz. |

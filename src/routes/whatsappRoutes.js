@@ -90,8 +90,14 @@ router.get('/write-stats', (req, res) => {
 
 const { setupEvolution, setWebhook, getWebhookStatus } = require('../services/evolutionSetup');
 
-// POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API
+// GET /whatsapp/webhook — Health check para Evolution API
+router.get('/webhook', (req, res) => {
+  res.json({ ok: true, service: 'bot-restaurantes-webhook', timestamp: new Date() });
+});
+
+// POST /whatsapp/webhook — mensajes entrantes de clientes via Evolution API (acepta sub-rutas si webhook_by_events está activo)
 router.post('/webhook', handleWebhook);
+router.post('/webhook/:event', handleWebhook);
 
 // POST o GET /whatsapp/setup-webhook — Configura o refresca manualmente el webhook en Evolution API
 router.all('/setup-webhook', async (req, res) => {
@@ -110,12 +116,33 @@ router.all('/setup-webhook', async (req, res) => {
   }
 });
 
-// GET /whatsapp/check-webhook — Consulta el webhook configurado actualmente en Evolution API
+// GET /whatsapp/check-webhook — Diagnóstico completo del estado del webhook e instancia en Evolution API
 router.get('/check-webhook', async (req, res) => {
   const instance = req.query.instance || process.env.EVOLUTION_INSTANCE || 'bot-restaurantes';
+  const apiUrl = process.env.EVOLUTION_API_URL;
+  const apiKey = process.env.EVOLUTION_API_KEY;
+  const port = process.env.PORT || 3001;
+  const defaultHost = process.env.BOT_CONTAINER_NAME || 'backend';
+  const expectedUrl = process.env.EVOLUTION_WEBHOOK_URL || `http://${defaultHost}:${port}/whatsapp/webhook`;
+
   try {
-    const info = await getWebhookStatus(instance);
-    return res.json({ instance, info });
+    const webhookInfo = await getWebhookStatus(instance);
+    let connState = 'unknown';
+    try {
+      const stateRes = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
+        headers: { apikey: apiKey },
+      });
+      const stateData = await stateRes.json().catch(() => ({}));
+      connState = stateData?.instance?.state || stateData?.state || 'unknown';
+    } catch (_) {}
+
+    return res.json({
+      instance,
+      connectionState: connState,
+      expectedWebhookUrl: expectedUrl,
+      currentWebhook: webhookInfo?.data || null,
+      status: webhookInfo?.status || 200,
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

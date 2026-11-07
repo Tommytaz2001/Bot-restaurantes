@@ -93,6 +93,27 @@ describe('Dedicated Error Logging System', () => {
       const errorsAfter = getErrorLogs(50);
       expect(errorsAfter.length).toBe(0);
     });
+
+    test('requestLogger no registra polling de logs con status < 400', (done) => {
+      const { requestLogger } = require('../src/middleware/requestLogger');
+      const { log } = require('../src/utils/logger');
+      const EventEmitter = require('events');
+
+      const req = { originalUrl: '/logs/errors/data?limit=300', method: 'GET' };
+      const res = new EventEmitter();
+      res.statusCode = 304;
+
+      const logSpy = jest.spyOn(console, 'log');
+
+      requestLogger(req, res, () => {
+        res.emit('finish');
+        // Debe ignorar la petición y no registrar log
+        const calledWithLogs = logSpy.mock.calls.some(c => c[0] && String(c[0]).includes('/logs/errors/data'));
+        expect(calledWithLogs).toBe(false);
+        logSpy.mockRestore();
+        done();
+      });
+    });
   });
 });
 

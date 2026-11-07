@@ -742,13 +742,45 @@ router.get('/', requireLogs, (req, res) => {
     let clearedTs = localStorage.getItem('logs_cleared_ts') || null;
 
     function classifyLog(msg) {
-      const lower = String(msg || '').toLowerCase();
-      if (lower.includes('[error]') || lower.includes('error') || lower.includes('fail') || lower.includes('exception')) {
-        return { cat: 'err', label: 'ERROR', cls: 'tag-err' };
+      const text = String(msg || '');
+      const lower = text.toLowerCase();
+
+      // 1. Logs HTTP estructurados: respetar nivel estricto [INFO], [WARN], [ERROR]
+      if (text.includes('[HTTP] [INFO]')) {
+        return { cat: 'info', label: 'HTTP', cls: 'tag-info' };
       }
-      if (lower.includes('[warn]') || lower.includes('warn')) {
+      if (text.includes('[HTTP] [WARN]')) {
         return { cat: 'err', label: 'WARN', cls: 'tag-warn' };
       }
+      if (text.includes('[HTTP] [ERROR]')) {
+        return { cat: 'err', label: 'ERROR', cls: 'tag-err' };
+      }
+
+      // 2. Errores reales del sistema (evitar falsos positivos en URLs o palabras que contengan 'error')
+      const isError =
+        lower.includes('[error]') ||
+        lower.includes('error:') ||
+        lower.includes('error ') ||
+        lower.includes('failed') ||
+        lower.includes('exception') ||
+        lower.includes('payloadtoolarge') ||
+        lower.includes('unhandledrejection') ||
+        /\berr\b/i.test(text);
+
+      if (isError) {
+        return { cat: 'err', label: 'ERROR', cls: 'tag-err' };
+      }
+
+      const isWarn =
+        lower.includes('[warn]') ||
+        lower.includes('warn:') ||
+        lower.includes('warn ') ||
+        /\bwarning\b/i.test(text);
+
+      if (isWarn) {
+        return { cat: 'err', label: 'WARN', cls: 'tag-warn' };
+      }
+
       if (lower.includes('[wa_in]') || lower.includes('[wa_out]') || lower.includes('whatsapp') || lower.includes('evolution') || lower.includes('webhook')) {
         return { cat: 'wa', label: 'WHATSAPP', cls: 'tag-wa' };
       }
@@ -867,7 +899,8 @@ router.get('/', requireLogs, (req, res) => {
     async function clearLogs() {
       if (!confirm('¿Deseas vaciar permanentemente todos los logs y errores del servidor?')) return;
       try {
-        const res = await fetch('/logs/clear', { method: 'POST' });
+        const query = window.location.search || '';
+        const res = await fetch('/logs/clear' + query, { method: 'POST', credentials: 'same-origin' });
         if (!res.ok && res.status === 401) {
           window.location.href = '/logs/login';
           return;
@@ -910,16 +943,18 @@ router.get('/', requireLogs, (req, res) => {
 
     async function fetchLogs() {
       try {
+        const query = window.location.search || '';
+        const authParam = query.startsWith('?') ? '&' + query.slice(1) : (query ? '&' + query : '');
         const urlLogs = clearedTs
-          ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedTs)}\`
-          : '/logs/data?limit=500';
+          ? \`/logs/data?limit=500&after=\${encodeURIComponent(clearedTs)}\${authParam}\`
+          : \`/logs/data?limit=500\${authParam}\`;
         const urlErrors = clearedTs
-          ? \`/logs/errors/data?limit=300&after=\${encodeURIComponent(clearedTs)}\`
-          : '/logs/errors/data?limit=300';
+          ? \`/logs/errors/data?limit=300&after=\${encodeURIComponent(clearedTs)}\${authParam}\`
+          : \`/logs/errors/data?limit=300\${authParam}\`;
 
         const [resLogs, resErr] = await Promise.all([
-          fetch(urlLogs),
-          fetch(urlErrors).catch(() => null)
+          fetch(urlLogs, { credentials: 'same-origin' }),
+          fetch(urlErrors, { credentials: 'same-origin' }).catch(() => null)
         ]);
 
         if (resLogs.status === 401) {
