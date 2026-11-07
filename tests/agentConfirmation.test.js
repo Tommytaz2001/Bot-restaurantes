@@ -446,7 +446,7 @@ describe('agentService - Confirmation and Error Handling', () => {
     const firstCallArgs = chatCompletion.mock.calls[0][0];
     expect(firstCallArgs.systemPrompt).toContain('Susan');
     expect(firstCallArgs.systemPrompt).not.toContain('🧟‍♀️');
-    expect(firstCallArgs.systemPrompt).toContain('PROTOCOLO ESTRICTO DEL NOMBRE DEL CLIENTE');
+    expect(firstCallArgs.systemPrompt).toContain('ESTADO: Aún NO le has preguntado el nombre al cliente');
     expect(firstCallArgs.systemPrompt).toContain('RESPALDO / PLAN B');
 
     // saveOrder DEBE haber recibido 'Susan' sin emojis
@@ -455,6 +455,33 @@ describe('agentService - Confirmation and Error Handling', () => {
         cliente: 'Susan',
       })
     );
+  });
+
+  test('insiste por segunda vez cuando el bot ya preguntó el nombre 1 vez en el historial y el cliente aún no lo da', async () => {
+    // Añadimos en el historial una pregunta previa del nombre por parte del asistente
+    addMessage('session-insistir-1', { role: 'user', content: 'Una hamburguesa clásica para retiro, pago efectivo' });
+    addMessage('session-insistir-1', { role: 'assistant', content: '¡Perfecto! Anotada tu hamburguesa clásica. ¿A qué nombre completo dejamos la comanda?' });
+
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Anotado! Pero por favor indícame tu nombre completo para la comanda antes de continuar 🙏',
+      tool_calls: null,
+    });
+
+    const result = await processMessage({
+      message: 'con extra salsa de tomate',
+      sessionId: 'session-insistir-1',
+      restauranteId,
+      telefono: '88889999',
+      remoteJid: '50588889999@s.whatsapp.net',
+      contactName: 'Susan 🧟‍♀️',
+    });
+
+    const callArgs = chatCompletion.mock.calls[0][0];
+    expect(callArgs.systemPrompt).toContain('SEGUNDA INSISTENCIA');
+    expect(callArgs.systemPrompt).toContain('Le has preguntado el nombre al cliente 1 SOLA VEZ');
+    expect(callArgs.systemPrompt).toContain('ESTÁ TERMINANTEMENTE PROHIBIDO mostrar el resumen del pedido');
+    expect(result.reply).toContain('indícame tu nombre completo');
   });
 
   test('no duplica pedido ni ejecuta interceptor si el cliente ya tiene una orden activa en cocina y envía cortesía', async () => {

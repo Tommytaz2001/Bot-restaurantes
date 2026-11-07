@@ -12,7 +12,14 @@ const PROMPT_TEMPLATE = fs.readFileSync(
   'utf-8'
 );
 
-async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null, contactName = null) {
+const NAME_QUESTION_REGEX = /(a\s*qu[eé]\s*nombre|nombre\s*completo|tu\s*nombre|su\s*nombre|cu[aá]l\s*es\s*tu\s*nombre|c[oó]mo\s*te\s*llamas|br[ií]ndame\s*tu\s*nombre|ind[ií]came\s*tu\s*nombre)/i;
+
+function contarPreguntasNombre(history) {
+  if (!Array.isArray(history)) return 0;
+  return history.filter(m => m && m.role === 'assistant' && NAME_QUESTION_REGEX.test(m.content || '')).length;
+}
+
+async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null, contactName = null, vecesPreguntadoNombre = 0) {
   const config = await getRestauranteConfig(restauranteId);
   const menuText = await formatMenuForPrompt(restauranteId);
   const cuentasBancariasText = await getCuentasBancariasText(restauranteId);
@@ -26,20 +33,44 @@ async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, la
   const cleanContact = cleanContactName(contactName);
   let contextoCliente = '';
   if (cleanContact) {
-    contextoCliente = `\n## IDENTIDAD DEL CLIENTE
-- Nombre del perfil de WhatsApp del cliente (SOLO DE RESPALDO / PLAN B): "${cleanContact}".
-- PROTOCOLO ESTRICTO DEL NOMBRE DEL CLIENTE:
-  1. SIEMPRE debes preguntarle activamente su nombre completo al cliente en el chat ("¿A qué nombre dejamos tu orden?" o "¿Cuál es tu nombre para la comanda?") si el cliente aún no lo ha escrito en la conversación.
-  2. NUNCA asumas ni coloques el nombre de WhatsApp por adelantado en el resumen sin haberle preguntado primero al cliente.
-  3. Si el cliente responde con su nombre (ej: "Susan Blandón", "A nombre de Carlos"), usa SIEMPRE el nombre que el cliente te escribió.
-  4. SOLO en el caso de que ya le hayas preguntado su nombre (hasta dos veces) y el cliente lo ignore, lo omita o pase directamente a confirmar el pedido sin dar su nombre, ENTONCES y SOLO ENTONCES usa "${cleanContact}" como nombre de respaldo tanto en la línea 👤 *Cliente:* del resumen como en guardar_pedido.
-  5. TERMINANTEMENTE PROHIBIDO inventar nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", "Usuario", etc.`;
+    if (vecesPreguntadoNombre === 0) {
+      contextoCliente = '\n## IDENTIDAD DEL CLIENTE\n' +
+        '- Nombre del perfil de WhatsApp (SOLO RESPALDO / PLAN B): "' + cleanContact + '".\n' +
+        '- ESTADO: Aún NO le has preguntado el nombre al cliente en este chat (0 preguntas previas).\n' +
+        '- INSTRUCCIÓN OBLIGATORIA:\n' +
+        '  1. DEBES preguntarle activamente su nombre completo en este mensaje ("¿A qué nombre completo dejamos la comanda?" o "¿A qué nombre dejamos tu pedido?").\n' +
+        '  2. NUNCA asumas ni coloques el nombre de WhatsApp por adelantado en el resumen sin haberle preguntado primero al cliente.\n' +
+        '  3. ESTÁ TERMINANTEMENTE PROHIBIDO mostrar el resumen del pedido en este turno si el cliente no ha dicho su nombre. Primero debes preguntárselo.';
+    } else if (vecesPreguntadoNombre === 1) {
+      contextoCliente = '\n## IDENTIDAD DEL CLIENTE\n' +
+        '- Nombre del perfil de WhatsApp (SOLO RESPALDO / PLAN B): "' + cleanContact + '".\n' +
+        '- ESTADO: Le has preguntado el nombre al cliente 1 SOLA VEZ y el cliente aún NO ha dicho su nombre.\n' +
+        '- INSTRUCCIÓN OBLIGATORIA (SEGUNDA INSISTENCIA):\n' +
+        '  1. DEBES INSISTIR POR SEGUNDA VEZ (2do intento) pidiéndole amablemente su nombre para la comanda ("Por favor, ¿a qué nombre dejamos la orden antes de continuar? 🙏").\n' +
+        '  2. Si el cliente dio algún dato nuevo (como notas, salsas, etc.), confírmalo y añade la pregunta del nombre.\n' +
+        '  3. ESTÁ TERMINANTEMENTE PROHIBIDO mostrar el resumen del pedido o utilizar el nombre de WhatsApp todavía. Debes insistir esta segunda vez.';
+    } else {
+      contextoCliente = '\n## IDENTIDAD DEL CLIENTE\n' +
+        '- Nombre del perfil de WhatsApp (SOLO RESPALDO / PLAN B): "' + cleanContact + '".\n' +
+        '- ESTADO: Ya le has preguntado su nombre al cliente 2 o más veces.\n' +
+        '- INSTRUCCIÓN OBLIGATORIA:\n' +
+        '  1. Si el cliente respondió indicando su nombre en el chat, USA el nombre que el cliente te dio.\n' +
+        '  2. Si el cliente ignoró, evadió o no respondió el nombre tras haberle insistido 2 veces, AHORA SÍ puedes proceder al resumen utilizando como respaldo el nombre de WhatsApp ("' + cleanContact + '").\n' +
+        '  3. NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", etc.';
+    }
   } else {
-    contextoCliente = `\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA)
-- NO TIENES el nombre del cliente en este chat.
-- Es ESTRICTAMENTE OBLIGATORIO que le pidas su nombre completo ("¿A qué nombre completo dejamos tu pedido?") antes de mostrar el resumen o guardar el pedido.
-- Si el cliente envía productos, dirección o pago pero no da su nombre, DEBES responder pidiéndole su nombre completo antes de mostrar el resumen.
-- NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", etc.`;
+    if (vecesPreguntadoNombre === 0) {
+      contextoCliente = '\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA)\n' +
+        '- NO TIENES el nombre del cliente en este chat.\n' +
+        '- Es ESTRICTAMENTE OBLIGATORIO que le pidas su nombre completo ("¿A qué nombre completo dejamos tu pedido?") antes de mostrar el resumen o guardar el pedido.\n' +
+        '- Si el cliente envía productos, dirección o pago pero no da su nombre, DEBES responder pidiéndole su nombre completo antes de mostrar el resumen.\n' +
+        '- NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", etc.';
+    } else {
+      contextoCliente = '\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA - INSISTENCIA ' + (vecesPreguntadoNombre + 1) + ')\n' +
+        '- NO TIENES el nombre del cliente en este chat y ya se lo preguntaste ' + vecesPreguntadoNombre + ' vez/veces.\n' +
+        '- Si el cliente aún no te ha dado su nombre, vuelve a insistir amablemente ("Por favor, indícame tu nombre completo para poder enviar tu comanda al chef").\n' +
+        '- NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", etc.';
+    }
   }
 
   let contextoPedidoActivo = '';
@@ -170,11 +201,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
   // Buscar dirección anterior para clientes frecuentes
   const lastAddress = telefono ? await findLastDeliveryAddress(telefono) : null;
 
-  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress, contactName);
-
-
   // Capture history BEFORE addMessage to avoid duplication when spreading (soporta fallback por remoteJid para @lid)
   const history = getSession(sessionId, remoteJid);
+  const vecesPreguntadoNombre = contarPreguntasNombre(history);
+
+  const systemPrompt = await buildSystemPrompt(restauranteId, telefono, activeOrder, lastAddress, contactName, vecesPreguntadoNombre);
 
   // Add user message to history
   addMessage(sessionId, { role: 'user', content: message });
