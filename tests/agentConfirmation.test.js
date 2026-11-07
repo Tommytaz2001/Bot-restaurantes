@@ -653,6 +653,102 @@ describe('agentService - Confirmation and Error Handling', () => {
     expect(result.reply).not.toContain('Cliente Urbano');
     expect(result.reply).toContain('Carlos');
   });
+
+  test('interceptor reemplaza resumen con placeholder de dirección por solicitud de dirección exacta', async () => {
+    // La IA intentó generar un resumen pero puso placeholder en Entrega
+    const fakeSummary = `📋 *Resumen de tu pedido:*
+👤 *Cliente:* Susan
+• Tacos Birria x1 — 190 C$
+💰 *Subtotal:* 190 C$
+🛵 *Envío:* 40 C$
+💰 *Total:* 230 C$
+📍 *Entrega:* Dirección a domicilio (por favor confírmanos tu dirección exacta por este chat)
+💳 *Pago:* Efectivo
+
+¿Está todo correcto? Envía un "ok" para confirmar que todo esté bien. ✅`;
+
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: fakeSummary,
+    });
+
+    const result = await processMessage({
+      message: 'Envíalo a domicilio pago en efectivo',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+      contactName: 'Susan',
+    });
+
+    // Debe interceptar y pedir la dirección exacta en vez de enviar el resumen falso
+    expect(result.reply).not.toContain('Resumen de tu pedido');
+    expect(result.reply).toContain('¿A qué dirección');
+  });
+
+  test('rechaza guardar_pedido si la dirección de delivery es un placeholder', async () => {
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        {
+          id: 'call_ph_addr',
+          type: 'function',
+          function: {
+            name: 'guardar_pedido',
+            arguments: JSON.stringify({
+              cliente: 'Susan',
+              tipo_entrega: 'delivery',
+              direccion: 'Dirección a domicilio (por favor confírmanos tu dirección exacta por este chat)',
+              metodo_pago: 'efectivo',
+              productos: [{ nombre: 'Tacos Birria', cantidad: 1, precio_unitario: 190 }],
+              total: 230,
+            }),
+          },
+        },
+      ],
+    }).mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Perfecto Susan! ¿A qué dirección exacta te llevamos los tacos? 🛵',
+    });
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+      contactName: 'Susan',
+    });
+
+    expect(saveOrder).not.toHaveBeenCalled();
+    expect(result.order).toBeNull();
+  });
+
+  test('no cuenta listas de requisitos con viñetas ("• Nombre completo") como preguntas activas de nombre', async () => {
+    // Simulamos un historial donde el bot envió la plantilla inicial de requisitos
+    const { addMessage } = require('../src/agent/sessionStore');
+    addMessage(sessionId, {
+      role: 'assistant',
+      content: '¡Perfecto! Para tu pedido a domicilio necesito:\n• Nombre completo\n• Dirección de entrega\n• Pago: efectivo o transferencia',
+    });
+
+    // En el siguiente turno el cliente envía su pedido sin nombre
+    chatCompletion.mockResolvedValueOnce({
+      role: 'assistant',
+      content: '¡Excelente elección! 🍔 ¿A qué nombre completo dejamos la comanda?',
+    });
+
+    const result = await processMessage({
+      message: '1 clásica con papas a domicilio en barrio central',
+      sessionId,
+      restauranteId,
+      telefono: '50577771234',
+      contactName: 'Susan',
+    });
+
+    // El system prompt inyectado debe indicar 0 preguntas previas (no 1)
+    const lastCall = chatCompletion.mock.calls[0][0];
+    expect(lastCall.systemPrompt).toContain('0 preguntas previas');
+  });
 });
 
 

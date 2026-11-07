@@ -96,4 +96,23 @@ describe('orderValidator', () => {
     const order = { ...validOrder, tipo_entrega: 'retiro' };
     expect(() => validateOrder(order)).not.toThrow();
   });
+
+  test('lanza error si direccion en delivery es un texto provisional o placeholder', () => {
+    const placeholders = [
+      'Dirección a domicilio (por favor confírmanos tu dirección exacta por este chat)',
+      'Dirección a domicilio',
+      'a domicilio',
+      'pendiente de dirección',
+      'por favor confírmanos tu dirección',
+    ];
+    for (const ph of placeholders) {
+      const order = { ...validOrder, direccion: ph };
+      expect(() => validateOrder(order)).toThrow('direccion inválida para delivery');
+    }
+  });
+
+  test('acepta direccion real de delivery en Nicaragua', () => {
+    const order = { ...validOrder, direccion: 'Las chancas de quebedo casa roja portón negro' };
+    expect(() => validateOrder(order)).not.toThrow();
+  });
 });

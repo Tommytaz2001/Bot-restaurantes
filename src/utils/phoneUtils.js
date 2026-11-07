@@ -221,10 +221,43 @@ function cleanContactName(raw) {
   return cleaned;
 }
 
+/**
+ * Determina si una dirección dada es un texto genérico, provisional o placeholder
+ * (ej: "Dirección a domicilio (por favor confírmanos tu dirección exacta por este chat)",
+ * "a domicilio", "pendiente", "por confirmar") y no una dirección física real.
+ * @param {string|null} address 
+ * @returns {boolean} true si es un placeholder, false si es una dirección real
+ */
+function isPlaceholderAddress(address) {
+  if (!address || typeof address !== 'string') return true;
+  const clean = address.trim().toLowerCase();
+  if (clean.length < 5) return true;
+
+  // Frases que indican claramente que es un placeholder inventado o provisional
+  const placeholderPatterns = [
+    /direcci[oó]n\s*a\s*domicilio/i,
+    /por\s*favor\s*conf[ií]rmanos/i,
+    /conf[ií]rmanos\s*tu\s*direcci[oó]n/i,
+    /pendiente(\s*de\s*direcci[oó]n)?/i,
+    /por\s*confirmar/i,
+    /por\s*definir/i,
+    /sin\s*direcci[oó]n/i,
+    /no\s*especificad[ao]/i,
+    /no\s*proporcionad[ao]/i,
+    /^a\s*domicilio$/i,
+    /^domicilio$/i,
+    /^entrega\s*a\s*domicilio$/i,
+    /^casa$/i,
+  ];
+
+  return placeholderPatterns.some(pattern => pattern.test(clean));
+}
+
 module.exports = {
   cleanPhoneNumber,
   deduplicateDigits,
   extractDigits,
   isAdminOrOwnerPhone,
   cleanContactName,
+  isPlaceholderAddress,
 };

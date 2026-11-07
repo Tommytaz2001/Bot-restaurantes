@@ -1,4 +1,4 @@
-const { cleanPhoneNumber, deduplicateDigits, extractDigits, isAdminOrOwnerPhone, cleanContactName } = require('../src/utils/phoneUtils');
+const { cleanPhoneNumber, deduplicateDigits, extractDigits, isAdminOrOwnerPhone, cleanContactName, isPlaceholderAddress } = require('../src/utils/phoneUtils');
 
 describe('phoneUtils', () => {
   describe('extractDigits', () => {
@@ -120,6 +120,31 @@ describe('phoneUtils', () => {
       expect(cleanContactName('🧟‍♀️🔥')).toBeNull();
       expect(cleanContactName('')).toBeNull();
       expect(cleanContactName(null)).toBeNull();
+    });
+  });
+
+  describe('isPlaceholderAddress', () => {
+    test('identifica frases provisionales o placeholders de dirección', () => {
+      expect(isPlaceholderAddress('Dirección a domicilio (por favor confírmanos tu dirección exacta por este chat)')).toBe(true);
+      expect(isPlaceholderAddress('Dirección a domicilio')).toBe(true);
+      expect(isPlaceholderAddress('a domicilio')).toBe(true);
+      expect(isPlaceholderAddress('domicilio')).toBe(true);
+      expect(isPlaceholderAddress('pendiente de dirección')).toBe(true);
+      expect(isPlaceholderAddress('por favor confírmanos tu dirección')).toBe(true);
+      expect(isPlaceholderAddress('por confirmar')).toBe(true);
+      expect(isPlaceholderAddress('por definir')).toBe(true);
+      expect(isPlaceholderAddress('sin dirección')).toBe(true);
+      expect(isPlaceholderAddress('casa')).toBe(true);
+      expect(isPlaceholderAddress(null)).toBe(true);
+      expect(isPlaceholderAddress('')).toBe(true);
+    });
+
+    test('reconoce direcciones legítimas nicaragüenses', () => {
+      expect(isPlaceholderAddress('Las chancas de quebedo casa roja portón negro')).toBe(false);
+      expect(isPlaceholderAddress('dónde fue el club social cuadra y media al norte')).toBe(false);
+      expect(isPlaceholderAddress('De rest Mi Rancho 10 vrs al sur, casa naranja')).toBe(false);
+      expect(isPlaceholderAddress('Barrio Sandino de la iglesia 2c al sur')).toBe(false);
+      expect(isPlaceholderAddress('Frente al parque central casa esquinera')).toBe(false);
     });
   });
 });

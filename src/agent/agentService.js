@@ -5,7 +5,7 @@ const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = r
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress } = require('../orders/orderService');
 const { log } = require('../utils/logger');
-const { cleanPhoneNumber, isAdminOrOwnerPhone, cleanContactName } = require('../utils/phoneUtils');
+const { cleanPhoneNumber, isAdminOrOwnerPhone, cleanContactName, isPlaceholderAddress } = require('../utils/phoneUtils');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -14,9 +14,37 @@ const PROMPT_TEMPLATE = fs.readFileSync(
 
 const NAME_QUESTION_REGEX = /(a\s*qu[eé]\s*nombre|nombre\s*completo|tu\s*nombre|su\s*nombre|cu[aá]l\s*es\s*tu\s*nombre|c[oó]mo\s*te\s*llamas|br[ií]ndame\s*tu\s*nombre|ind[ií]came\s*tu\s*nombre)/i;
 
+function esPreguntaActivaNombre(content) {
+  if (!content || typeof content !== 'string') return false;
+  const lines = content.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Descartar si es una viñeta pasiva de lista de requisitos (ej: "• Nombre completo", "- Nombre completo", "* Nombre completo", "1. Nombre completo")
+    if (/^[•\-*\d.]+\s*(nombre\s*completo|tu\s*nombre|su\s*nombre)/i.test(trimmed)) {
+      continue;
+    }
+    if (NAME_QUESTION_REGEX.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function contarPreguntasNombre(history) {
   if (!Array.isArray(history)) return 0;
-  return history.filter(m => m && m.role === 'assistant' && NAME_QUESTION_REGEX.test(m.content || '')).length;
+  return history.filter(m => m && m.role === 'assistant' && esPreguntaActivaNombre(m.content)).length;
+}
+
+const SUMMARY_REGEX = /📋\s*\*?Resumen\s*de\s*tu\s*pedido:\*?/i;
+const DELIVERY_SUMMARY_LINE_REGEX = /📍\s*\*?Entrega:\*?\s*([^\n\r]+)/i;
+
+function contieneResumenConDireccionPlaceholder(content) {
+  if (!content || typeof content !== 'string') return false;
+  if (!SUMMARY_REGEX.test(content)) return false;
+  const match = content.match(DELIVERY_SUMMARY_LINE_REGEX);
+  if (!match) return false;
+  const direccionExtraida = match[1].trim();
+  return isPlaceholderAddress(direccionExtraida);
 }
 
 async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, lastAddress = null, contactName = null, vecesPreguntadoNombre = 0) {
@@ -114,9 +142,12 @@ Este cliente tiene un pedido activo en cocina que aún NO ha sido despachado:
     }
   }
 
-  let contextoDireccion = '';
+  let contextoDireccion = '\n## REGLA DE ENTREGA A DOMICILIO (DELIVERY)\n' +
+    '- Si el pedido es a domicilio (delivery), es ESTRICTAMENTE OBLIGATORIO pedir y tener la DIRECCIÓN EXACTA de entrega antes de mostrar el resumen.\n' +
+    '- ESTÁ TERMINANTEMENTE PROHIBIDO poner frases provisionales o sustitutas como "Dirección a domicilio (por favor confírmanos...)", "a domicilio" o "pendiente" en la línea de Entrega del resumen.\n' +
+    '- Si el cliente no ha proporcionado una dirección física exacta con referencias claras, NO MUESTRES EL RESUMEN; pídele primero su dirección exacta.';
   if (lastAddress) {
-    contextoDireccion = `\n## DIRECCIÓN ANTERIOR\nLa última dirección de entrega de este cliente fue: "${lastAddress}".\nCuando pida delivery, ofrece: "¿Te lo enviamos a ${lastAddress} como la última vez, o a otra dirección?"\nSi confirma, usa esa dirección. Si da una nueva, usa la nueva.`;
+    contextoDireccion += `\n\n## DIRECCIÓN ANTERIOR\nLa última dirección de entrega de este cliente fue: "${lastAddress}".\nCuando pida delivery, ofrece: "¿Te lo enviamos a ${lastAddress} como la última vez, o a otra dirección?"\nSi confirma, usa esa dirección. Si da una nueva, usa la nueva.`;
   }
 
   return PROMPT_TEMPLATE
@@ -293,6 +324,11 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
           clienteFinal = cleanContact;
         } else if (!clienteFinal || esGenerico) {
           clienteFinal = 'Cliente';
+        }
+
+        if (orderArgs.tipo_entrega === 'delivery' && isPlaceholderAddress(orderArgs.direccion)) {
+          log(`[PEDIDO] ❌ guardar_pedido rechazado: Dirección de delivery es provisional o placeholder ("${orderArgs.direccion}")`);
+          throw new Error('Dirección de delivery inválida: se requiere una dirección exacta y no un texto provisional');
         }
 
         savedOrder = await saveOrder({
@@ -502,6 +538,19 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
 
       return { reply: statusMessage.content, order: null };
     }
+  }
+
+  // Interceptor defensivo: si el modelo generó un resumen de delivery con dirección provisional/placeholder,
+  // cancelamos ese resumen y solicitamos de inmediato la dirección exacta antes de mostrar el resumen.
+  if (contieneResumenConDireccionPlaceholder(assistantMessage.content)) {
+    log(`[agentService] ⚠️ INTERCEPTOR: La IA generó un resumen de delivery con dirección provisional/placeholder ("${(assistantMessage.content || '').slice(0, 100)}..."). Reemplazando por solicitud de dirección exacta.`);
+    let addressPromptReply;
+    if (vecesPreguntadoNombre === 0) {
+      addressPromptReply = '¡Perfecto! Ya anoté tu pedido a domicilio 🛵. ¿A qué dirección exacta te lo enviamos y a qué nombre dejamos la orden? 📍';
+    } else {
+      addressPromptReply = '¡Perfecto! Ya anoté tu pedido a domicilio 🛵. ¿A qué dirección exacta te lo enviamos? 📍';
+    }
+    assistantMessage.content = addressPromptReply;
   }
 
   // Normal response — no function call

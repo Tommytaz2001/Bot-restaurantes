@@ -1,3 +1,5 @@
+const { isPlaceholderAddress } = require('../utils/phoneUtils');
+
 function validateOrder(order) {
   const required = ['cliente', 'tipo_entrega', 'direccion', 'productos', 'total', 'metodo_pago'];
   for (const field of required) {
@@ -6,7 +8,7 @@ function validateOrder(order) {
     }
   }
 
-  // Teléfono requerido solo para delivery
+  // Teléfono y dirección válida requeridos para delivery
   if (order.tipo_entrega === 'delivery') {
     if (!order.telefono) {
       throw new Error('Campo requerido faltante: telefono (requerido para delivery)');
@@ -14,6 +16,9 @@ function validateOrder(order) {
     const digits = String(order.telefono).replace(/\D/g, '');
     if (digits.length < 7 || digits.length > 15) {
       throw new Error('telefono inválido: formato o longitud incorrecta');
+    }
+    if (isPlaceholderAddress(order.direccion)) {
+      throw new Error('direccion inválida para delivery: se requiere una dirección real y no un texto provisional');
     }
   }
 

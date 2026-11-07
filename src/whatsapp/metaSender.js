@@ -74,6 +74,9 @@ async function _dispatchSingle(apiUrl, apiKey, instance, destination, text) {
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     const errText = JSON.stringify(errorBody);
+    if (errText.includes("reading 'find'")) {
+      console.warn(`[metaSender] ⚠️ Evolution API reportó que la sesión de WhatsApp en la instancia "${instance}" no está disponible o está desconectada ("reading 'find'"). Por favor reconecta el QR en /whatsapp/qr`);
+    }
     const err = new Error(`Evolution API error ${response.status}: ${errText}`);
     err.status = response.status;
     err.errorBody = errorBody;
