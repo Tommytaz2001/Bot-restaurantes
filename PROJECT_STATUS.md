@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `11328c4 fix(webhook): configure global webhook in compose, live code volumes, and robust v2 fallback` 
+**Último commit:** `dc4203c fix(logs): suppress HTTP poll spam, correct error classifier, set 100mb body limit, and handle payload too large` 
 
 ---
 
