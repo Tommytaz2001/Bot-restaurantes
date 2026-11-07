@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `eb81b8d fix(agent): require delivery address before summary, prevent placeholder addresses and fix name question counter` 
+**Último commit:** `9632252 fix(agent): enforce conversational no-regression principle and eliminate delivery/retiro loop` 
 
 ---
 
