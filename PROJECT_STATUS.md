@@ -2,7 +2,7 @@
 
 **Última actualización:** 5 de Noviembre de 2026  
 **Rama activa:** `feature/evolution-api`  
-**Último commit:** `0aed2d7 feat(agent): require asking customer name in chat before falling back to cleaned WhatsApp profile name` 
+**Último commit:** `1804115 feat(agent): enforce 2-attempt insistence for customer name before using WhatsApp fallback` 
 
 ---
 
