@@ -5,7 +5,7 @@ const { getRestauranteConfig, formatMenuForPrompt, getCuentasBancariasText } = r
 const { getSession, addMessage, setLastOrderId, getLastOrderId, clearSession } = require('./sessionStore');
 const { saveOrder, solicitarCambioPedido, cancelarPedido, consultarEstadoPedido, estadoLegible, findActiveOrderByPhone, findLastDeliveryAddress } = require('../orders/orderService');
 const { log } = require('../utils/logger');
-const { cleanPhoneNumber, isAdminOrOwnerPhone } = require('../utils/phoneUtils');
+const { cleanPhoneNumber, isAdminOrOwnerPhone, cleanContactName } = require('../utils/phoneUtils');
 
 const PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../../prompts/agent.txt'),
@@ -23,11 +23,23 @@ async function buildSystemPrompt(restauranteId, telefono, activeOrder = null, la
 - Si el pedido es RETIRO EN LOCAL: no necesitas pedir su número de teléfono. Omite el campo 'telefono' al guardar el pedido.
 - Si el pedido es DELIVERY: ES ESTRICTAMENTE OBLIGATORIO que le pidas su número de teléfono de contacto para el repartidor ("¿Me podrías brindar un número de teléfono de contacto para que el repartidor te llame al llegar?"). NUNCA inventes números ni uses números del restaurante. Si el cliente no te da su teléfono de contacto, NO muestres el resumen y pídelo antes de proceder.`;
 
+  const cleanContact = cleanContactName(contactName);
   let contextoCliente = '';
-  if (contactName && String(contactName).trim() && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(String(contactName).trim())) {
-    contextoCliente = `\n## IDENTIDAD DEL CLIENTE\nEl nombre del cliente según su WhatsApp es: "${String(contactName).trim()}". Si el cliente no ha dado otro nombre en el chat, usa este nombre tanto para dirigirte a él como en la línea 👤 *Cliente:* del resumen y en el campo 'cliente' al invocar guardar_pedido. NUNCA inventes nombres genéricos como "Cliente Urbano".`;
+  if (cleanContact) {
+    contextoCliente = `\n## IDENTIDAD DEL CLIENTE
+- Nombre del perfil de WhatsApp del cliente (SOLO DE RESPALDO / PLAN B): "${cleanContact}".
+- PROTOCOLO ESTRICTO DEL NOMBRE DEL CLIENTE:
+  1. SIEMPRE debes preguntarle activamente su nombre completo al cliente en el chat ("¿A qué nombre dejamos tu orden?" o "¿Cuál es tu nombre para la comanda?") si el cliente aún no lo ha escrito en la conversación.
+  2. NUNCA asumas ni coloques el nombre de WhatsApp por adelantado en el resumen sin haberle preguntado primero al cliente.
+  3. Si el cliente responde con su nombre (ej: "Susan Blandón", "A nombre de Carlos"), usa SIEMPRE el nombre que el cliente te escribió.
+  4. SOLO en el caso de que ya le hayas preguntado su nombre (hasta dos veces) y el cliente lo ignore, lo omita o pase directamente a confirmar el pedido sin dar su nombre, ENTONCES y SOLO ENTONCES usa "${cleanContact}" como nombre de respaldo tanto en la línea 👤 *Cliente:* del resumen como en guardar_pedido.
+  5. TERMINANTEMENTE PROHIBIDO inventar nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", "Usuario", etc.`;
   } else {
-    contextoCliente = `\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA)\nNO TIENES el nombre del cliente en este chat. Es ESTRICTAMENTE OBLIGATORIO que le pidas su nombre completo ("¿A qué nombre completo dejamos el pedido?") antes de mostrar el resumen o guardar el pedido. NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", etc. Si el cliente envía dirección y pago pero no da su nombre, DEBES responder pidiéndole su nombre completo antes de mostrar el resumen.`;
+    contextoCliente = `\n## IDENTIDAD DEL CLIENTE (DESCONOCIDA)
+- NO TIENES el nombre del cliente en este chat.
+- Es ESTRICTAMENTE OBLIGATORIO que le pidas su nombre completo ("¿A qué nombre completo dejamos tu pedido?") antes de mostrar el resumen o guardar el pedido.
+- Si el cliente envía productos, dirección o pago pero no da su nombre, DEBES responder pidiéndole su nombre completo antes de mostrar el resumen.
+- NUNCA inventes nombres genéricos como "Cliente Urbano", "Cliente", "Amigo", etc.`;
   }
 
   let contextoPedidoActivo = '';
@@ -242,11 +254,12 @@ async function processMessage({ message, sessionId, restauranteId, telefono, rem
         const telefonoFinal = cleanPhoneNumber(rawTelefono);
 
         // Si el cliente no especificó nombre o el modelo devolvió un nombre genérico ("Cliente Urbano", "amigo"),
-        // usar contactName si está disponible
-        clienteFinal = (orderArgs.cliente || '').trim();
+        // usar contactName saneado (sin emojis) si está disponible como respaldo
+        clienteFinal = cleanContactName(orderArgs.cliente) || (orderArgs.cliente || '').trim();
         const esGenerico = !clienteFinal || /^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(clienteFinal);
-        if (esGenerico && contactName && String(contactName).trim() && !/^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(String(contactName).trim())) {
-          clienteFinal = String(contactName).trim();
+        const cleanContact = cleanContactName(contactName);
+        if (esGenerico && cleanContact) {
+          clienteFinal = cleanContact;
         } else if (!clienteFinal || esGenerico) {
           clienteFinal = 'Cliente';
         }

@@ -403,6 +403,60 @@ describe('agentService - Confirmation and Error Handling', () => {
     expect(result.reply).not.toContain('Cliente Urbano');
   });
 
+  test('limpia emojis de contactName (Susan 🧟‍♀️ -> Susan) y lo define como respaldo indicando preguntar primero al cliente', async () => {
+    const mockOrder = {
+      id: 'order-susan-1',
+      cliente: 'Susan',
+      total: 200,
+      estado: 'pendiente',
+    };
+    saveOrder.mockResolvedValueOnce(mockOrder);
+
+    chatCompletion
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_susan',
+            type: 'function',
+            function: {
+              name: 'guardar_pedido',
+              arguments: JSON.stringify({
+                cliente: 'Susan 🧟‍♀️',
+                tipo_entrega: 'retiro',
+                metodo_pago: 'efectivo',
+                productos: [{ nombre: 'Hamburguesa Premium', cantidad: 1, precio_unitario: 200 }],
+              }),
+            },
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('Simulated LLM error'));
+
+    const result = await processMessage({
+      message: 'ok',
+      sessionId: '50588889999',
+      restauranteId,
+      telefono: '88889999',
+      remoteJid: '50588889999@s.whatsapp.net',
+      contactName: 'Susan 🧟‍♀️',
+    });
+
+    const firstCallArgs = chatCompletion.mock.calls[0][0];
+    expect(firstCallArgs.systemPrompt).toContain('Susan');
+    expect(firstCallArgs.systemPrompt).not.toContain('🧟‍♀️');
+    expect(firstCallArgs.systemPrompt).toContain('PROTOCOLO ESTRICTO DEL NOMBRE DEL CLIENTE');
+    expect(firstCallArgs.systemPrompt).toContain('RESPALDO / PLAN B');
+
+    // saveOrder DEBE haber recibido 'Susan' sin emojis
+    expect(saveOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cliente: 'Susan',
+      })
+    );
+  });
+
   test('no duplica pedido ni ejecuta interceptor si el cliente ya tiene una orden activa en cocina y envía cortesía', async () => {
     // Simulamos que el cliente ya tiene un pedido guardado en esta sesión
     setLastOrderId(sessionId, 'order-existente-123');

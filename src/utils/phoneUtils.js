@@ -201,9 +201,30 @@ function isAdminOrOwnerPhone(phone) {
   return false;
 }
 
+/**
+ * Sanea el nombre de un contacto o perfil de WhatsApp eliminando emojis,
+ * caracteres gráficos especiales y espacios redundantes.
+ * Retorna null si el resultado es genérico ("Cliente", "Amigo", etc.) o vacío.
+ * @param {string|null} raw 
+ * @returns {string|null}
+ */
+function cleanContactName(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let cleaned = raw
+    .replace(/\p{Extended_Pictographic}|\p{Emoji_Component}|[\u200D\uFE0F\uFE0E]/gu, '')
+    .trim();
+  cleaned = cleaned.replace(/^["'“”‘’\-_.~*+/:;()\[\]{}]+|["'“”‘’\-_.~*+/:;()\[\]{}]+$/g, '').trim();
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  if (!cleaned || /^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
+}
+
 module.exports = {
   cleanPhoneNumber,
   deduplicateDigits,
   extractDigits,
   isAdminOrOwnerPhone,
+  cleanContactName,
 };

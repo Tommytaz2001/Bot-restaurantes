@@ -4,7 +4,7 @@ const { randomUUID } = require('crypto');
 const { query, pool } = require('../db/connection');
 const { validateOrder } = require('./orderValidator');
 const { orderEvents } = require('../services/orderEvents');
-const { cleanPhoneNumber, isAdminOrOwnerPhone } = require('../utils/phoneUtils');
+const { cleanPhoneNumber, isAdminOrOwnerPhone, cleanContactName } = require('../utils/phoneUtils');
 
 const COSTO_ENVIO = 40;
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
@@ -219,11 +219,11 @@ async function saveOrder(orderData) {
   }
   orderData.metodo_pago = metodoPago;
 
-  // 4. Normalización defensiva de cliente
-  let clienteLimpio = String(orderData.cliente || '').trim();
+  // 4. Normalización defensiva de cliente (remueve emojis y garantiza fallback limpio)
+  let clienteLimpio = cleanContactName(orderData.cliente) || String(orderData.cliente || '').trim();
   const esGenerico = !clienteLimpio || /^(cliente(\s*urbano)?|amigo|usuario|anonimo)$/i.test(clienteLimpio);
   if (esGenerico && orderData.contactName && String(orderData.contactName).trim()) {
-    clienteLimpio = String(orderData.contactName).trim();
+    clienteLimpio = cleanContactName(orderData.contactName) || String(orderData.contactName).trim();
   } else if (esGenerico) {
     clienteLimpio = 'Cliente';
   }

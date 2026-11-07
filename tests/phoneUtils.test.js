@@ -1,4 +1,4 @@
-const { cleanPhoneNumber, deduplicateDigits, extractDigits, isAdminOrOwnerPhone } = require('../src/utils/phoneUtils');
+const { cleanPhoneNumber, deduplicateDigits, extractDigits, isAdminOrOwnerPhone, cleanContactName } = require('../src/utils/phoneUtils');
 
 describe('phoneUtils', () => {
   describe('extractDigits', () => {
@@ -102,6 +102,24 @@ describe('phoneUtils', () => {
       expect(isAdminOrOwnerPhone('58544518')).toBe(false);
       expect(isAdminOrOwnerPhone(null)).toBe(false);
       expect(isAdminOrOwnerPhone('')).toBe(false);
+    });
+  });
+
+  describe('cleanContactName', () => {
+    test('sanea nombres eliminando emojis y caracteres especiales', () => {
+      expect(cleanContactName('Susan 🧟‍♀️')).toBe('Susan');
+      expect(cleanContactName('Jordan Vera🔥')).toBe('Jordan Vera');
+      expect(cleanContactName('Martin Espinoza')).toBe('Martin Espinoza');
+      expect(cleanContactName('  "Carlos López"  ')).toBe('Carlos López');
+    });
+
+    test('retorna null para nombres genéricos, vacíos o que solo contienen emojis', () => {
+      expect(cleanContactName('Cliente Urbano')).toBeNull();
+      expect(cleanContactName('cliente')).toBeNull();
+      expect(cleanContactName('amigo')).toBeNull();
+      expect(cleanContactName('🧟‍♀️🔥')).toBeNull();
+      expect(cleanContactName('')).toBeNull();
+      expect(cleanContactName(null)).toBeNull();
     });
   });
 });
