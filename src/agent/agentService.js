@@ -47,21 +47,21 @@ function contieneResumenConDireccionPlaceholder(content) {
   return isPlaceholderAddress(direccionExtraida);
 }
 
-const REDUNDANT_DELIVERY_QUESTION_REGEX = /(a\s*domicilio\s*🛵?\s*o\s*prefieres\s*pasar\s*a\s*retirar|pasar\s*a\s*retirar.*o.*a\s*domicilio|domicilio\s*🛵?\s*o\s*retiro)/i;
+const REDUNDANT_DELIVERY_QUESTION_REGEX = /(?:(?:a\s*domicilio|delivery|env[ií]o|mand[aá]r|envi[aá]r).*(?:o\s*|versus\s*).*(?:retir|llevar|recog|local)|(?:retir|llevar|recog|local).*(?:o\s*|versus\s*).*(?:a\s*domicilio|delivery|env[ií]o|mand[aá]r|envi[aá]r)|domicilio\s*🛵?\s*o\s*retiro)/i;
 
 function haDefinidoTipoEntregaEnHistorial(history) {
   if (!Array.isArray(history)) return null;
   for (const m of history) {
     const text = (m.content || '').toLowerCase();
     if (m.role === 'user') {
-      if (/\b(a\s*domicilio|delivery|env[ií]am[eo]|m[aá]ndam[eo]|para\s*env[ií]o|para\s*delivery)\b/i.test(text)) {
+      if (/\b(a\s*domicilio|delivery|env[ií]am[eo]|m[aá]ndam[eo]|para\s*env[ií]o|para\s*delivery|domicilio)\b/i.test(text)) {
         return 'delivery';
       }
       if (/\b(retiro|para\s*llevar|paso\s*a\s*recoger|lo\s*recojo|voy\s*al\s*local|para\s*retirar)\b/i.test(text)) {
         return 'retiro';
       }
     } else if (m.role === 'assistant') {
-      if (/ya\s*anot[eé]\s*tu\s*(pedido\s*a\s*domicilio|direcci[oó]n\s*para\s*el\s*delivery)/i.test(text)) {
+      if (/ya\s*anot[eé]\s*tu\s*(pedido\s*a\s*domicilio|direcci[oó]n)/i.test(text)) {
         return 'delivery';
       }
       if (/ya\s*anot[eé]\s*tu\s*pedido\s*para\s*retiro/i.test(text)) {

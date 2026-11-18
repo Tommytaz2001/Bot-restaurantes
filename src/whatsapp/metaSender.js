@@ -4,6 +4,7 @@
  */
 const { getPhoneForLid, resolveLid } = require('./lidResolver');
 const { isAdminOrOwnerPhone } = require('../utils/phoneUtils');
+const { log } = require('../utils/logger');
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -75,7 +76,9 @@ async function _dispatchSingle(apiUrl, apiKey, instance, destination, text) {
     const errorBody = await response.json().catch(() => ({}));
     const errText = JSON.stringify(errorBody);
     if (errText.includes("reading 'find'")) {
-      console.warn(`[metaSender] ⚠️ Evolution API reportó que la sesión de WhatsApp en la instancia "${instance}" no está disponible o está desconectada ("reading 'find'"). Por favor reconecta el QR en /whatsapp/qr`);
+      const findMsg = `[metaSender] ⚠️ Evolution API reportó que la sesión de WhatsApp en la instancia "${instance}" no está disponible o está desconectada ("reading 'find'"). Por favor reconecta el QR en /whatsapp/qr`;
+      console.warn(findMsg);
+      log(findMsg);
     }
     const err = new Error(`Evolution API error ${response.status}: ${errText}`);
     err.status = response.status;

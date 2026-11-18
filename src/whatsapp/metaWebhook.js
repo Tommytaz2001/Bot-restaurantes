@@ -92,6 +92,9 @@ async function handleWebhook(req, res) {
       _lastLoggedConnectionState = state;
       const reasonStr = reasonInfo ? ` [motivo: ${typeof reasonInfo === 'object' ? JSON.stringify(reasonInfo) : reasonInfo}]` : '';
       log(`[Webhook] Conexión WhatsApp estado: "${state}"${reasonStr}`);
+      if (state === 'close' && (Number(statusReason) === 401 || Number(disconnectError) === 401)) {
+        log('[Webhook] 🚨 SESIÓN CERRADA / DESVINCULADA (Motivo 401: Logged Out). WhatsApp cerró la sesión del dispositivo. Para volver a recibir y enviar mensajes, abre /whatsapp/qr y escanea el código QR nuevamente.');
+      }
       if (state === 'open') {
         log('[Webhook] Conexión WhatsApp abierta ("open"). Verificando aviso de despliegue...');
         const { notificarDespliegue } = require('../services/deployNotificationService');
