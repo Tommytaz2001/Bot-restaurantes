@@ -15,7 +15,7 @@ import {
   BellRing,
   ShieldAlert,
 } from 'lucide-react';
-import { Usuario } from '../services/api';
+import { Usuario, getBackendUrl } from '../services/api';
 import { audioAlert } from '../services/audio';
 import { webNotifications } from '../services/webNotificationService';
 
@@ -28,6 +28,7 @@ interface NavbarProps {
   pendientesCambioCount: number;
   isLive: boolean;
   botActivo: boolean;
+  whatsAppConnected?: boolean | null;
   onToggleBot: () => void;
   onOpenConfig: () => void;
   onLogout: () => void;
@@ -41,6 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendientesCambioCount,
   isLive,
   botActivo,
+  whatsAppConnected,
   onToggleBot,
   onOpenConfig,
   onLogout,
@@ -102,6 +104,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                     Reconectando...
                   </span>
                 )}
+                {whatsAppConnected === false ? (
+                  <a
+                    href={`${getBackendUrl()}/whatsapp/qr`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="WhatsApp desconectado. Toca para escanear QR"
+                    className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition-all font-bold animate-pulse"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                    <span>WA Desconectado</span>
+                  </a>
+                ) : whatsAppConnected === true ? (
+                  <span
+                    title="WhatsApp conectado y recibiendo mensajes"
+                    className="hidden sm:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>WA Online</span>
+                  </span>
+                ) : null}
                 <span className="text-slate-600">•</span>
                 <span className="text-slate-400 truncate max-w-[120px]">{user?.nombre || user?.email}</span>
               </div>

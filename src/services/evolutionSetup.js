@@ -229,7 +229,9 @@ async function setupEvolution(overrideInstance) {
   if (setupPromise) return setupPromise;
   setupPromise = (async () => {
     try {
-      return await doSetupEvolution(overrideInstance);
+      const res = await doSetupEvolution(overrideInstance);
+      startConnectionWatcher();
+      return res;
     } finally {
       setupPromise = null;
     }
@@ -237,9 +239,51 @@ async function setupEvolution(overrideInstance) {
   return setupPromise;
 }
 
+async function getConnectionState(overrideInstance) {
+  try {
+    const { instance } = getConfig(overrideInstance);
+    const res = await evFetch(`/instance/connectionState/${instance}`);
+    if (!res.ok) return { connected: false, state: 'unknown' };
+    const data = await res.json().catch(() => ({}));
+    const state = data?.instance?.state || data?.state || 'unknown';
+    return { connected: state === 'open', state, instance };
+  } catch (err) {
+    return { connected: false, state: 'error', error: err.message };
+  }
+}
+
+let _watcherInterval = null;
+let _lastWatchedState = null;
+
+function startConnectionWatcher(intervalMs = 45_000) {
+  if (_watcherInterval) return;
+  _watcherInterval = setInterval(async () => {
+    try {
+      const stateObj = await getConnectionState();
+      if (stateObj.state !== _lastWatchedState) {
+        _lastWatchedState = stateObj.state;
+        const { orderEvents } = require('./orderEvents');
+        orderEvents.emit('whatsapp:status', {
+          connected: stateObj.connected,
+          state: stateObj.state,
+          timestamp: new Date().toISOString(),
+        });
+        if (!stateObj.connected && stateObj.state !== 'unknown') {
+          log(`[ConnectionWatcher] ⚠️ Estado WhatsApp cambiado: "${stateObj.state}". Bot desconectado.`);
+        }
+      }
+    } catch (_) {}
+  }, intervalMs);
+  if (_watcherInterval && _watcherInterval.unref) {
+    _watcherInterval.unref();
+  }
+}
+
 module.exports = {
   setupEvolution,
   setWebhook,
   getWebhookStatus,
   getConfig,
+  getConnectionState,
+  startConnectionWatcher,
 };

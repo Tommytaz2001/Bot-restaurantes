@@ -2,12 +2,22 @@ import { getBackendUrl, getToken, Pedido } from './api';
 import { audioAlert } from './audio';
 import { webNotifications } from './webNotificationService';
 
+export interface WhatsAppStatusPayload {
+  connected: boolean | null;
+  state: string;
+  reason?: string | null;
+  motivo?: any;
+  timestamp?: string;
+}
+
 type PedidosCallback = (pedidos: Pedido[]) => void;
 type StatusCallback = (connected: boolean) => void;
+type WhatsAppStatusCallback = (status: WhatsAppStatusPayload) => void;
 
 export function connectPedidosActivosStream(
   onData: PedidosCallback,
-  onStatusChange?: StatusCallback
+  onStatusChange?: StatusCallback,
+  onWhatsAppStatusChange?: WhatsAppStatusCallback
 ): () => void {
   let es: EventSource | null = null;
   let retryTimeout: any = null;
@@ -67,6 +77,18 @@ export function connectPedidosActivosStream(
         webNotifications.notifySystem('🚀 Servidor Actualizado', payload.message || 'El servidor ha sido redesplegado y está listo.');
       } catch (err) {
         console.error('[SSE] Error procesando evento server_restarted:', err);
+      }
+    });
+
+    es.addEventListener('whatsapp_status', (event: any) => {
+      try {
+        const payload = JSON.parse(event.data) as WhatsAppStatusPayload;
+        console.log('[SSE] 📱 Estado WhatsApp:', payload);
+        if (onWhatsAppStatusChange) {
+          onWhatsAppStatusChange(payload);
+        }
+      } catch (err) {
+        console.error('[SSE] Error procesando evento whatsapp_status:', err);
       }
     });
 

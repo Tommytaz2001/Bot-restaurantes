@@ -63,6 +63,16 @@ async function downloadMediaEvolution(messagePayload) {
 }
 
 let _lastLoggedConnectionState = null;
+let _lastWhatsAppStatus = {
+  connected: null,
+  state: 'unknown',
+  reason: null,
+  timestamp: null,
+};
+
+function getWhatsAppStatus() {
+  return _lastWhatsAppStatus;
+}
 
 // ── POST /whatsapp/webhook ────────────────────────────────────────────────────
 // Recibe eventos de Evolution API (messages.upsert, etc.)
@@ -90,6 +100,19 @@ async function handleWebhook(req, res) {
 
     if (state && (state !== _lastLoggedConnectionState || reasonInfo)) {
       _lastLoggedConnectionState = state;
+      const isConnected = state === 'open';
+      _lastWhatsAppStatus = {
+        connected: isConnected,
+        state,
+        reason: reasonInfo ? (typeof reasonInfo === 'object' ? JSON.stringify(reasonInfo) : String(reasonInfo)) : null,
+        motivo: statusReason || null,
+        timestamp: new Date().toISOString(),
+      };
+      try {
+        const { orderEvents } = require('../services/orderEvents');
+        orderEvents.emit('whatsapp:status', _lastWhatsAppStatus);
+      } catch (_) {}
+
       const reasonStr = reasonInfo ? ` [motivo: ${typeof reasonInfo === 'object' ? JSON.stringify(reasonInfo) : reasonInfo}]` : '';
       log(`[Webhook] Conexión WhatsApp estado: "${state}"${reasonStr}`);
       if (state === 'close' && (Number(statusReason) === 401 || Number(disconnectError) === 401)) {
@@ -358,4 +381,4 @@ async function _processMessage(data) {
   });
 }
 
-module.exports = { handleWebhook };
+module.exports = { handleWebhook, getWhatsAppStatus };

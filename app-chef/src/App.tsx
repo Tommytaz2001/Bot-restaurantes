@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   getUser, 
   removeToken, 
+  getBackendUrl,
   Pedido, 
   Usuario, 
   fetchBotStatus, 
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [isLive, setIsLive] = useState(false);
   const [botActivo, setBotActivo] = useState(true);
+  const [whatsAppStatus, setWhatsAppStatus] = useState<{ connected: boolean | null; state: string } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
 
   // Escuchar logout forzado por 401
@@ -69,6 +71,18 @@ export const App: React.FC = () => {
       },
       (connected) => {
         setIsLive(connected);
+      },
+      (waStatus) => {
+        setWhatsAppStatus((prev) => {
+          if (waStatus.connected === false && prev?.connected !== false) {
+            audioAlert.playDisconnectWarning();
+            webNotifications.notifySystem(
+              '🚨 ¡WhatsApp Desconectado!',
+              'El bot no puede recibir mensajes. Abre la app o escanea el código QR para reconectar.'
+            );
+          }
+          return waStatus;
+        });
       }
     );
 
@@ -163,10 +177,34 @@ export const App: React.FC = () => {
         pendientesCambioCount={pendientesCambioCount}
         isLive={isLive}
         botActivo={botActivo}
+        whatsAppConnected={whatsAppStatus?.connected}
         onToggleBot={handleToggleBot}
         onOpenConfig={() => setShowConfig(true)}
         onLogout={handleLogout}
       />
+
+      {whatsAppStatus?.connected === false && (
+        <div className="bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 text-white px-4 py-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 border-b border-rose-500/50">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
+            <span className="text-sm font-bold tracking-wide">
+              🚨 ¡ALERTA: WhatsApp Desconectado!
+            </span>
+            <span className="text-xs text-rose-100 hidden sm:inline">
+              El bot no está recibiendo mensajes de clientes.
+            </span>
+          </div>
+          <a
+            href={`${getBackendUrl()}/whatsapp/qr`}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3.5 py-1.5 bg-white text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-md transition-all flex items-center gap-1.5"
+          >
+            <span>Escanear QR Ahora</span>
+            <span className="text-sm">↗</span>
+          </a>
+        </div>
+      )}
 
       <main className="flex-1">
         {activeTab === 'pedidos' && (

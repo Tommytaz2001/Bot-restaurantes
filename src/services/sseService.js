@@ -34,6 +34,20 @@ function createPedidosActivosStream(res, restauranteId = RESTAURANTE_ID) {
 
   sendSnapshot();
 
+  // Enviar estado de WhatsApp al conectar
+  const sendInitialWhatsAppStatus = async () => {
+    try {
+      const { getWhatsAppStatus } = require('../whatsapp/metaWebhook');
+      let status = getWhatsAppStatus();
+      if (status.connected === null && (process.env.EVOLUTION_API_URL || process.env.WHATSAPP_ENABLED === 'true')) {
+        const { getConnectionState } = require('./evolutionSetup');
+        status = await getConnectionState();
+      }
+      res.write(`event: whatsapp_status\ndata: ${JSON.stringify(status)}\n\n`);
+    } catch (_) {}
+  };
+  sendInitialWhatsAppStatus();
+
   // Notificar al KDS si el servidor se redesplegó recientemente (< 2 min)
   if (Date.now() - BOOT_TIME.getTime() < 120_000) {
     res.write(`event: server_restarted\ndata: ${JSON.stringify({ bootTime: BOOT_TIME.toISOString(), message: '⚡ Servidor actualizado y en línea' })}\n\n`);
@@ -50,10 +64,15 @@ function createPedidosActivosStream(res, restauranteId = RESTAURANTE_ID) {
     res.write(`event: server_restarted\ndata: ${JSON.stringify(info)}\n\n`);
   };
 
+  const handleWhatsAppStatus = (status) => {
+    res.write(`event: whatsapp_status\ndata: ${JSON.stringify(status)}\n\n`);
+  };
+
   orderEvents.on('order:created', handleUpdate);
   orderEvents.on('order:updated', handleUpdate);
   orderEvents.on('order:cancelled', handleUpdate);
   orderEvents.on('server:restarted', handleServerRestart);
+  orderEvents.on('whatsapp:status', handleWhatsAppStatus);
 
   // 3. Heartbeat keepalive
   const keepalive = setInterval(() => {
@@ -67,6 +86,7 @@ function createPedidosActivosStream(res, restauranteId = RESTAURANTE_ID) {
     orderEvents.off('order:updated', handleUpdate);
     orderEvents.off('order:cancelled', handleUpdate);
     orderEvents.off('server:restarted', handleServerRestart);
+    orderEvents.off('whatsapp:status', handleWhatsAppStatus);
   });
 }
 

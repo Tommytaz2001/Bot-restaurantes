@@ -103,6 +103,36 @@ class AudioAlertService {
       console.warn('[AudioAlert] Error reproduciendo chime:', e);
     }
   }
+
+  /**
+   * Tono de advertencia acústica para desconexión crítica (WhatsApp caído)
+   * Secuencia descendente de alerta: Mi5 (659Hz) -> Do#5 (554Hz) -> La4 (440Hz)
+   */
+  public playDisconnectWarning() {
+    if (!this.enabled) return;
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([500, 200, 500]);
+      } catch (_) {}
+    }
+
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const master = this.ctx.createGain();
+      master.gain.setValueAtTime(Math.min(1.0, Math.max(0.1, this.volume)), now);
+      master.connect(this.ctx.destination);
+
+      this.playBellStrike(659.25, now,        0.35, master); // Mi 5
+      this.playBellStrike(554.37, now + 0.22, 0.35, master); // Do# 5
+      this.playBellStrike(440.00, now + 0.45, 0.7, master);  // La 4
+    } catch (e) {
+      console.warn('[AudioAlert] Error reproduciendo alerta de desconexión:', e);
+    }
+  }
 }
 
 export const audioAlert = new AudioAlertService();
